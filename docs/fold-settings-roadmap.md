@@ -20,9 +20,26 @@ in their original shared location.
 The owner performs LSPosed selection, all phone UI interactions and restarts.
 Preview 3 was delivered by ordinary replacement. At that delivery the installed
 package was 20003 while the SystemUI probe still reported 20002, with its process ID
-unchanged; the owner subsequently supplied preview-3 feedback. Preview 4 is now
-installed after fresh explicit confirmation. Its installation left SystemUI on
-runtime 20003 pending the owner's manual restart.
+unchanged; the owner subsequently supplied preview-3 feedback. Preview 4 was then
+installed after fresh explicit confirmation. The device is now back on preview 3
+for the compatibility comparison below; source and retained artifacts stay at
+their existing versions.
+
+### Preview 3 compatibility comparison (2026-11-12)
+
+After updating MiDuo and another plugin, the owner explicitly requested installing
+the retained preview 3 to compare behavior. Direct replacement with downgrade
+enabled returned `Success`, preserving application data without uninstalling.
+The previous installed package was 20004; the installed package is now 20003 and
+its APK SHA-256 is
+`d343d91b40de4506ab35a454fccc60dc465517db2f2446fc0e3e9f941462f028`, matching
+`releases/local/hypermusiccover-duo-0.2.0-preview.3.apk`. Both APK signatures matched
+before replacement. The temporary device APK was removed.
+
+SystemUI process IDs stayed unchanged and the read-only probe still reports
+runtime 20004. The owner must restart SystemUI before comparing preview-3 behavior
+with the updated plugins. No phone UI interaction, scope change or restart was
+performed. Compatibility results remain pending the owner's observations.
 
 ### Owner acceptance and remaining issues in preview 1
 
@@ -112,14 +129,14 @@ callback contract without introducing a Kotlin null assertion.
 The owner requires fresh explicit confirmation before every install and supplied
 that confirmation for preview 4 after the earlier pause. Ordinary replacement
 returned `Success`. Installed version 20004 and the device APK SHA-256 match the
-retained artifact. The SystemUI PID stayed unchanged and its read-only probe still
-reports runtime 20003. No GUI operation, scope change or restart was performed;
-the temporary device APK was removed. The owner restarts SystemUI to load 20004
-and performs phone acceptance. The retained artifact is
+retained artifact. At that installation the SystemUI PID stayed unchanged and its
+read-only probe reported runtime 20003. No GUI operation, scope change or restart
+was performed; the temporary device APK was removed. Phone acceptance belongs to
+the owner. The retained artifact is
 `releases/local/hypermusiccover-duo-0.2.0-preview.4.apk`, SHA-256
 `1ce3b566236bca0faa189f8c948e469874b8784f2083b0c9434a1d8a55c62ce8`.
 Package identity, version 20004 and the local debug signing certificate were
-verified before installation. The currently installed preview-3 APK was pulled
+verified before installation. The then-installed preview-3 APK was pulled
 read-only and its signing certificate matched; the ordinary replacement retains
 application data. This is a development preview, not a production signing key.
 
