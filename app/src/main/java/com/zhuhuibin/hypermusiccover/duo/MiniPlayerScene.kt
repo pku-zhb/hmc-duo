@@ -93,13 +93,14 @@ internal object MiniPlayerScene {
     }
 
     private fun setAodActive(active: Boolean) {
-        val keyguardExitReset = active && keyguardGoingAway
+        val keyguardExitReset = AodWakePolicy.resetExit(aodActive, active, keyguardGoingAway)
         if (keyguardExitReset) keyguardGoingAway = false
         // Asked once per change of the doze, not per frame: it reflects into the AOD manager.
         val fullScreen = active && (aodActive && fullScreenAod || Main.fullAodOn())
         if (aodActive == active && fullScreenAod == fullScreen && !keyguardExitReset) return
         fullScreenAod = fullScreen
         aodActive = active
+        WallpaperHandoffDiagnostics.note("doze", "active=$active away=$keyguardGoingAway")
         StatusBarArtwork.refresh()
         if (!active) MiniPlayerRuntime.aodEnded()
         MiniPlayerRuntime.refresh()
@@ -108,6 +109,7 @@ internal object MiniPlayerScene {
     private fun setKeyguardGoingAway(goingAway: Boolean) {
         if (keyguardGoingAway == goingAway) return
         keyguardGoingAway = goingAway
+        WallpaperHandoffDiagnostics.note("unlock", "away=$goingAway aod=$aodActive screen=${Main.screenOnCached()}")
         synchronized(exitEvents) {
             exitEvents.addLast("${android.os.SystemClock.uptimeMillis()} away=$goingAway " +
                 "aod=$aodActive screen=${Main.screenOnCached()}")

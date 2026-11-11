@@ -1262,7 +1262,7 @@ public class Main extends XposedModule {
                     @Override
                     public void run() {
                         if (clockHeld() && ClockCollapse.phase() == ClockCollapse.Phase.AOD
-                                && keyguardShowing()) {
+                                && AodWakePolicy.enterCover(keyguardShowing(), MiniPlayerScene.INSTANCE.getKeyguardGoingAway())) {
                             ClockCollapse.enter(true, true, "kg-post");
                         }
                     }
@@ -1446,8 +1446,7 @@ public class Main extends XposedModule {
                     float v = (Float) args[0];
                     if (v != sLastWallpaperBlack) {
                         sLastWallpaperBlack = v;
-                        WallpaperHandoffDiagnostics.note("black", "value=" + v + " away="
-                                + MiniPlayerScene.INSTANCE.getKeyguardGoingAway() + " screen=" + sScreenOn);
+                        WallpaperHandoffDiagnostics.black(v, MiniPlayerScene.INSTANCE.getKeyguardGoingAway(), sScreenOn);
                         sBlackRoot = chain.getThisObject();
                         if (sVerbose) {
                             Xp.log(TAG + "wallpaperBlack=" + v + " on "

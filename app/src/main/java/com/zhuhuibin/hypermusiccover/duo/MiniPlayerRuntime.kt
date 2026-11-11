@@ -7487,7 +7487,7 @@ private class MiniPlayerController(
         if (!LockScreenRailRuntime.content(host, content)) return null
         val xy = IntArray(2).also(host::getLocationOnScreen)
         if (!content.contains(x - xy[0], y - xy[1]) ||
-            fingerprintInHost()?.contains(x.toInt(), y.toInt()) == true) return null
+            fingerprintInHost()?.contains((x - xy[0]).toInt(), (y - xy[1]).toInt()) == true) return null
         return RailIslandStrip.expansionTarget(selectedIsland, collapsedRailKeys())
     }
 
@@ -11517,6 +11517,7 @@ private class MiniPlayerController(
 
     fun onKeyguardExit() {
         setRailBubblesShown(false)
+        railOpening.clear()
         railPosition?.cancel()
         railPosition = null
         railPositionX = Float.NaN
@@ -12245,6 +12246,7 @@ private class MiniPlayerController(
             islandKeys = emptyList()
             player?.visibility = View.GONE
             hideSmallIsland()
+            setRailBubblesShown(false)
             LockIslands.setActive(false)
             LockIslands.stopFolding()
             restoreHeader()
