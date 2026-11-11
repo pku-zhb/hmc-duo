@@ -537,4 +537,10 @@
     <string name="fold_collapsed_categories_summary">选中的类别收进胶囊；不选则全部展开，全选则全部收起。</string>
     <string name="fold_live_cards">实时卡片</string>
     <string name="fold_notifications">普通通知</string>
+    <string name="duo_notification_section">锁屏通知</string>
+    <string name="duo_notification_show_all">锁屏显示全部通知</string>
+    <string name="duo_notification_show_all_summary">显示被应用锁屏显示规则隐藏的通知；仍遵循系统隐私设置。</string>
+    <string name="duo_notification_retain">锁屏保留通知</string>
+    <string name="duo_notification_retain_summary">解锁后再次锁屏，仍显示尚未清除的通知。</string>
+    <string name="duo_notification_other_module">在 Duo 使用这些功能时，请关闭 HyperLight 中对应的选项。</string>
 </resources>

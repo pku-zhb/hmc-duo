@@ -17,6 +17,8 @@ object MiniPlayerConfig {
     const val COLLAPSED_CATEGORIES = "collapsedCategories"
     const val LANDSCAPE_COLLAPSED_CATEGORIES = "landscapeCollapsedCategories"
     const val KEEP_LAST_LOCKSCREEN = "keepLastLockscreen"
+    const val SHOW_ALL_LOCKSCREEN_NOTIFICATIONS = "showAllLockscreenNotifications"
+    const val RETAIN_LOCKSCREEN_NOTIFICATIONS = "retainLockscreenNotifications"
     const val COLLAPSE_MUSIC = 1
     const val COLLAPSE_LIVE = 2
     const val COLLAPSE_NOTIFICATIONS = 4
@@ -126,6 +128,8 @@ object MiniPlayerConfig {
         COLLAPSED_CATEGORIES to (COLLAPSE_LIVE or COLLAPSE_NOTIFICATIONS),
         LANDSCAPE_COLLAPSED_CATEGORIES to 0,
         KEEP_LAST_LOCKSCREEN to false,
+        SHOW_ALL_LOCKSCREEN_NOTIFICATIONS to false,
+        RETAIN_LOCKSCREEN_NOTIFICATIONS to false,
         WIDTH to 221f,
         HEIGHT_RADIUS to 27f,
         ART_RADIUS to 12f,
@@ -163,7 +167,8 @@ object MiniPlayerConfig {
             out.put(key, if (key in retiredSwitches) {
                 false
             } else if (key == ENABLED || key == MEDIA_COLLAPSED_DEFAULT ||
-                key == KEEP_LAST_LOCKSCREEN || key == COLOROS_FULL_SIZE) {
+                key == KEEP_LAST_LOCKSCREEN || key == COLOROS_FULL_SIZE ||
+                key == SHOW_ALL_LOCKSCREEN_NOTIFICATIONS || key == RETAIN_LOCKSCREEN_NOTIFICATIONS) {
                 runCatching { input.getBoolean(key) }.getOrDefault(fallback)
             } else if (key == COLLAPSED_CATEGORIES || key == LANDSCAPE_COLLAPSED_CATEGORIES) {
                 val landscape = key == LANDSCAPE_COLLAPSED_CATEGORIES

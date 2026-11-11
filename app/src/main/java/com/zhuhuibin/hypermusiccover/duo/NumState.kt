@@ -23,6 +23,26 @@ internal object NumState {
     private val main = Handler(Looper.getMainLooper())
     private val listeners = CopyOnWriteArrayList<(Boolean) -> Unit>()
     private val artworkScrollStates = java.util.WeakHashMap<Any, ArtworkScrollState>()
+    private val presentation = NotificationFoldState()
+
+    /** Seed before entry scrolls, even when ordinary notifications have not arrived yet. */
+    fun seedPresentation(collapsed: Boolean, innerLandscape: Boolean) {
+        presentation.seed(innerLandscape, collapsed)
+        if (!presentation.collapsed) main.removeCallbacks(foldCheck)
+        if (folding) forceDefault(true)
+    }
+
+    fun beginLockSession() = presentation.beginSession()
+
+    /** The saved lock-screen choice, independent of the rows' transient sleep/wake visibility. */
+    fun presentationCollapsed(): Boolean = presentation.collapsed
+
+    /** Native AOD geometry callbacks must not call this: only explicit presentation actions do. */
+    fun choosePresentation(collapsed: Boolean) {
+        val changed = presentation.choose(collapsed)
+        if (!collapsed) main.removeCallbacks(foldCheck)
+        if (changed || folding && !forcedDefault) forceDefault(folding)
+    }
 
     /** The islands fold the ordinary notifications this way (LockIslands.setActive turns it on). */
     @Volatile var folding = false
@@ -106,10 +126,11 @@ internal object NumState {
         }
     }
 
-    fun describe(): String = "numstate folding=$folding available=$available in=$inNumber " +
+    fun describe(): String = "numstate folding=$folding available=$available in=$inNumber wake=${presentation.wakeState()} " +
         LockIslands.systemHiddenForProbe().let { if (it.isEmpty()) "" else "sysHidden=[$it] " } +
         "default=${runCatching { defaultFlow()?.let { Xp.callMethod(it, "getValue") } }.getOrNull()} " +
         "log=" + synchronized(log) { log.joinToString(" ; ") } +
+        " || ${LockscreenNotificationRuntime.describe()}" +
         " || artwork=[${LockIslands.notificationArtworkSampling()}]" +
         " || frames=" + framesText()
 
@@ -161,8 +182,11 @@ internal object NumState {
         runCatching {
             Xp.hookAll(vmClass, "switchStackStatus") { chain ->
                 val target = chain.proceed()
-                runCatching { handsUp(chain.thisObject, chain.args.firstOrNull(), target as Float) }
-                    .getOrNull() ?: target
+                runCatching {
+                    val resolved = handsUp(chain.thisObject, chain.args.firstOrNull(), target as Float) ?: target
+                    rememberHandsUp(chain.thisObject, chain.args.firstOrNull(), resolved)
+                    resolved
+                }.getOrNull() ?: target
             }
         }.onFailure { Xp.log("MCNum: hands-up unhookable: $it") }
         // Wake on actual native scrolling, including STACK <-> LIST without number-state callbacks.
@@ -232,6 +256,19 @@ internal object NumState {
         return number
     }
 
+    /** A real finger release chooses the next wake pose; a screen-on/off strategy does not. */
+    private fun rememberHandsUp(model: Any, info: Any?, target: Float) {
+        if (!folding || info == null || !target.isFinite() || MiniPlayerScene.aodActive ||
+            !Main.screenOnCached() || !Main.onKeyguardNow()) return
+        val event = (Xp.getObjectField(info, "stackShowEvent") as? Enum<*>)?.name
+        if (event != "HANDS_UP") return
+        if ((Xp.getObjectField(info, "normalNotifCount") as Number).toInt() <= 0) return
+        val factory = Xp.getObjectField(Xp.getObjectField(model, "\$\$delegate_0"), "strategyFactory")
+        val number = Xp.callMethod(Xp.getObjectField(factory, "numberStrategy"), "get")
+        val foldedTop = (Xp.callMethod(number, "calculateTargetYPosition", info) as Number).toFloat()
+        choosePresentation(kotlin.math.abs(target - foldedTop) < 1f)
+    }
+
     /**
      * Whether the stack resting with its top at [top] reads as its pile (STACK): its own sum
      * (NotificationContainerViewModel's currentsStackState), the room under the top against the
@@ -278,6 +315,14 @@ internal object NumState {
             Xp.getObjectField(Xp.getObjectField(model, "isBeingDraggedOrAnimating"), "flow")
                 .let { Xp.callMethod(it, "getValue") } == true
     }.getOrDefault(false)
+
+    /** Actual native row fade, not elapsed time: 0 expanded, 1 hidden in NUMBER. */
+    fun collapseVisualProgress(): Float? = runCatching {
+        val animator = Xp.getObjectField(model() ?: return null, "\$\$delegate_1")
+        val flow = Xp.getObjectField(animator, "_numStateAlpha")
+        val alpha = (Xp.callMethod(flow, "getValue") as Number).toFloat()
+        if (alpha.isFinite()) (1f - alpha).coerceIn(0f, 1f) else null
+    }.getOrNull()
 
     @Suppress("UNCHECKED_CAST")
     private fun stateConst(model: Any, name: String): Any {
@@ -422,6 +467,7 @@ internal object NumState {
             "scrollY $cur -> $y (folme)"
         }
         trace("$why: to $state, $done")
+        if (state == "NUMBER" || state == "LIST") choosePresentation(state == "NUMBER")
         done
     }.getOrElse { trace("$why: to $state failed: $it"); "failed: $it" }
 
@@ -449,10 +495,11 @@ internal object NumState {
 
     /**
      * The state the lock screen wakes to is the user's setting default_keyguard_notif_state
-     * (MiuiKeyguardNotificationSettingsRepository.defaultState). Folding, it is NUMBER in memory
-     * only - its flow's value set, the setting itself untouched - so every wake finds the island
-     * and not the rows. Given back, the setting's own value again. A change of the setting
-     * while folding sets it back to the setting's, until the islands next turn this on.
+     * (MiuiKeyguardNotificationSettingsRepository.defaultState). Folding owns that flow in memory
+     * only; the setting itself stays untouched. The user's current presentation
+     * chooses NUMBER or LIST, so an expanded entry is not folded by the later wake animation.
+     * Given back, it takes the setting's own value again. Entry refreshes also reconcile a
+     * recreated flow or a native setting emission without reapplying the user's initial layout.
      */
     private var forcedDefault = false
 
@@ -466,9 +513,12 @@ internal object NumState {
             val flow = defaultFlow() ?: return
             val model = model() ?: return
             if (on) {
-                Xp.callMethod(flow, "setValue", stateConst(model, "NUMBER"))
+                val name = presentation.wakeState()
+                val next = stateConst(model, name)
+                val changed = Xp.callMethod(flow, "getValue") != next
+                if (changed) Xp.callMethod(flow, "setValue", next)
+                if (changed || !forcedDefault) trace("default $name (in memory)")
                 forcedDefault = true
-                trace("default NUMBER (in memory)")
             } else if (forcedDefault) {
                 forcedDefault = false
                 val setting = android.provider.Settings.System.getInt(
@@ -486,7 +536,7 @@ internal object NumState {
      * never while the stack is being moved or is the list the user opened.
      */
     fun foldIfPiled(why: String) {
-        if (!folding) return
+        if (!presentation.autoFold(folding)) return
         main.removeCallbacks(foldCheck)
         foldWhy = why
         main.postDelayed(foldCheck, FOLD_SETTLE_MS)
@@ -496,7 +546,7 @@ internal object NumState {
     private const val FOLD_SETTLE_MS = 350L
 
     private val foldCheck = Runnable {
-        if (!folding || !LockIslands.foldsToCount()) return@Runnable
+        if (!presentation.autoFold(folding) || !LockIslands.foldsToCount()) return@Runnable
         // The list the spread opened, passing through the pile on its way: not folded back.
         if (LockIslands.keepsPileOnFold()) return@Runnable
         if (LockIslands.spreadingNow()) { trace("pile check skipped: spread ($foldWhy)"); return@Runnable }

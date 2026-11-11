@@ -106,4 +106,19 @@ class LockscreenEntryStateTest {
         assertFalse(cfg.getBoolean(MiniPlayerConfig.STATUS_AT_DATE))
     }
 
+    @Test fun notificationVisibilityOptionsAreIndependentAndSurviveSettingsRoundTrips() {
+        val defaults = JSONObject(MiniPlayerConfig.defaultJson())
+        assertFalse(defaults.getBoolean(MiniPlayerConfig.SHOW_ALL_LOCKSCREEN_NOTIFICATIONS))
+        assertFalse(defaults.getBoolean(MiniPlayerConfig.RETAIN_LOCKSCREEN_NOTIFICATIONS))
+        for (show in listOf(false, true)) for (retain in listOf(false, true)) {
+            val raw = JSONObject().put(MiniPlayerConfig.ENABLED, false)
+                .put(MiniPlayerConfig.SHOW_ALL_LOCKSCREEN_NOTIFICATIONS, show)
+                .put(MiniPlayerConfig.RETAIN_LOCKSCREEN_NOTIFICATIONS, retain).toString()
+            val first = MiniPlayerConfig.normalizedJson(raw)
+            val second = JSONObject(MiniPlayerConfig.normalizedJson(first))
+            assertEquals(show, second.getBoolean(MiniPlayerConfig.SHOW_ALL_LOCKSCREEN_NOTIFICATIONS))
+            assertEquals(retain, second.getBoolean(MiniPlayerConfig.RETAIN_LOCKSCREEN_NOTIFICATIONS))
+        }
+    }
+
 }

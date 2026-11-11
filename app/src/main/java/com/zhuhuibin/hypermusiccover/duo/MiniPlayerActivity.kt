@@ -112,6 +112,21 @@ private fun MiniPlayerPage(blur: Boolean, refreshKey: Int, onBack: () -> Unit) {
                         summary = stringResource(R.string.duo_vertical_text_summary))
 
                 }
+                SmallTitle(text = stringResource(R.string.duo_notification_section))
+                Card(Modifier.padding(horizontal = 12.dp).padding(bottom = 12.dp)) {
+                    SwitchPreference(title = stringResource(R.string.duo_notification_show_all),
+                        summary = stringResource(R.string.duo_notification_show_all_summary),
+                        checked = config.optBoolean(MiniPlayerConfig.SHOW_ALL_LOCKSCREEN_NOTIFICATIONS),
+                        enabled = alive,
+                        onCheckedChange = { push(MiniPlayerConfig.SHOW_ALL_LOCKSCREEN_NOTIFICATIONS, it) })
+                    SwitchPreference(title = stringResource(R.string.duo_notification_retain),
+                        summary = stringResource(R.string.duo_notification_retain_summary),
+                        checked = config.optBoolean(MiniPlayerConfig.RETAIN_LOCKSCREEN_NOTIFICATIONS),
+                        enabled = alive,
+                        onCheckedChange = { push(MiniPlayerConfig.RETAIN_LOCKSCREEN_NOTIFICATIONS, it) })
+                    top.yukonga.miuix.kmp.basic.BasicComponent(
+                        title = stringResource(R.string.duo_notification_other_module))
+                }
                 SmallTitle(text = stringResource(R.string.fold_material_section))
                 Card(Modifier.padding(horizontal = 12.dp).padding(bottom = 12.dp)) {
                     WindowDropdownPreference(title = stringResource(R.string.fold_material),

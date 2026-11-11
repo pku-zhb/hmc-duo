@@ -334,6 +334,8 @@ internal object LockIslands {
     fun focusKeys(): List<String> = presentFocusKeys
 
     fun install(classLoader: ClassLoader) {
+        LockscreenNotificationRuntime.install(classLoader)
+        NativeNotificationReturn.install(classLoader)
         focusCheck = runCatching {
             Xp.findClass("com.android.systemui.statusbar.notification.utils.FocusUtils", classLoader)
                 .getDeclaredMethod("isFocusNotification", Notification::class.java)
@@ -555,6 +557,7 @@ internal object LockIslands {
             updateNotificationArtwork()
             return
         }
+        NumState.choosePresentation(false)
         if (!stackOut) {
             stackOut = true
             NumState.trace("$why: island out")
@@ -816,6 +819,8 @@ internal object LockIslands {
 
     /** For `op numstate` too (`op mini` answers nothing when it is long). */
     fun systemHiddenForProbe(): String = systemHidden
+
+    fun notificationPolicyChanged() { invalidate("lockscreen notification visibility changed") }
 
     /**
      * An ordinary notification this filter let through that the run still left off the lock
