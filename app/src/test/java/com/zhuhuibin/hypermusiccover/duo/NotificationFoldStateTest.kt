@@ -4,6 +4,19 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class NotificationFoldStateTest {
+    @Test fun transientNativeNumberNeverPublishesAnUnwantedRailBubble() {
+        val state = NotificationFoldState()
+        state.seed(false, false)
+        for (native in listOf(false, true, false, true, false))
+            assertFalse(state.representedByIsland(native, true))
+        assertTrue(state.representedByIsland(true, false))
+        state.choose(true)
+        assertFalse(state.representedByIsland(false, true))
+        assertTrue(state.representedByIsland(true, true))
+        state.choose(false)
+        assertFalse(state.representedByIsland(true, true))
+    }
+
     @Test fun uncheckedNotificationsRemainOpenAcrossNativeAodAndLatePipelineRuns() {
         val state = NotificationFoldState()
         state.seed(false, false)

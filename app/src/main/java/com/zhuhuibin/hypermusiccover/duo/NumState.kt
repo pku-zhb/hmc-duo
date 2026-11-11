@@ -27,7 +27,8 @@ internal object NumState {
 
     /** Seed before entry scrolls, even when ordinary notifications have not arrived yet. */
     fun seedPresentation(collapsed: Boolean, innerLandscape: Boolean) {
-        presentation.seed(innerLandscape, collapsed)
+        val changed = presentation.seed(innerLandscape, collapsed)
+        if (changed) LockIslands.refreshPresentation()
         if (!presentation.collapsed) main.removeCallbacks(foldCheck)
         if (folding) forceDefault(true)
     }
@@ -37,11 +38,15 @@ internal object NumState {
     /** The saved lock-screen choice, independent of the rows' transient sleep/wake visibility. */
     fun presentationCollapsed(): Boolean = presentation.collapsed
 
+    fun representedByIsland(): Boolean = presentation.representedByIsland(
+        inNumber ?: (state() == "NUMBER"), MiniPlayerRuntime.detachedRail())
+
     /** Native AOD geometry callbacks must not call this: only explicit presentation actions do. */
     fun choosePresentation(collapsed: Boolean) {
         val changed = presentation.choose(collapsed)
         if (!collapsed) main.removeCallbacks(foldCheck)
         if (changed || folding && !forcedDefault) forceDefault(folding)
+        if (changed) LockIslands.refreshPresentation()
     }
 
     /** The islands fold the ordinary notifications this way (LockIslands.setActive turns it on). */

@@ -27,4 +27,8 @@ internal class NotificationFoldState {
 
     fun wakeState(): String = if (collapsed) "NUMBER" else "LIST"
     fun autoFold(enabled: Boolean): Boolean = enabled && collapsed
+
+    /** A transient native NUMBER frame must not publish a bubble for an expanded choice. */
+    fun representedByIsland(nativeFolded: Boolean, detachedRail: Boolean): Boolean =
+        nativeFolded && (!detachedRail || collapsed)
 }

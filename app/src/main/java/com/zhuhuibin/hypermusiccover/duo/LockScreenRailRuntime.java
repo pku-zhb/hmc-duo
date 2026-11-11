@@ -42,10 +42,9 @@ final class LockScreenRailRuntime {
     private static final java.util.ArrayDeque<String> events = new java.util.ArrayDeque<>();
     private static final class Owned {
         final GeometryLease lease;
-        int measuredWidth;
+        RailContentWidth contentWidth;
         Owned(View v) {
             lease = new GeometryLease(v.getLayoutParams().width, v.getTranslationX());
-            measuredWidth = nativeWidth(v);
         }
     }
 
@@ -324,36 +323,37 @@ final class LockScreenRailRuntime {
         Owned state = owned.get(v);
         if (state == null) { state = new Owned(v); owned.put(v, state); }
         ViewGroup.LayoutParams lp = v.getLayoutParams();
-        if (lp.width != state.lease.writtenWidth) {
-            // MATCH_PARENT rewritten by the OEM must resolve against its parent, never against
-            // last frame's already-narrowed child width (which would compound the shrink).
-            if (lp.width > 0 || lp.width == ViewGroup.LayoutParams.MATCH_PARENT) state.measuredWidth = nativeWidth(v);
-        }
+        if (state.contentWidth == null) state.contentWidth = new RailContentWidth(lp.width, nativeWidth(v));
+        state.contentWidth.observe(lp.width);
         state.lease.observe(lp.width, v.getTranslationX());
         float ratio = content.width() / root.getWidth();
-        int width = state.lease.originalWidth == ViewGroup.LayoutParams.WRAP_CONTENT
-                ? lp.width : Math.max(1, Math.round(state.measuredWidth * ratio));
+        int width = state.contentWidth.target(parentAvailableWidth(v), ratio);
         if (!map(root, (View) v.getParent(), content, box)) return;
         float actualWidth = width > 0 ? width : v.getWidth();
         float x = box.centerX() - actualWidth / 2f - v.getLeft();
         if (lp.width != width) { lp.width = width; v.setLayoutParams(lp); }
         if (Math.abs(v.getTranslationX() - x) >= .25f) v.setTranslationX(x);
+        state.contentWidth.wrote(width);
         state.lease.wrote(width, v.getTranslationX());
     }
 
     private static int nativeWidth(View v) {
         ViewGroup.LayoutParams lp = v.getLayoutParams();
         if (lp.width > 0) return lp.width;
-        if (lp.width == ViewGroup.LayoutParams.MATCH_PARENT && v.getParent() instanceof View) {
-            View parent = (View) v.getParent();
-            int width = parent.getWidth() - parent.getPaddingLeft() - parent.getPaddingRight();
-            if (lp instanceof ViewGroup.MarginLayoutParams) {
-                ViewGroup.MarginLayoutParams margins = (ViewGroup.MarginLayoutParams) lp;
-                width -= margins.leftMargin + margins.rightMargin;
-            }
-            if (width > 0) return width;
-        }
+        int available = parentAvailableWidth(v);
+        if (lp.width == ViewGroup.LayoutParams.MATCH_PARENT && available > 0) return available;
         return v.getWidth();
+    }
+
+    private static int parentAvailableWidth(View v) {
+        if (!(v.getParent() instanceof View)) return 0;
+        View parent = (View) v.getParent();
+        int width = parent.getWidth() - parent.getPaddingLeft() - parent.getPaddingRight();
+        if (v.getLayoutParams() instanceof ViewGroup.MarginLayoutParams) {
+            ViewGroup.MarginLayoutParams margins = (ViewGroup.MarginLayoutParams) v.getLayoutParams();
+            width -= margins.leftMargin + margins.rightMargin;
+        }
+        return Math.max(0, width);
     }
 
     private static void restoreClockOffsets() {
@@ -402,7 +402,8 @@ final class LockScreenRailRuntime {
             View v = e.getKey(); GeometryLease lease = e.getValue().lease;
             ViewGroup.LayoutParams lp = v.getLayoutParams();
             if (lp != null) {
-                int restored = lease.restoreWidth(lp.width);
+                RailContentWidth contentWidth = e.getValue().contentWidth;
+                int restored = contentWidth == null ? lease.restoreWidth(lp.width) : contentWidth.restore(lp.width);
                 if (restored != lp.width) { lp.width = restored; v.setLayoutParams(lp); }
             }
             float x = lease.restoreX(v.getTranslationX());
