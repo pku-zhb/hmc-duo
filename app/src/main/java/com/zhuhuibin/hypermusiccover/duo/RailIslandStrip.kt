@@ -14,8 +14,8 @@ internal object RailIslandStrip {
         return keys[(index + if (up) keys.size - 1 else 1) % keys.size]
     }
 
-    fun expansionTarget(selected: String?, collapsed: List<String>): String? =
-        selected?.takeIf { it in collapsed } ?: collapsed.firstOrNull()
+    /** The native stack grows bottom-up: notifications, live cards, then the top music card. */
+    fun expansionTarget(collapsed: List<String>): String? = collapsed.firstOrNull()
 
     data class Slot(val key: String, val top: Float, val height: Float, val primary: Boolean)
     data class Plan(val slots: List<Slot>, val hidden: Int)

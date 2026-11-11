@@ -54,4 +54,56 @@ class LockscreenEntryStateTest {
         assertTrue(state.takeMusic(true, true))
     }
 
+    @Test fun allEightCategorySelectionsRoundTripIncludingNoneAndAll() {
+        for (mask in 0..7) {
+            val cfg = JSONObject(MiniPlayerConfig.normalizedJson(JSONObject()
+                .put("enabled", true).put("collapsedCategories", mask).put("startupMusicView", 1).toString()))
+            assertEquals(mask, MiniPlayerConfig.collapsedCategories(cfg))
+            assertEquals(mask and 1 == 0, MiniPlayerConfig.automaticCoverAllowed(cfg.toString()))
+            assertEquals(cfg.toString(), MiniPlayerConfig.normalizedJson(cfg.toString()))
+        }
+    }
+    @Test fun legacyLayoutsMigrateWithoutLosingTheirExpandedMusicPage() {
+        for ((mode, mask) in listOf(0 to 7, 1 to 0, 2 to 6)) {
+            val cfg = JSONObject(MiniPlayerConfig.normalizedJson("""{"startupMode":$mode,"startupMusicView":2}"""))
+            assertEquals(mask, MiniPlayerConfig.collapsedCategories(cfg))
+            assertEquals(if (mode == 1) 0 else 2, MiniPlayerConfig.startupMusicView(cfg))
+        }
+        val legacy = JSONObject(MiniPlayerConfig.normalizedJson("""{"mediaCollapsedDefault":true}"""))
+        assertEquals(7, MiniPlayerConfig.collapsedCategories(legacy))
+    }
+    @Test fun rememberedModeDoesNotRunTheCustomAutomaticCoverChoice() {
+        val cfg = """{"enabled":true,"keepLastLockscreen":true,"collapsedCategories":0,"startupMusicView":2}"""
+        assertFalse(MiniPlayerConfig.automaticCoverAllowed(cfg))
+        assertTrue(MiniPlayerConfig.keepLastLockscreen(JSONObject(MiniPlayerConfig.normalizedJson(cfg))))
+    }
+    @Test fun snapshotsPreserveIndividualLiveCardsAndUseTheCategoryForNewCards() {
+        val original = LockscreenSnapshot(6, 2, setOf("delivery", "calendar"), setOf("delivery"), "calendar")
+        val copy = LockscreenSnapshot.decode(original.encode())!!
+        assertEquals(original, copy)
+        assertFalse(copy.collapseFocus("delivery"))
+        assertTrue(copy.collapseFocus("calendar"))
+        assertTrue(copy.collapseFocus("new-timer"))
+        assertFalse(copy.copy(collapsed = 0).collapseFocus("new-timer"))
+        assertNull(LockscreenSnapshot.decode("corrupt"))
+    }
+    @Test fun aLockSessionFreezesItsRestoreSnapshotAndClaimsLateLiveCardsOnce() {
+        val state = LockscreenEntryState()
+        val first = LockscreenSnapshot(4, 0)
+        val later = LockscreenSnapshot(7, 2)
+        assertEquals(first, state.snapshot(false) { first })
+        assertEquals(first, state.snapshot(false) { later })
+        assertTrue(state.takeFocus("calendar")); assertFalse(state.takeFocus("calendar"))
+        assertTrue(state.takeFocus("delivery")); assertTrue(state.takeFocus("calendar", true))
+        assertFalse(state.takeSelection(false, false)); assertTrue(state.takeSelection(true, false))
+        assertFalse(state.takeSelection(true, false))
+        state.arm()
+        assertEquals(later, state.snapshot(false) { later })
+        assertTrue(state.takeFocus("calendar"))
+    }
+    @Test fun retiredDateStatusCannotBeReactivatedByAnImportedBackup() {
+        val cfg = JSONObject(MiniPlayerConfig.normalizedJson("""{"statusAtDate":true}"""))
+        assertFalse(cfg.getBoolean(MiniPlayerConfig.STATUS_AT_DATE))
+    }
+
 }

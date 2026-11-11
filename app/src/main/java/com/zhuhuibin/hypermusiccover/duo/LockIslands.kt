@@ -330,6 +330,8 @@ internal object LockIslands {
 
     /** The focus islands of the last run, before the stack island is put with them (publish). */
     private var focusShown: List<Note> = emptyList()
+    private var presentFocusKeys: List<String> = emptyList()
+    fun focusKeys(): List<String> = presentFocusKeys
 
     fun install(classLoader: ClassLoader) {
         focusCheck = runCatching {
@@ -866,6 +868,7 @@ internal object LockIslands {
             MiniPlayerRuntime.noteTouch("stack front -> ${front?.substringAfter('|')?.substringBefore('|') ?: "none"} " +
                 "of ${members.size} (${members.joinToString(",") { m -> rankOf(m.key)?.let { "${it.property}/${it.priority}/${it.time % 100000}" } ?: "-" }})")
         }
+        presentFocusKeys = shown.filter { it.focus }.map { it.key }
         focusShown = shown.filter { it.focus && it.key !in released }
         if (nativeStack) {
             // The stack said nothing yet this lock screen: read where it is.

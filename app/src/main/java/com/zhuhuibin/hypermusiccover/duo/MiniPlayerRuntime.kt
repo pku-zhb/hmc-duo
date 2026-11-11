@@ -1120,7 +1120,7 @@ object MiniPlayerRuntime {
         if (kotlin.math.hypot(dx, dy) > ViewConfiguration.get(pill.context).scaledTouchSlop) bubbleMoved = true
         if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
             if (action == MotionEvent.ACTION_UP && !bubbleCancelled) {
-                if (!bubbleMoved) bubbleKey?.let(owner::selectRailIsland)
+                if (!bubbleMoved) bubbleKey?.let(owner::expandRailSelection)
                 else {
                     val direction = PillAxisGeometry.swipe(true, dx, dy, 0f, 0f,
                         pill.height.toFloat(), pill.resources.displayMetrics.density)
@@ -1957,6 +1957,8 @@ object MiniPlayerRuntime {
     /** The list is being scrolled from a card: a card held where it landed goes with it. */
     @JvmStatic fun releaseNativeScrollPin() = live().forEach { it.releaseNativeScrollPin() }
 
+    @JvmStatic fun rememberLockState() = live().forEach { it.rememberLockPresentation() }
+
     @JvmStatic fun keyguardExiting() {
         entryDefaults.arm()
         live().forEach { it.onKeyguardExit() }
@@ -2178,7 +2180,8 @@ private class MiniPlayerController(
     private var forceHeaderRefresh = true
     private var lastPresentationLog = ""
     private var lastActive = false
-    private val prefListener = SharedPreferences.OnSharedPreferenceChangeListener { _, _ ->
+    private val prefListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+        if (key != "config") return@OnSharedPreferenceChangeListener
         configStale = true
         scheduleRefresh()
     }
@@ -2638,7 +2641,7 @@ private class MiniPlayerController(
                 val v = ShortcutDisc(context)
                 v.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
                 v.isFocusable = true
-                v.setOnClickListener { selectRailIsland(key) }
+                v.setOnClickListener { expandRailSelection(key) }
                 host.addView(v, lockScreenLayerIndex(), ViewGroup.LayoutParams(dp(46f), dp(46f)))
                 RailBubble(v)
             }
@@ -2659,9 +2662,9 @@ private class MiniPlayerController(
                 })
             }
             view.contentDescription = when (key) {
-                MUSIC_ISLAND -> SystemUiLanguage.text("切换到播放器胶囊", "Select music capsule")
-                STACK_ISLAND -> SystemUiLanguage.text("切换到通知胶囊", "Select notifications capsule")
-                else -> SystemUiLanguage.text("切换到", "Select ") + (note?.title ?: appLabel(note?.pkg.orEmpty()))
+                MUSIC_ISLAND -> SystemUiLanguage.text("展开播放器", "Open player")
+                STACK_ISLAND -> SystemUiLanguage.text("展开通知", "Open notifications")
+                else -> SystemUiLanguage.text("展开", "Open ") + (note?.title ?: appLabel(note?.pkg.orEmpty()))
             }
             placeRailBubble(bubble, slots[key])
         }
@@ -7488,7 +7491,7 @@ private class MiniPlayerController(
         val xy = IntArray(2).also(host::getLocationOnScreen)
         if (!content.contains(x - xy[0], y - xy[1]) ||
             fingerprintInHost()?.contains((x - xy[0]).toInt(), (y - xy[1]).toInt()) == true) return null
-        return RailIslandStrip.expansionTarget(selectedIsland, collapsedRailKeys())
+        return RailIslandStrip.expansionTarget(collapsedRailKeys())
     }
 
     fun expandRailSelection(key: String): Boolean {
@@ -11539,6 +11542,7 @@ private class MiniPlayerController(
     }
 
     fun destroy() {
+        handler.removeCallbacks(rememberPresentation)
         railPosition?.cancel()
         railBubbles.values.forEach { host.removeView(it.view) }
         railBubbles.clear()
@@ -12182,7 +12186,7 @@ private class MiniPlayerController(
 
     fun refresh() {
         if (Looper.myLooper() != Looper.getMainLooper()) { scheduleRefresh(); return }
-        runCatching { refreshUnsafe() }.onFailure { Xp.w("MCMini: refresh failed: $it") }
+        runCatching { refreshUnsafe(); scheduleRememberPresentation() }.onFailure { Xp.w("MCMini: refresh failed: $it") }
     }
 
     private fun scheduleRefresh() {
@@ -12191,39 +12195,79 @@ private class MiniPlayerController(
         handler.post { refreshPosted = false; refresh() }
     }
 
+    private fun entryLandscape() = FoldArtworkLayout.innerLandscape(host.width.toFloat(), host.height.toFloat(), density())
+
+    private fun entrySnapshot(landscape: Boolean): LockscreenSnapshot? =
+        if (MiniPlayerConfig.keepLastLockscreen(config)) MiniPlayerRuntime.entryDefaults.snapshot(landscape) {
+            LockscreenSnapshot.decode(prefs.getString(LockscreenSnapshot.preference(landscape), null))
+        } else null
+
+    private val rememberPresentation = Runnable { rememberLockPresentation() }
+    private fun scheduleRememberPresentation() {
+        handler.removeCallbacks(rememberPresentation)
+        handler.postDelayed(rememberPresentation, 160L)
+    }
+
+    fun rememberLockPresentation() {
+        if (!MiniPlayerRuntime.detachedRail() || !config.optBoolean(MiniPlayerConfig.ENABLED) ||
+            !Main.screenOnCached() || !Main.keyguardLocked() || !Main.onKeyguardNow() ||
+            Main.bouncerShown() || MiniPlayerScene.aodActive || MiniPlayerScene.keyguardGoingAway ||
+            MiniPlayerRuntime.applyingEntryDefaults || railMediaExiting() || railOpening.isNotEmpty() ||
+            morph != null || exchange != null || !host.isAttachedToWindow || !host.isShown ||
+            host.width <= 0 || host.height <= 0) return
+        val landscape = entryLandscape()
+        val preference = LockscreenSnapshot.preference(landscape)
+        val previous = LockscreenSnapshot.decode(prefs.getString(preference, null))
+        var collapsed = previous?.collapsed ?: MiniPlayerConfig.collapsedCategories(config, landscape)
+        fun set(bit: Int, folded: Boolean) { collapsed = if (folded) collapsed or bit else collapsed and bit.inv() }
+        val music = controller?.takeIf(::isUsable)?.takeIf { Main.miniPlayerMediaCardPresent() }
+        if (music != null) set(MiniPlayerConfig.COLLAPSE_MUSIC, !musicCarded(music))
+        if (LockIslands.membersOf(STACK_ISLAND).isNotEmpty())
+            set(MiniPlayerConfig.COLLAPSE_NOTIFICATIONS, !railNotificationsOpen())
+        val focus = LockIslands.focusKeys().toSet()
+        val expanded = focus.filter(LockIslands::isReleased).toSet()
+        if (focus.isNotEmpty()) set(MiniPlayerConfig.COLLAPSE_LIVE, expanded.size < focus.size)
+        val musicView = if (music == null) previous?.musicView ?: MiniPlayerConfig.startupMusicView(config, landscape)
+            else if (!Main.coverModeOn() || LockLyrics.playerChosen()) MiniPlayerConfig.VIEW_PLAYER
+            else if (LockLyrics.sTapHidden) MiniPlayerConfig.VIEW_ARTWORK else MiniPlayerConfig.VIEW_LYRICS
+        val snapshot = LockscreenSnapshot(collapsed, musicView, focus, expanded,
+            selectedIsland?.takeIf { it in collapsedRailKeys() })
+        val encoded = snapshot.encode()
+        if (encoded != prefs.getString(preference, null)) prefs.edit().putString(preference, encoded).apply()
+    }
+
     private fun applyLockscreenDefaults(music: MediaController?, hasNotes: Boolean): Boolean {
         if (MiniPlayerRuntime.applyingEntryDefaults || !config.optBoolean(MiniPlayerConfig.ENABLED) ||
             !Main.keyguardLocked() || !Main.onKeyguardNow() || Main.bouncerShown() ||
-            MiniPlayerScene.keyguardGoingAway) return false
-        val landscape = FoldArtworkLayout.innerLandscape(host.width.toFloat(), host.height.toFloat(),
-            context.resources.displayMetrics.density)
-        val mode = MiniPlayerConfig.startupMode(config, landscape)
-        val notifications = MiniPlayerRuntime.entryDefaults.takeNotifications(
-            NumState.model() != null && (mode != MiniPlayerConfig.START_EXPANDED || hasNotes), landscape)
-        val openMusic = MiniPlayerRuntime.entryDefaults.takeMusic(music != null &&
-            Main.miniPlayerMediaCardPresent() && (transitionHeader()?.height ?: 0) > 0, landscape)
-        if (!notifications && !openMusic) return false
+            MiniPlayerScene.aodActive || MiniPlayerScene.keyguardGoingAway) return false
+        val landscape = entryLandscape()
+        val snapshot = entrySnapshot(landscape)
+        val collapsed = snapshot?.collapsed ?: MiniPlayerConfig.collapsedCategories(config, landscape)
+        val entry = MiniPlayerRuntime.entryDefaults
+        val notifications = entry.takeNotifications(NumState.model() != null &&
+            (collapsed and MiniPlayerConfig.COLLAPSE_NOTIFICATIONS != 0 || hasNotes), landscape)
+        val focus = LockIslands.focusKeys().filter { entry.takeFocus(it, landscape) }
+        val openMusic = entry.takeMusic(music != null && Main.miniPlayerMediaCardPresent() &&
+            (transitionHeader()?.height ?: 0) > 0, landscape)
+        snapshot?.selected?.let { if (entry.takeSelection(it in islandKeys, landscape)) railReturnedSelection = it }
+        if (!notifications && !openMusic && focus.isEmpty()) return false
         MiniPlayerRuntime.applyingEntryDefaults = true
         try {
-            if (notifications) {
-                if (mode == MiniPlayerConfig.START_EXPANDED) {
-                    LockIslands.notes.map { it.key }.forEach(LockIslands::release)
-                    NumState.goTo("LIST", anim = false, why = "lock entry expanded")
-                } else {
-                    LockIslands.releasedKeys().filter { it != MUSIC_ISLAND }.forEach(LockIslands::recapture)
-                    NumState.goTo("NUMBER", anim = false, why = "lock entry collapsed")
-                }
+            if (notifications) NumState.goTo(
+                if (collapsed and MiniPlayerConfig.COLLAPSE_NOTIFICATIONS != 0) "NUMBER" else "LIST",
+                anim = false, why = "lock entry categories")
+            for (key in focus) {
+                val fold = snapshot?.collapseFocus(key) ?: (collapsed and MiniPlayerConfig.COLLAPSE_LIVE != 0)
+                if (fold) LockIslands.recapture(key) else LockIslands.release(key)
             }
             if (openMusic && music != null) {
-                if (mode == MiniPlayerConfig.START_COLLAPSED) {
+                if (collapsed and MiniPlayerConfig.COLLAPSE_MUSIC != 0) {
                     railReturnedSelection = MUSIC_ISLAND
                     MiniPlayerRuntime.chooseMini(music.sessionToken)
                     Main.selectLockscreenStartupView(-1)
                 } else {
                     MiniPlayerRuntime.chooseNative(music.sessionToken)
-                    val view = if (mode == MiniPlayerConfig.START_EXPANDED && !landscape) MiniPlayerConfig.VIEW_PLAYER
-                        else MiniPlayerConfig.startupMusicView(config, landscape)
-                    Main.selectLockscreenStartupView(view)
+                    Main.selectLockscreenStartupView(snapshot?.musicView ?: MiniPlayerConfig.startupMusicView(config, landscape))
                 }
             }
         } finally { MiniPlayerRuntime.applyingEntryDefaults = false }
