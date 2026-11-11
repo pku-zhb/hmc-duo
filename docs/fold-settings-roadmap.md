@@ -21,9 +21,9 @@ The owner performs LSPosed selection, all phone UI interactions and restarts.
 Preview 3 was delivered by ordinary replacement. At that delivery the installed
 package was 20003 while the SystemUI probe still reported 20002, with its process ID
 unchanged; the owner subsequently supplied preview-3 feedback. Preview 4 was then
-installed after fresh explicit confirmation. The device is now back on preview 3
-for the compatibility comparison below; source and retained artifacts stay at
-their existing versions.
+installed after fresh explicit confirmation, temporarily replaced with preview 3
+for a compatibility comparison, and restored to preview 4 at the owner's request.
+Source and retained artifacts stay at their existing versions.
 
 ### Preview 3 compatibility comparison (2026-11-12)
 
@@ -36,10 +36,22 @@ its APK SHA-256 is
 `releases/local/hypermusiccover-duo-0.2.0-preview.3.apk`. Both APK signatures matched
 before replacement. The temporary device APK was removed.
 
-SystemUI process IDs stayed unchanged and the read-only probe still reports
-runtime 20004. The owner must restart SystemUI before comparing preview-3 behavior
-with the updated plugins. No phone UI interaction, scope change or restart was
-performed. Compatibility results remain pending the owner's observations.
+At the downgrade, SystemUI process IDs stayed unchanged and the read-only probe
+reported runtime 20004 pending the owner's restart. No phone UI interaction,
+scope change or restart was performed.
+
+The owner subsequently reported that black flashing also occurs on preview 3
+after updating MiDuo and its other plugin, and requested restoring preview 4.
+This points to the updated environment rather than a preview-4-only regression;
+it does not yet isolate MiDuo from the other updated plugin or prove a root cause.
+
+The authorized restore used ordinary data-preserving replacement and returned
+`Success`. Installed version 20004 and the device APK SHA-256 matched the retained
+preview-4 artifact. SystemUI PID 3143 stayed unchanged, and the read-only probe
+reported runtime 20003 pending the owner's manual restart. The temporary device
+APK was removed. No GUI operation, scope change or restart was performed. The
+preview-4 checks below remain pending; black flashing is tracked separately from
+the gesture, notification, artwork and rail-animation acceptance.
 
 ### Owner acceptance and remaining issues in preview 1
 
