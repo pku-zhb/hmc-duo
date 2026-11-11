@@ -18,8 +18,9 @@ to Duo with byte-for-byte verification. Existing SystemUI runtime settings remai
 in their original shared location.
 
 The owner performs LSPosed selection, all phone UI interactions and restarts.
-The current read-only runtime probe confirms Duo build 20002 after the authorized
-direct update below. The owner performs phone UI interactions and explicit restarts.
+The installed package is now 20003 after the ordinary replacement documented below.
+The read-only SystemUI probe still reports runtime 20002, and its process ID stayed
+unchanged. The owner performs phone UI interactions and the restart to load 20003.
 
 ### Owner acceptance and remaining issues in preview 1
 
@@ -35,7 +36,102 @@ direct update below. The owner performs phone UI interactions and explicit resta
   Two-item HyperOS capsule switching can lose the other bubble or repeat an item.
 - Inner-screen and inner-landscape acceptance is explicitly deferred.
 
-### Preview 2 changes awaiting device acceptance
+### Owner feedback on preview 2
+
+The owner tested the outer screen with music, notifications and a real system
+calendar card. Right-side switching and first artwork/lyrics taps now work. Torch
+is more forgiving after the screen settles. Direct AOD unlock did not reproduce
+the black flash in the latest attempts; this is encouraging, not a definitive
+resolution. Inner-screen acceptance remains deferred.
+
+Requested follow-up: tapping a bubble should open its card, while swipes alone
+switch the capsule. Left-area upward swipes should follow notification/live-card/
+music order regardless of the selected capsule. The switch should merge/split
+continuously. The clock still starts late and jumps horizontally at handoff, and
+needs a small rightward visual adjustment. The active lyric flashes during sleep/
+wake, initial lyrics can wait before appearing, and torch cannot start before
+the wake animation finishes.
+
+### Preview 3 changes awaiting device acceptance
+
+The candidate is `0.2.0-preview.3` (`20003`).
+
+- A bubble tap opens that content on the left. Capsule swipes remain selection
+  gestures. Left-area upward swipes open ordinary notifications, then live cards,
+  then music, skipping missing/open items; native unlock follows last.
+- Adjacent capsule switches join and separate the native glass surfaces over
+  420 ms, keeping both icons continuous while details retract and reveal. A
+  nonadjacent wrap resizes both end seats without covering intervening bubbles.
+  ColorOS contracts its single capsule before changing the face. Interrupted
+  switches settle once; scene/list changes and disabled animations use valid
+  final seats. The visual result still needs manual acceptance.
+- Lock-screen entry now has independent collapsed-category checkboxes for music,
+  live cards and notifications. None checked expands all; all checked collapses
+  all. Older presets migrate to the corresponding mask without changing their
+  music page. Inner landscape retains separate defaults.
+- A separate keep-last-state switch disables those manual defaults and restores
+  category state, known live-card states, selected capsule and music page. New
+  live cards follow the saved category default; missing kinds retain their saved
+  category preference. AOD wake does not start a new lock session.
+- The date-adjacent status-text option is hidden and normalized off, including
+  old imports. It was a separate relocation feature for status/owner text, not
+  the charging-hint suppression; charging-hint suppression remains in place.
+- Torch can receive an inward drag during the visible wake fade rather than
+  waiting for full opacity. Sleeping, AOD, bouncer and unlock gates remain. This
+  changes the input gate, not the system-wide sleep/wake animation duration.
+- The moving and resting clock use the same ink center and ancestor-coordinate
+  mapping. Outer portrait adds an 8 dp rightward optical adjustment. The outgoing
+  player stops reserving clock space when its collapse starts.
+- During sleep/wake, the active lyric keeps one ambient rendering treatment until
+  the screen and clock agree they are awake. Extended-range lyric ink waits for
+  the HDR window's first committed frame; stale callbacks cannot re-enable it.
+  Stable-AOD frame scheduling is retained.
+- Opening lyrics skips the old blur acknowledgement wait when Duo's artwork
+  backdrop is hidden. Existing parsed lyrics and pending lookups remain reusable;
+  a genuine network/lyrics lookup can still take time.
+
+Host verification: all 660 tests in 110 suites passed, with zero failures, errors
+or skips. Debug and Release builds passed, including release R8 and vital lint.
+The retained APK is `releases/local/hypermusiccover-duo-0.2.0-preview.3.apk`, SHA-256
+`d343d91b40de4506ab35a454fccc60dc465517db2f2446fc0e3e9f941462f028`.
+Its local debug certificate matches the installed preview 2, verified from the
+device APK before installation. This remains a development preview.
+
+Device delivery: ordinary `cmd package install -r` returned `Success`. Installed
+version 20003 and the on-device APK hash both match the retained artifact. The
+SystemUI PID did not change and its read-only probe still reports 20002. No GUI,
+scope change, process restart or device reboot was performed. The temporary APK
+in `/data/local/tmp` was removed. The owner restarts SystemUI to load these fixes;
+a whole-device reboot is not required for this iteration.
+
+Manual acceptance after loading preview 3 (outer screen only):
+
+1. With notifications, a live calendar/delivery card and music present, tap each
+   bubble: that card opens directly on the left. Collapse them and swipe the right
+   capsule in both directions. Check joined/split motion, persistent icons, fixed
+   order and no disappearing/duplicate bubble. Include one rapid second swipe.
+2. Collapse all, select music on the right, then swipe up repeatedly from the left
+   clock/notification region: notifications, live cards, music, then native unlock.
+   Missing or already-open kinds are skipped. Repeat in ColorOS style.
+3. Test the category checkboxes with none, all and one kind selected. Check that
+   only selected kinds collapse on the next lock. Enable keep-last, adjust the
+   live presentation and music page, then unlock/relock; the choices should
+   return, including the selected capsule. Include a quick screen-off after a
+   change and an AOD wake, which should preserve the same session.
+4. Collapse the player with other cards open and with everything else collapsed.
+   The clock should resize during the card motion, land without a lateral hop,
+   and sit slightly farther right in outer portrait.
+5. From player-only entry, open lyrics for the first time. Ready lyrics should no
+   longer wait for a hidden backdrop. Watch the active line through sleep/wake and
+   stable AOD, including HDR if enabled; there should be no transition flash.
+6. Begin an inward torch drag once the waking icon is visible, before its fade
+   completes. It should use the normal native launch/cancel thresholds. Check the
+   settled-screen torch and camera too. Do not expect activation while asleep.
+7. Repeat direct AOD unlock as a regression check. The owner did not reproduce the
+   black flash in the last preview-2 attempts; preview-3 device acceptance remains
+   pending and must not be inferred from host tests.
+
+### Preview 2 implementation and delivery history
 
 The candidate is `0.2.0-preview.2` (`20002`). Its interaction contract is:
 
@@ -93,7 +189,7 @@ reboot is not needed for this update. The temporary APK in `/data/local/tmp` was
 removed. Future authorized previews use ordinary replacement, with explicit
 restarts left to the owner and no automatic restart in the new module code.
 
-Manual acceptance with preview 2 loaded (outer screen only):
+Original preview 2 test checklist (superseded by preview 3's interaction contract):
 
 1. In HyperOS style with music and notifications, swipe the capsule up and down
    repeatedly. Exactly one capsule and one bubble remain; either direction changes
