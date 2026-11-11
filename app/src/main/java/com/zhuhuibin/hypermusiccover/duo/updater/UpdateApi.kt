@@ -172,32 +172,10 @@ object UpdateApi {
 
     fun enabled(context: Context): Boolean = UPDATES_ENABLED && context.packageName == BuildConfig.APPLICATION_ID
 
-    /**
-     * The certificate the project publishes releases under.
-     *
-     * Compared by SHA-256 of the certificate, not by its subject: a subject is free-form text
-     * anybody can put in a self-signed certificate, and this is the one value that cannot be
-     * forged without the private key. Taken from the fork's published `v0.1.0` APK, which is signed
-     * with this and nothing else.
-     */
-    private const val RELEASE_CERT_SHA256 =
-        "7ae8ee6fdc1fa0f3375284bab43ce2187dc5d13e7874a178add52ec2287bc6ca"
-
-    /**
-     * Is [file] an APK this project is willing to install?
-     *
-     * The published certificate and the running build's signer can differ if a future release
-     * uses a dedicated signing key. The accepted identities are the
-     * fork's published certificate and the running build's signer, never upstream's release key.
-     *
-     * Whether the system will then accept the swap across two different keys is the installer's
-     * business and not this app's: a stock device refuses it, and a device with the signature
-     * check patched out - CorePatch and its kin - goes through. Refusing here would take that
-     * decision away from the people who have made it possible.
-     */
+    /** Accept the requested package only when it is signed by the running Duo build. */
     fun isOurs(context: Context, file: File, expectedPackage: String = context.packageName): Boolean {
         val signer = signerOf(context, file, expectedPackage) ?: return false
-        return signer == RELEASE_CERT_SHA256 || signer == ownSigner(context)
+        return signer == ownSigner(context)
     }
 
     /** SHA-256 of the certificate [file] is signed with, lowercase hex, or null if unreadable. */
