@@ -17,6 +17,8 @@ final class LyricsButton {
     private static ViewGroup host;
     private static ImageView button;
     private static LyricsSheetDrawable notesDrawable;
+    private static MusicPageActionDrawable pageDrawable;
+    private static boolean railCycle;
     private static ValueAnimator animator;
     private static float progress;
     private static boolean requested, canvasControls;
@@ -52,6 +54,7 @@ final class LyricsButton {
         if (!(card instanceof ViewGroup)) return 0f;
         if (host != card) release();
         canvasControls = controls;
+        railCycle = MiniPlayerRuntime.detachedRail() && !controls;
         boolean animate = LyricsButtonPolicy.animate(MiniPlayerRuntime.detachedRail());
         if (!animate) {
             if (animator != null) animator.cancel();
@@ -90,7 +93,11 @@ final class LyricsButton {
             button.setPadding(pad, pad, pad, pad);
             String language = card.getResources().getConfiguration().getLocales().get(0).getLanguage();
             button.setContentDescription("zh".equals(language) ? "显示歌词" : "Show lyrics");
-            button.setOnClickListener(v -> { if (canvasControls) Main.toggleCanvasLyrics(); else Main.openLyricsFromButton(); });
+            button.setOnClickListener(v -> {
+                if (railCycle) Main.cycleRailMusicPage();
+                else if (canvasControls) Main.toggleCanvasLyrics();
+                else Main.openLyricsFromButton();
+            });
             button.setAlpha(0f);
             button.setScaleX(APPEAR_SCALE);
             button.setScaleY(APPEAR_SCALE);
@@ -101,6 +108,11 @@ final class LyricsButton {
         if (button == null) return 0f;
         // Filled only while lyrics are on screen; over the companion it is an outline.
         notesDrawable.setFilled(LockLyrics.lyricsShowing());
+        if (railCycle) {
+            if (pageDrawable == null) pageDrawable = new MusicPageActionDrawable();
+            pageDrawable.setPage(Main.nextRailMusicPage());
+            if (button.getDrawable() != pageDrawable) button.setImageDrawable(pageDrawable);
+        } else if (button.getDrawable() != notesDrawable) button.setImageDrawable(notesDrawable);
         if (!animate) {
             float target = show ? 1f : 0f;
             int visibility = show ? View.VISIBLE : View.GONE;
@@ -132,7 +144,13 @@ final class LyricsButton {
         }
         boolean hide = LockLyrics.lyricsShowing();
         boolean chinese = "zh".equals(card.getResources().getConfiguration().getLocales().get(0).getLanguage());
-        button.setContentDescription(chinese ? (hide ? "隐藏歌词" : "显示歌词") : (hide ? "Hide lyrics" : "Show lyrics"));
+        if (railCycle) {
+            int next = Main.nextRailMusicPage();
+            String description = next == RailMusicPagePolicy.ARTWORK ? (chinese ? "显示封面" : "Show artwork")
+                    : next == RailMusicPagePolicy.LYRICS ? (chinese ? "显示歌词" : "Show lyrics")
+                    : (chinese ? "返回锁屏时钟" : "Return to lock-screen clock");
+            button.setContentDescription(description);
+        } else button.setContentDescription(chinese ? (hide ? "隐藏歌词" : "显示歌词") : (hide ? "Hide lyrics" : "Show lyrics"));
         // The title gives the button room only while it is drawn by the title, eased across the
         // whole swap so the title glides rather than jumping.
         return (SIZE_DP + GAP_DP) * card.getResources().getDisplayMetrics().density * progress * titleShare;
@@ -195,7 +213,8 @@ final class LyricsButton {
         if (layout == null || layout.getLineCount() == 0) return;
         float density = card.getResources().getDisplayMetrics().density;
         int size = Math.round(SIZE_DP * density);
-        float titleX = position(card, title, true) + title.getPaddingLeft() + layout.getLineLeft(0);
+        float titleX = position(card, title, true) + title.getPaddingLeft()
+                + (railCycle ? 0f : layout.getLineLeft(0));
         float top = position(card, title, false);
         float bottom = artist != null && artist.isShown()
                 ? position(card, artist, false) + artist.getHeight() : top + title.getHeight();
@@ -264,7 +283,14 @@ final class LyricsButton {
     }
 
     static boolean contains(float x, float y) {
-        if (button == null || !requested || !button.isShown() || button.getAlpha() < .1f) return false;
+        if (button == null || !requested || !button.isShown() || !button.isEnabled()
+                || !button.isClickable() || button.getAlpha() * button.getTransitionAlpha() < .1f) return false;
+        float alpha = 1f;
+        for (View node = button; node != null;
+             node = node.getParent() instanceof View ? (View) node.getParent() : null) {
+            alpha *= node.getAlpha() * node.getTransitionAlpha();
+            if (alpha < .1f) return false;
+        }
         android.graphics.Rect bounds = new android.graphics.Rect();
         return button.getGlobalVisibleRect(bounds) && bounds.contains((int) x, (int) y);
     }
@@ -296,6 +322,8 @@ final class LyricsButton {
         host = null;
         button = null;
         notesDrawable = null;
+        pageDrawable = null;
+        railCycle = false;
         requested = false;
         canvasControls = false;
         besideControls = false;

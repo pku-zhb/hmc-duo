@@ -783,6 +783,11 @@ final class LockLyrics {
         return sPlayerChosen;
     }
 
+    /** Page intent survives lookup latency and temporary AOD/notification geometry. */
+    static boolean requestedLyricsPage() {
+        return sEnabled && !sPlayerChosen && !sTapHidden;
+    }
+
     /** The player alone by the user's choice: picked, or the lyricless cover folded away. */
     static boolean playerPage() {
         return sPlayerChosen || sArtworkPage.compactWithoutLyrics(sEnabled, hasLyrics());

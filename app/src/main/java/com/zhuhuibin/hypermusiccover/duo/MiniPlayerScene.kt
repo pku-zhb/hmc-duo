@@ -20,6 +20,7 @@ internal object MiniPlayerScene {
         private set
     @Volatile private var fullScreenAod = false
     private val exitEvents = java.util.ArrayDeque<String>()
+    private val exitState = KeyguardExitState()
 
     fun exitTrace(): String = synchronized(exitEvents) { exitEvents.joinToString(" ; ") }
 
@@ -52,10 +53,14 @@ internal object MiniPlayerScene {
             }.onFailure { Xp.w("MCMini: scene hook $methodName unavailable: $it") }
         }
         hook("com.android.keyguard.injector.KeyguardViewMediatorInjector", "keyguardGoingAway") {
-            setKeyguardGoingAway(true)
+            keyguardLeaving()
         }
         hook("com.android.systemui.statusbar.policy.KeyguardStateControllerImpl", "notifyKeyguardState") {
-            setKeyguardGoingAway(it.firstOrNull() != true)
+            transitionExit { exitState.showing(it.firstOrNull() == true) }
+        }
+        // This explicit state also carries a cancelled exit; showing=true alone does not.
+        hook("com.android.systemui.statusbar.policy.KeyguardStateControllerImpl", "notifyKeyguardGoingAway") {
+            (it.firstOrNull() as? Boolean)?.let { away -> transitionExit { exitState.exit(away) } }
         }
         hook("com.android.systemui.statusbar.StatusBarStateControllerImpl", "setIsDozing") {
             setAodActive(it.firstOrNull() == true)
@@ -93,17 +98,27 @@ internal object MiniPlayerScene {
     }
 
     private fun setAodActive(active: Boolean) {
-        val keyguardExitReset = AodWakePolicy.resetExit(aodActive, active, keyguardGoingAway)
-        if (keyguardExitReset) keyguardGoingAway = false
         // Asked once per change of the doze, not per frame: it reflects into the AOD manager.
         val fullScreen = active && (aodActive && fullScreenAod || Main.fullAodOn())
-        if (aodActive == active && fullScreenAod == fullScreen && !keyguardExitReset) return
+        if (aodActive == active && fullScreenAod == fullScreen) return
         fullScreenAod = fullScreen
         aodActive = active
         WallpaperHandoffDiagnostics.note("doze", "active=$active away=$keyguardGoingAway")
         StatusBarArtwork.refresh()
         if (!active) MiniPlayerRuntime.aodEnded()
         MiniPlayerRuntime.refresh()
+    }
+
+    /** Shared by all verified exit hooks, including the binder-side exit animation route. */
+    fun keyguardLeaving() = transitionExit { exitState.exit(true) }
+
+    /** A new sleep is explicit; a late setIsDozing callback is not a new lock session. */
+    fun startedGoingToSleep() = transitionExit { exitState.sleep() }
+
+    /** Publish in the same critical section as the event: binder/main callbacks cannot
+     * return an older state and write it after a newer sleep or cancellation. */
+    private fun transitionExit(change: () -> Boolean) = synchronized(exitState) {
+        setKeyguardGoingAway(change())
     }
 
     private fun setKeyguardGoingAway(goingAway: Boolean) {
@@ -120,6 +135,7 @@ internal object MiniPlayerScene {
         if (goingAway) {
             MiniPlayerRuntime.forgetRestoreScene()
             val release = Runnable {
+                if (!keyguardGoingAway) return@Runnable
                 CoverBackdrop.refreshVisibility()
                 CoverMorphLayer.cancel()
                 CoverCardLayer.hideNow()
@@ -128,7 +144,7 @@ internal object MiniPlayerScene {
             if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) release.run()
             else Main.main().post(release)
         } else {
-            Main.main().post { CoverBackdrop.sync(false) }
+            Main.main().post { if (!keyguardGoingAway) CoverBackdrop.sync(false) }
         }
         MiniPlayerRuntime.refresh()
     }

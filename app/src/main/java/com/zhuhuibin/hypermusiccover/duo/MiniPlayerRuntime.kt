@@ -1041,7 +1041,7 @@ object MiniPlayerRuntime {
 
     private var routed: WeakReference<MiniPlayerView>? = null
     private var routedNativeShortcut = false
-    private val contentSwipe = RailExpandGesture()
+    private val contentSwipe = RailContentGesture()
     private var contentOwner: MiniPlayerController? = null
     private var contentKey: String? = null
     private var contentX = 0f
@@ -1049,23 +1049,78 @@ object MiniPlayerRuntime {
     private var contentDensity = 1f
     private var contentSlop = 0f
     private var contentVelocity: VelocityTracker? = null
+    private var contentScrollTarget = false
+    const val CONTENT_NATIVE_CONTROL = 3
 
-    /** 1 cancels native dispatch once; 2 keeps the rest of the claimed stream here. */
+    /** isShown ignores alpha; native views kept in layout can be invisible through any parent. */
+    internal fun effectiveViewAlpha(view: View): Float {
+        var alpha = 1f
+        var current: View? = view
+        while (current != null) {
+            if (!current.isShown) return 0f
+            alpha = NativeMediaControlPolicy.effectiveAlpha(alpha, current.alpha, current.transitionAlpha)
+            if (alpha <= .01f) return alpha
+            current = current.parent as? View
+        }
+        return alpha
+    }
+
+    /** Only actual visible controls own a native stream; gaps keep the content swipe guard. */
+    private fun nativeMediaControlAt(x: Float, y: Float): Boolean {
+        if (!detachedRail() || !Main.keyguardLocked() || !Main.onKeyguardNow() ||
+            Main.bouncerShown() || MiniPlayerScene.aodActive || MiniPlayerScene.keyguardGoingAway ||
+            !Main.screenOn()) return false
+        if (LyricsButton.contains(x, y)) return true
+        val header = Main.miniPlayerMediaHeader() ?: return false
+        val boundControls = MediaCardRuntime.nativeHeaderControls(header).toSet()
+        val visible = android.graphics.Rect()
+        val rootAt = IntArray(2).also(header.rootView::getLocationOnScreen)
+        val inheritedAlpha = (header.parent as? View)?.let(::effectiveViewAlpha) ?: 1f
+        fun hit(view: View, parentAlpha: Float): Boolean {
+            val alpha = NativeMediaControlPolicy.effectiveAlpha(parentAlpha, view.alpha, view.transitionAlpha)
+            if (!view.isShown || alpha <= .01f ||
+                view.width <= 0 || view.height <= 0) return false
+            val name = runCatching { view.resources.getResourceEntryName(view.id) }.getOrNull()
+            val control = NativeMediaControlPolicy.owns(name, view is android.widget.AbsSeekBar,
+                view.isClickable || view.isLongClickable, view in boundControls)
+            if (control && NativeMediaControlPolicy.interactive(view.isShown, view.isEnabled,
+                    alpha, view.width, view.height) && view.getGlobalVisibleRect(visible) &&
+                x - rootAt[0] >= visible.left && x - rootAt[0] < visible.right &&
+                y - rootAt[1] >= visible.top && y - rootAt[1] < visible.bottom) return true
+            if (view is ViewGroup) for (i in view.childCount - 1 downTo 0)
+                if (hit(view.getChildAt(i), alpha)) return true
+            return false
+        }
+        return hit(header, inheritedAlpha)
+    }
+
+    /** 1 cancels native dispatch once; 2 holds a content stream; 3 preserves a native control. */
     @JvmStatic fun routeContentSwipe(ev: MotionEvent, canStart: Boolean): Int {
         val action = ev.actionMasked
         if (action == MotionEvent.ACTION_DOWN) {
             contentVelocity?.recycle(); contentVelocity = null
-            contentOwner = if (canStart && detachedRail()) live().firstOrNull {
-                it.contentExpansionTarget(ev.rawX, ev.rawY) != null
+            val nativeControl = nativeMediaControlAt(ev.rawX, ev.rawY)
+            contentOwner = if (canStart && !nativeControl && detachedRail()) live().firstOrNull {
+                it.contentExpansionTarget(ev.rawX, ev.rawY) != null ||
+                    it.contentCollapseAt(ev.rawX, ev.rawY)
             } else null
             contentKey = contentOwner?.contentExpansionTarget(ev.rawX, ev.rawY)
-            contentSwipe.start(contentKey != null)
+            contentScrollTarget = contentOwner?.contentStartsOnCard(ev.rawX, ev.rawY) == true
+            val atTop = !contentScrollTarget || contentOwner?.nativeStackAtTop(true) != false
+            val canCollapse = contentOwner?.contentCollapseAt(ev.rawX, ev.rawY) == true
+            contentSwipe.start(contentKey != null, canCollapse, nativeControl, contentScrollTarget, atTop)
+            contentCancelled = false
+            if (nativeControl) { releasePress(); endRoute() }
             contentX = ev.rawX; contentY = ev.rawY
-            contentOwner?.pill()?.let {
+            contentOwner?.contentGestureContext()?.let {
                 contentDensity = it.resources.displayMetrics.density
-                contentSlop = ViewConfiguration.get(it.context).scaledTouchSlop.toFloat()
+                contentSlop = ViewConfiguration.get(it).scaledTouchSlop.toFloat()
                 contentVelocity = VelocityTracker.obtain()
             }
+        }
+        if (contentSwipe.nativeControl) {
+            if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) contentSwipe.reset()
+            return CONTENT_NATIVE_CONTROL
         }
         contentVelocity?.addMovement(ev)
         val dx = ev.rawX - contentX
@@ -1079,22 +1134,25 @@ object MiniPlayerRuntime {
             if (held) contentCancelled = true
         }
         if (action == MotionEvent.ACTION_DOWN) contentCancelled = false
-        if (action == MotionEvent.ACTION_MOVE && contentSwipe.move(dx, dy, contentSlop)) {
+        if (action == MotionEvent.ACTION_MOVE && contentSwipe.move(dx, dy, contentSlop,
+                !contentScrollTarget || contentOwner?.nativeStackAtTop(false) != false)) {
             releasePress()
             endRoute()
-            noteTouch("content swipe claimed target=${contentKey?.takeLast(16)}")
+            noteTouch("content swipe claimed dy=${dy.toInt()} target=${contentKey?.takeLast(16)}")
             return 1
         }
         val held = contentSwipe.claimed || contentCancelled
         if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
             contentVelocity?.computeCurrentVelocity(1000)
-            if (contentSwipe.commit(dx, dy, contentVelocity?.yVelocity ?: 0f, contentDensity,
+            when (contentSwipe.commit(dx, dy, contentVelocity?.yVelocity ?: 0f, contentDensity,
                     action == MotionEvent.ACTION_CANCEL || contentCancelled)) {
-                contentKey?.let { contentOwner?.expandRailSelection(it) }
+                RailContentGesture.Action.EXPAND -> contentKey?.let { contentOwner?.expandRailSelection(it) }
+                RailContentGesture.Action.COLLAPSE -> contentOwner?.collapseRailOne()
+                RailContentGesture.Action.NONE -> Unit
             }
             contentVelocity?.recycle(); contentVelocity = null
             contentSwipe.reset(); contentCancelled = false
-            contentOwner = null; contentKey = null
+            contentOwner = null; contentKey = null; contentScrollTarget = false
         }
         return if (held) 2 else 0
     }
@@ -1404,7 +1462,6 @@ object MiniPlayerRuntime {
         if (action == MotionEvent.ACTION_DOWN && !routedSmall) {
             owner?.beginRailDrag()
             target.finishRailContentTransition()
-            target.clearNudge()
         }
         if (!routedDrag && action == MotionEvent.ACTION_MOVE &&
             kotlin.math.hypot(dx, dy) > ViewConfiguration.get(target.context).scaledTouchSlop) {
@@ -2202,13 +2259,23 @@ private class MiniPlayerController(
     }
     /** The config is read from preferences only when they change, not on every refresh. */
     private var configStale = true
-    private val sessionListener = MediaSessionManager.OnActiveSessionsChangedListener { scheduleRefresh() }
-    private val mediaListener = object : MediaController.Callback() {
+    private var observedSessions: List<MediaController>? = null
+    private val sessionListener = MediaSessionManager.OnActiveSessionsChangedListener {
+        observedSessions = it
+        scheduleRefresh()
+    }
+    private var mediaListener: MediaController.Callback? = null
+    private fun callbackFor(session: MediaController): MediaController.Callback = object : MediaController.Callback() {
+        private val token = session.sessionToken
+        private fun current() = !destroyed && Main.mediaSessionCallbackCurrent(token, liveFor)
+                && token == controller?.sessionToken
         override fun onMetadataChanged(metadata: MediaMetadata?) {
+            if (!current()) return
             liveMetadata = metadata
             scheduleRefresh()
         }
         override fun onPlaybackStateChanged(state: PlaybackState?) {
+            if (!current()) return
             // Usable up to this very change: the gap is counted from here. Counted from the
             // last refresh that saw it usable, a track played through left that minutes old,
             // and QQ Music's stop between two tracks ended the music every time (#26, log
@@ -2220,8 +2287,15 @@ private class MiniPlayerController(
             scheduleRefresh()
         }
         override fun onSessionDestroyed() {
-            liveFor = null
-            usableSeenAt = 0L
+            if (destroyed) return
+            if (token == controller?.sessionToken) {
+                liveFor = null
+                liveState = null
+                liveMetadata = null
+                usableSeenAt = 0L
+                handler.removeCallbacks(usableGapEnd)
+            }
+            Main.mediaSessionDestroyed(token)
             scheduleRefresh()
         }
     }
@@ -2644,12 +2718,15 @@ private class MiniPlayerController(
         var committing = false
         var up = false
         var dragStart = 0f
+        var dragRecoilStart = 0f
         var animator: android.animation.ValueAnimator? = null
+        val recoil = CoverMorphMotion()
         var frame = plan.frame(0f, oldArt, newArt, ShortcutDisc.ICON_SHARE)
     }
     private var railFusion: RailFusion? = null
     private var railDragHeld = false
     private var railDragPending: String? = null
+    private var railBoundaryBaseY = 0f
     private var railGlass: GooGlass? = null
     private val railSurfacePath = RailSurfacePath()
     private val railGlassFollow = Matrix()
@@ -2664,10 +2741,13 @@ private class MiniPlayerController(
         val h = kotlin.math.ceil(bounds.h).toInt().coerceAtLeast(1)
         if (glass.layoutParams.width != w || glass.layoutParams.height != h)
             glass.layoutParams = glass.layoutParams.apply { width = w; height = h }
-        if (glass.width != w || glass.height != h) glass.layout(0, 0, w, h)
-        glass.dress(MiniPlayerRuntime.materialGeneration) { MiniPlayerRuntime.material(it, loader) }
+        if (glass.measuredWidth != w || glass.measuredHeight != h || glass.isLayoutRequested)
+            glass.measure(View.MeasureSpec.makeMeasureSpec(w, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(h, View.MeasureSpec.EXACTLY))
+        if (glass.width != w || glass.height != h || glass.isLayoutRequested) glass.layout(0, 0, w, h)
         railSurfacePath.update(shape)
         glass.setPath(railSurfacePath.path, bounds.x, bounds.y)
+        glass.dress(MiniPlayerRuntime.materialGeneration) { MiniPlayerRuntime.material(it, loader) }
         glass.translationX = bounds.x - glass.left
         glass.translationY = bounds.y - glass.top
         glass.translationZ = (player?.translationZ ?: 1f) - 1f
@@ -2833,22 +2913,36 @@ private class MiniPlayerController(
         railDragHeld = railReturn == null
         if (!railDragHeld) return
         railDragPending = null
+        player?.holdNudge()
+        railBoundaryBaseY = player?.nudgeY ?: 0f
         railFusion?.let {
             it.animator?.removeAllListeners()
             it.animator?.cancel()
             it.animator = null
             it.committing = false
             it.dragStart = it.progress
+            it.dragRecoilStart = it.recoil.value
+            it.recoil.velocity = 0f
         }
     }
 
+    private fun adjacentRailIsland(up: Boolean): String? =
+        if (colorOs()) RailIslandStrip.cycle(islandKeys, selectedIsland, up)
+        else RailIslandStrip.adjacent(islandKeys, selectedIsland, up)
+
+    private fun nudgeRailBoundary(dy: Float) {
+        val limited = Math.copySign(MiniCardMorph.rubber(abs(dy), dp(28f).toFloat()), dy)
+        player?.setNudge(0f, railBoundaryBaseY + limited)
+    }
+
     fun dragRail(dx: Float, dy: Float) {
-        if (!railDragHeld || islandKeys.size < 2) return
+        if (!railDragHeld) return
         var motion = railFusion
         val along = if (motion != null || abs(dy) >= abs(dx)) dy else 0f
         if (motion == null && along != 0f) {
             val up = along < 0f
-            val key = RailIslandStrip.cycle(islandKeys, selectedIsland, up) ?: return
+            railDragPending = null
+            val key = adjacentRailIsland(up) ?: run { nudgeRailBoundary(along); return }
             railDragPending = key
             if (!startRailFusion(key, up)) return
             motion = railFusion ?: return
@@ -2859,14 +2953,20 @@ private class MiniPlayerController(
             motion.progress = 0f
             applyRailFusionFrame()
             finishRailFusion(commit = false)
-            val key = RailIslandStrip.cycle(islandKeys, selectedIsland, along < 0f) ?: return
+            railDragPending = null
+            val key = adjacentRailIsland(along < 0f) ?: run { nudgeRailBoundary(along); return }
             railDragPending = key
             if (!startRailFusion(key, along < 0f)) return
             motion = railFusion ?: return
         }
         val length = player?.layoutParams?.height?.toFloat() ?: dp(221f).toFloat()
-        motion.progress = RailFusionDrag.progress(motion.dragStart, along, motion.up,
-            RailFusionDrag.span(length, density()))
+        val travel = abs(motion.plan.after.getValue(motion.plan.to).y - motion.plan.before.getValue(motion.plan.from).y)
+        val distance = if (motion.oneOnly) RailFusionDrag.span(length, density())
+            else RailFusionDrag.contactSpan(travel, density())
+        motion.progress = RailFusionDrag.progress(motion.dragStart, along, motion.up, distance,
+            elastic = !motion.oneOnly)
+        motion.recoil.value = motion.dragRecoilStart *
+            (1f - (abs(motion.progress - motion.dragStart) / .5f).coerceIn(0f, 1f))
         applyRailFusionFrame()
     }
 
@@ -2875,6 +2975,7 @@ private class MiniPlayerController(
         railDragHeld = false
         val motion = railFusion
         if (motion == null) {
+            player?.springNudgeBack(0f, if (cancelled) 0f else vy)
             val key = railDragPending
             railDragPending = null
             val direction = PillAxisGeometry.swipe(true, dx, dy, 0f, vy,
@@ -2885,7 +2986,7 @@ private class MiniPlayerController(
         railDragPending = null
         val commit = RailFusionDrag.commit(motion.progress, dy, vy, motion.up, density(),
             cancelled || abs(dx) > abs(dy))
-        settleRailFusion(commit)
+        settleRailFusion(commit, if (cancelled) 0f else vy)
     }
 
     private fun switchRailIsland(key: String) {
@@ -2912,10 +3013,15 @@ private class MiniPlayerController(
             !Main.screenOnCached() || MiniPlayerScene.aodActive || MiniPlayerScene.keyguardGoingAway ||
             !android.animation.ValueAnimator.areAnimatorsEnabled()) return false
         preferredSmall = null; aloneFirst = null
+        val heldNudge = view.nudgeY
+        view.clearNudge()
+        railBoundaryBaseY = 0f
         view.beginRailFusion()
         val motion = RailFusion(plan, islandKeys.toList(), Main.screenGeometry().revision, colorOs(),
             view.railArtworkBox(plan.before.getValue(from)))
         motion.up = up
+        motion.recoil.value = if (motion.oneOnly) 0f else heldNudge / 100f
+        motion.dragRecoilStart = motion.recoil.value
         motion.newArt = view.railArtworkBox(plan.after.getValue(key))
         railFusion = motion
         refresh()
@@ -2923,22 +3029,41 @@ private class MiniPlayerController(
         return railFusion === motion
     }
 
-    private fun settleRailFusion(commit: Boolean) {
+    private fun settleRailFusion(commit: Boolean, velocityY: Float = 0f) {
         val motion = railFusion ?: return
         motion.animator?.removeAllListeners(); motion.animator?.cancel()
         motion.committing = commit
         val target = if (commit) 1f else 0f
-        if (!android.animation.ValueAnimator.areAnimatorsEnabled() || abs(motion.progress - target) < .001f) {
+        if (!android.animation.ValueAnimator.areAnimatorsEnabled() ||
+            abs(motion.progress - target) < .001f && (motion.oneOnly || motion.recoil.atRest())) {
             finishRailFusion(commit)
             return
         }
-        val animation = android.animation.ValueAnimator.ofFloat(motion.progress, target).apply {
-            duration = RailFusionDrag.settleDuration(motion.progress, target)
-            interpolator = android.view.animation.PathInterpolator(.2f, 0f, .2f, 1f)
+        val start = motion.progress
+        val settleMs = RailFusionDrag.settleDuration(start, target)
+        val elastic = !motion.oneOnly
+        if (elastic) {
+            motion.recoil.target = 0f
+            // Reuse the old capsule's damped spring; velocity moves the whole shell, never
+            // the semantic handoff progress, so a rebound cannot swap the icons back.
+            motion.recoil.velocity = RailFusionDrag.releaseVelocity(motion.progress, velocityY,
+                motion.up, density(), commit) / 100f
+        }
+        var lastMs = 0L
+        val ease = android.view.animation.PathInterpolator(.2f, 0f, .2f, 1f)
+        val animation = android.animation.ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = if (elastic) maxOf(500L, settleMs) else settleMs
+            interpolator = android.view.animation.LinearInterpolator()
             addUpdateListener {
                 if (railFusion !== motion) return@addUpdateListener
-                motion.progress = it.animatedValue as Float
+                val elapsed = it.currentPlayTime
+                val fraction = (elapsed.toFloat() / settleMs).coerceIn(0f, 1f)
+                motion.progress = start + (target - start) * ease.getInterpolation(fraction)
+                if (elastic) motion.recoil.step(((elapsed - lastMs) / 1000f).coerceIn(0f, .05f), .32f)
+                lastMs = elapsed
                 applyRailFusionFrame()
+                if (fraction >= 1f && (!elastic || motion.recoil.atRest()) && railFusion === motion)
+                    finishRailFusion(commit)
             }
             addListener(object : android.animation.AnimatorListenerAdapter() {
                 override fun onAnimationEnd(animation: android.animation.Animator) {
@@ -2968,7 +3093,8 @@ private class MiniPlayerController(
             view.prepareRailFusionContent()
             motion.newArt = view.railArtworkBox(motion.plan.after.getValue(motion.plan.to))
         }
-        motion.frame = motion.plan.frame(motion.progress, motion.oldArt, motion.newArt, ShortcutDisc.ICON_SHARE)
+        motion.frame = motion.plan.frame(motion.progress, motion.oldArt, motion.newArt, ShortcutDisc.ICON_SHARE,
+            if (motion.oneOnly) 0f else motion.recoil.value * 100f * RailFusionDrag.recoilWeight(motion.progress))
         view.setRailFusionFrame(motion.frame)
         drawRailSurface(motion.frame.surface)
         val slots = railSlots()
@@ -3043,7 +3169,7 @@ private class MiniPlayerController(
     private fun canSwitchIsland(next: Boolean): Boolean {
         val keys = islandKeys
         if (keys.size < 2) return false
-        if (player?.vertical == true) return true
+        if (player?.vertical == true) return adjacentRailIsland(next) != null
         // ColorOS goes round: the brackets either side are there whichever island is in.
         if (colorOs()) return true
         val at = keys.indexOf(selectedIsland).coerceAtLeast(0)
@@ -3068,7 +3194,7 @@ private class MiniPlayerController(
             endRow()
             resetIslandDrag()
             clearSmallNudge()
-            val nextKey = RailIslandStrip.cycle(keys, selectedIsland, next) ?: return
+            val nextKey = adjacentRailIsland(next) ?: return
             switchRailIsland(nextKey)
             return
         }
@@ -7724,17 +7850,40 @@ private class MiniPlayerController(
 
     fun contentExpansionTarget(x: Float, y: Float): String? {
         val pill = player ?: return null
-        if (!MiniPlayerRuntime.detachedRail() || !Main.miniPlayerIslandsCanShow() ||
+        if (pill.visibility != View.VISIBLE || !pill.acceptsTouch() || !contentGestureAt(x, y)) return null
+        return RailIslandStrip.expansionTarget(collapsedRailKeys(), STACK_ISLAND, MUSIC_ISLAND)
+    }
+
+    fun contentGestureContext(): Context = context
+
+    /** The same full content area opens upward or closes downward, including the clock. */
+    private fun contentGestureAt(x: Float, y: Float): Boolean {
+        if (!config.getBoolean(MiniPlayerConfig.ENABLED) ||
+            !MiniPlayerRuntime.detachedRail() || !Main.miniPlayerIslandsCanShow() ||
             !Main.keyguardLocked() || !Main.onKeyguardNow() || Main.bouncerShown() ||
-            MiniPlayerScene.aodActive || MiniPlayerScene.keyguardGoingAway ||
-            pill.visibility != View.VISIBLE || !pill.acceptsTouch()) return null
+            MiniPlayerScene.aodActive || MiniPlayerScene.keyguardGoingAway) return false
         val content = android.graphics.RectF()
-        if (!LockScreenRailRuntime.contentSwipeArea(host, content)) return null
-        if (nativeShortcutAt(x, y) || railBubbleAt(x, y) != null || touchTarget(x, y) != null) return null
+        if (!LockScreenRailRuntime.contentSwipeArea(host, content)) return false
+        if (nativeShortcutAt(x, y) || railBubbleAt(x, y) != null || touchTarget(x, y) != null) return false
         val xy = IntArray(2).also(host::getLocationOnScreen)
         if (!content.contains(x - xy[0], y - xy[1]) ||
-            fingerprintInHost()?.contains((x - xy[0]).toInt(), (y - xy[1]).toInt()) == true) return null
-        return RailIslandStrip.expansionTarget(collapsedRailKeys(), STACK_ISLAND, MUSIC_ISLAND)
+            fingerprintInHost()?.contains((x - xy[0]).toInt(), (y - xy[1]).toInt()) == true) return false
+        return true
+    }
+
+    fun contentCollapseAt(x: Float, y: Float): Boolean = contentGestureAt(x, y) &&
+        (railMediaExiting() || railReturn != null || railNoteExit != null || nativeRailNote != null ||
+            musicCarded(controller?.takeIf(::isUsable)) || railNotificationsOpen() ||
+            LockIslands.releasedKeys().any { it != MUSIC_ISLAND })
+
+    /** A DOWN on the clock or empty space never starts a native notification-list scroll. */
+    fun contentStartsOnCard(x: Float, y: Float): Boolean {
+        if (releasedRowAt(x, y) != null) return true
+        val header = Main.miniPlayerMediaHeader() ?: return false
+        if (!header.isShown || MiniPlayerRuntime.effectiveViewAlpha(header) <= .01f ||
+            header.width <= 0 || header.height <= 0) return false
+        val xy = IntArray(2).also(header::getLocationOnScreen)
+        return x >= xy[0] && x < xy[0] + header.width && y >= xy[1] && y < xy[1] + header.height
     }
 
     fun expandRailSelection(key: String): Boolean {
@@ -7756,6 +7905,8 @@ private class MiniPlayerController(
         var scrollFrom: Int? = null
         var scrollTo: Int? = null
         var observedBusy = false
+        val startedAt = android.os.SystemClock.uptimeMillis()
+        val notificationProgress = NotificationReturnProgress(NumState.collapseVisualProgress())
         var sessionToken: Any? = null
     }
     private var railReturn: RailReturn? = null
@@ -7862,14 +8013,22 @@ private class MiniPlayerController(
         val position = NumState.position()
         val scrolling = if (from != null && to != null && from != to && position != null)
             ((position - from).toFloat() / (to - from)).coerceIn(0f, 1f) else null
-        // The native alpha is authoritative when available; scroll is a fallback for vendor variants.
-        val progress = NumState.collapseVisualProgress() ?: scrolling
-        if (progress != null) setRailReturnProgress(STACK_ISLAND, progress)
-        val folded = NumState.inNumber == true
-        if (!busy && (folded && (progress == null || progress >= .999f) || motion.observedBusy)) {
-            if (folded) markReturning(STACK_ISLAND)
-            finishRailReturn(STACK_ISLAND, folded)
-        }
+        val elapsed = android.os.SystemClock.uptimeMillis() - motion.startedAt
+        val folded = NumState.inNumber == true || NumState.state() == "NUMBER"
+        val progress = motion.notificationProgress.update(elapsed, NumState.collapseVisualProgress(),
+            scrolling, busy, folded)
+        setRailReturnProgress(STACK_ISLAND, progress)
+        if (railReturn !== motion) return
+        if (motion.notificationProgress.completed) {
+            markReturning(STACK_ISLAND)
+            railClosing.remove(STACK_ISLAND)
+            finishRailReturn(STACK_ISLAND, true)
+        } else if (!busy && !folded && (elapsed >= 1600L ||
+                elapsed >= 240L && motion.observedBusy && progress < .99f)) {
+            NumState.choosePresentation(false)
+            railClosing.remove(STACK_ISLAND)
+            finishRailReturn(STACK_ISLAND, false)
+        } else host.postInvalidateOnAnimation()
     }
 
     private class RailNoteExit(val key: String, val row: View, val base: Matrix, val saved: Matrix?,
@@ -11169,7 +11328,7 @@ private class MiniPlayerController(
             val stack = notificationStack()
             if (stack != null) for (i in 0 until stack.childCount) {
                 val row = stack.getChildAt(i)
-                if (!row.isShown || row.alpha <= 0f || row.transitionAlpha <= 0f ||
+                if (!row.isShown || MiniPlayerRuntime.effectiveViewAlpha(row) <= .01f ||
                     !row.javaClass.name.endsWith("ExpandableNotificationRow")) continue
                 row.getLocationOnScreen(xy)
                 if (x >= xy[0] && x < xy[0] + row.width && y >= xy[1] && y < xy[1] + row.height)
@@ -11180,7 +11339,7 @@ private class MiniPlayerController(
             // The stack island's rows are all its: the one under the finger leads it home.
             for (member in LockIslands.membersOf(key)) {
                 val row = findRow(member)?.first ?: continue
-                if (!row.isShown || row.width <= 0) continue
+                if (!row.isShown || MiniPlayerRuntime.effectiveViewAlpha(row) <= .01f || row.width <= 0) continue
                 row.getLocationOnScreen(xy)
                 if (x >= xy[0] && x < xy[0] + row.width && y >= xy[1] && y < xy[1] + row.height) {
                     if (key == STACK_ISLAND && noteMorphKey != STACK_ISLAND) stackLeadKey = member
@@ -12078,7 +12237,8 @@ private class MiniPlayerController(
         prefs.unregisterOnSharedPreferenceChangeListener(prefListener)
         runCatching { host.viewTreeObserver.removeOnPreDrawListener(preDraw) }
         runCatching { sessions?.removeOnActiveSessionsChangedListener(sessionListener) }
-        runCatching { controller?.unregisterCallback(mediaListener) }
+        mediaListener?.let { callback -> runCatching { controller?.unregisterCallback(callback) } }
+        mediaListener = null
         followLive(null)
         morph?.cancel()
         if (piles.isNotEmpty() || pileMoving) finishPile(true)
@@ -12841,10 +13001,11 @@ private class MiniPlayerController(
             if (chosen == null && previous != null && !isUsable(previous)) {
                 MiniPlayerRuntime.endSession(previous.sessionToken, "playback inactive")
             }
-            runCatching { previous?.unregisterCallback(mediaListener) }
+            mediaListener?.let { callback -> runCatching { previous?.unregisterCallback(callback) } }
             controller = chosen
-            runCatching { chosen?.registerCallback(mediaListener, handler) }
             followLive(chosen)
+            mediaListener = chosen?.let(::callbackFor)
+            mediaListener?.let { callback -> runCatching { chosen?.registerCallback(callback, handler) } }
             cachedCover = null
             // Another player: its artwork, not the last one's.
             thumbShown = null
@@ -13812,10 +13973,26 @@ private class MiniPlayerController(
     }
 
     private fun chooseController(): MediaController? {
+        val active = observedSessions ?: runCatching { sessions?.getActiveSessions(null) }.getOrNull()
+            ?.also { observedSessions = it }
         val platform = Main.miniPlayerSession()
+        // A card can retain a controller after it leaves the active-session list. Re-read
+        // that controller instead of treating our last PAUSED callback as proof of life.
+        // A genuinely live paused session remains usable, irrespective of how old it is.
+        fun refreshMissing(value: MediaController?) {
+            if (value == null || active == null || active.any { it.sessionToken == value.sessionToken } ||
+                !Main.mediaSessionAlive(value.sessionToken)) return
+            val state = runCatching { value.playbackState }.getOrNull()
+            if (value.sessionToken == liveFor) {
+                if (playbackUsable(liveState?.state) && !playbackUsable(state?.state))
+                    usableSeenAt = android.os.SystemClock.uptimeMillis()
+                liveState = state
+            }
+        }
+        refreshMissing(platform)
+        if (controller?.sessionToken != platform?.sessionToken) refreshMissing(controller)
         if (platform != null && isUsable(platform)) return platform
-        val active = runCatching { sessions?.getActiveSessions(null).orEmpty() }.getOrDefault(emptyList())
-        return active.firstOrNull(::isUsable)
+        return active?.firstOrNull(::isUsable)
     }
 
     /**
@@ -13825,7 +14002,9 @@ private class MiniPlayerController(
      * usable for USABLE_GAP_MS after it last was; a session destroyed gets no such grace.
      */
     private fun isUsable(value: MediaController): Boolean {
-        if (playbackUsable(stateOf(value)?.state)) {
+        if (!Main.mediaSessionAlive(value.sessionToken)) return false
+        val state = runCatching { stateOf(value) }.getOrElse { return false }
+        if (playbackUsable(state?.state)) {
             if (value.sessionToken == controller?.sessionToken) usableSeenAt = android.os.SystemClock.uptimeMillis()
             return true
         }
