@@ -1784,6 +1784,19 @@ public class Main extends XposedModule {
                     // A gesture that starts on the mini player is the mini player's alone: its
                     // swipe up would otherwise also be swipe-to-unlock.
                     try {
+                        int contentSwipe = MiniPlayerRuntime.routeContentSwipe(ev,
+                                !sGestureOnCentre && !sGestureOnCharge
+                                && !LyricsButton.contains(ev.getRawX(), ev.getRawY())
+                                && !artRectContains(ev.getRawX(), ev.getRawY()));
+                        if (contentSwipe == SWIPE_FIRED) {
+                            cancelPendingTap("content swipe expands the foreground capsule");
+                            MotionEvent cancel = MotionEvent.obtain(ev);
+                            cancel.setAction(MotionEvent.ACTION_CANCEL);
+                            try { chain.proceed(new Object[]{cancel}); }
+                            finally { cancel.recycle(); }
+                            return Boolean.TRUE;
+                        }
+                        if (contentSwipe == SWIPE_HELD) return Boolean.TRUE;
                         if (MiniPlayerRuntime.routeTouch(ev)) return Boolean.TRUE;
                     } catch (Throwable ignored) {
                     }

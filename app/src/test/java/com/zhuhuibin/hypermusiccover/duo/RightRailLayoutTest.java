@@ -17,7 +17,7 @@ public class RightRailLayoutTest {
         assertNotNull(p);
         assertEquals(46, p.pill.width(), 0);
         assertEquals(221, p.pill.height(), 0);
-        assertEquals(409, (p.pill.top + p.pill.bottom) / 2, 0);
+        assertEquals(599, p.pill.bottom, 0);
         assertTrue(p.pill.bottom < 620 - 12);
         assertTrue(p.companion.bottom < p.pill.top);
         assertTrue(p.content.right < p.pill.left);
@@ -31,13 +31,14 @@ public class RightRailLayoutTest {
         assertEquals(a.pill.top, b.pill.top, 0);
         assertEquals(a.content.right, b.content.right, 0);
     }
-    @Test public void outerRailMovesUpToTheScreenCenterWithoutMutatingInputBoxes() {
+    @Test public void outerRailLowersTowardTheNativeButtonsWithoutMutatingInputBoxes() {
         float d = 2.75f;
         FoldMusicLayout.Box torch = new FoldMusicLayout.Box(1000, 1380, 1118, 1498);
         FoldMusicLayout.Box camera = new FoldMusicLayout.Box(1000, 1530, 1118, 1648);
         RightRailLayout.Plan p = RightRailLayout.plan(1168, 1712, d, 0, 0, 0, 0, torch, camera);
         assertNotNull(p);
-        assertEquals(812, (p.pill.top + p.pill.bottom) / 2, .001f);
+        assertEquals(torch.top - (12 + 9) * d, p.pill.bottom, .001f);
+        assertEquals(p.pill.bottom, p.strip.bottom, .001f);
         assertTrue(p.pill.bottom + 12*d < torch.top);
         assertTrue(p.companion.top >= 12*d);
         assertEquals(1380, torch.top, 0);
