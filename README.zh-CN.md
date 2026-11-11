@@ -1,68 +1,64 @@
 <p align="center"><a href="README.md">English</a> · <strong>简体中文</strong></p>
 
-<div align="center">
-  <img src="docs/images/app-icon.png" alt="HyperMusicCover-Enhanced 应用图标" width="128" height="128" />
-  <h1>HyperMusicCover-Enhanced</h1>
-  <p><strong>为 HyperOS 4 锁屏带来大封面、歌词和音频可视化。</strong></p>
-  <p>
-    <a href="https://github.com/Lewewe/HyperMusicCover-Enhanced/releases"><img alt="下载" src="https://img.shields.io/github/v/release/Lewewe/HyperMusicCover-Enhanced?style=flat-square&amp;label=Download&amp;color=f38caf" /></a>
-    <a href="https://t.me/HyperMusicCoverEnhanced"><img alt="官方 Telegram 群组" src="https://img.shields.io/badge/Telegram-Official_group-26A5E4?style=flat-square&amp;logo=telegram" /></a>
-    <a href="LICENSE"><img alt="AGPL-3.0 许可证" src="https://img.shields.io/badge/License-AGPL--3.0-ffaaa3?style=flat-square" /></a>
-  </p>
-</div>
+# hypermusiccover-duo
 
-基于 [HyperMusicCover](https://github.com/zyl6932/HyperMusicCover) 的 LSPosed 模块分支。
+面向小米折叠屏与 MiDuo 的 HyperOS 锁屏音乐、歌词和竖排通知胶囊，由
+[pku-zhb](https://github.com/pku-zhb) 维护。
 
-## 功能
+基于 [HyperMusicCover-Enhanced](https://github.com/Lewewe/HyperMusicCover-Enhanced)
+与原始 [HyperMusicCover](https://github.com/zyl6932/HyperMusicCover)。本项目聚焦自用设备适配。
 
-| | |
-| --- | --- |
-| 🎨 **大封面** | 全屏封面，切歌过渡流畅，也可使用自己的壁纸作背景 |
-| 🌈 **流动背景** | 封面颜色在大封面后缓慢流动，可选渐变或网格渐变 |
-| 🎤 **歌词** | 同步歌词、逐词歌词、翻译、字体包和歌词效果 |
-| (・ω・) **歌词伙伴颜文字** | 歌词和大封面都未显示时，随节拍摆动的颜文字 |
-| 📊 **音频可视化** *(Beta)* | 超级岛和播放器上随音乐跳动的频谱，静音时同样有效 |
-| 🎛️ **播放器外观** | 封面形状、背景、材质、配色和歌名滚动 |
-| 🎬 **Spotify Canvas** | 通过可选扩展 [HyperCanvas](https://github.com/Lewewe/HyperCanvas) 显示视频背景 |
-| 🌙 **StandBy** *(Alpha)* | 通过可选扩展 [HyperImmersive](https://github.com/Lewewe/HyperImmersive)，在充电时显示全屏时钟、音乐和小组件 |
-| 🔔 **通知与 AOD** | 适配通知堆叠、HyperOS 与 ColorOS 风格胶囊和息屏显示 |
-| ⬆️ **一键更新** | 主页卡片可下载并安装新版本，已授予 Root 时会自动重启作用域 |
+## 当前功能
 
-完整更新内容见[发布页](https://github.com/Lewewe/HyperMusicCover-Enhanced/releases)。本页跟随 `main` 分支，部分功能将在下一版本提供。
+- 方形封面、同步／逐词歌词与歌词翻译。
+- MiDuo 右侧快捷按钮旁的竖排音乐与通知胶囊。
+- 内屏横屏独立启动状态，以及封面和歌词双栏布局。
+- 原生播放器、时钟、通知重排与 AOD／亮屏状态衔接。
+- 原生柔光玻璃，或跟随原生播放器的最终材质，包括 HyperLight 调整。
+- 设置导出／导入与设备诊断计数。
 
-## 安装
+全屏封面与背景切换、频谱和扩展页面仍待兼容性验证。自动更新暂未启用，将使用
+本仓库的发布渠道。已确认行为和未解决问题见[适配进度](docs/fold-settings-roadmap.md)。
+编译与单元测试通过不代表真机验收通过。
 
-**要求：** 已 Root 的 HyperOS 4（Android 15+），以及支持现代 Xposed API 的 LSPosed。
+## 安装与迁移
 
-1. 从 [Releases](https://github.com/Lewewe/HyperMusicCover-Enhanced/releases) 下载并安装 APK。
-2. 在 LSPosed 中启用模块并勾选推荐作用域，然后重启。
-3. 打开应用进行设置。
+要求：Root 的 HyperOS 4、Android 15+，以及支持现代 Xposed API 102 的 LSPosed。
+竖排胶囊需要 MiDuo 的右侧快捷按钮布局。
 
-使用 Spotify Canvas：进入 **Extensions → HyperCanvas → Download**，按应用内提示完成设置。
+应用包名和代码命名空间统一为 `com.zhuhuibin.hypermusiccover.duo`，名称为
+`hypermusiccover-duo`。它与 Enhanced、旧 Fold 预览版
+`com.zhuhuibin.hypermusiccover.fold` 分别安装，Android 不会自动转移应用数据。
 
-使用 StandBy：进入 **Extensions → HyperImmersive → Download**，按应用内提示完成设置。
+1. 在旧版中导出设置，再处理旧应用。
+2. 从 [Duo Releases](https://github.com/pku-zhb/hypermusiccover-duo/releases)
+   获取已发布安装包，或自行构建。
+3. 在 LSPosed 中停用旧音乐模块，启用 Duo 并勾选推荐作用域，两者不要同时启用。
+4. 重启作用域后导入设置。已移除的选项不会被旧备份重新开启。
 
-## 反馈
-
-主要在 Xiaomi 17 Pro 上测试。欢迎在 [Telegram 群组](https://t.me/HyperMusicCoverEnhanced) 交流，或[提交 Issue](https://github.com/Lewewe/HyperMusicCover-Enhanced/issues)，并附上设备、HyperOS 版本、模块版本和音乐应用。
+仓库建立不代表已有稳定版。预览版需要真机验收，不同签名的 APK 不能互相覆盖更新。
 
 ## 构建
 
 ```sh
-git clone --recurse-submodules https://github.com/Lewewe/HyperMusicCover-Enhanced.git
-cd HyperMusicCover-Enhanced
-./gradlew :app:assembleRelease :hyper-canvas:assembleRelease
+git clone --recurse-submodules https://github.com/pku-zhb/hypermusiccover-duo.git
+cd hypermusiccover-duo
+tools/build.sh :app:testDebugUnitTest :app:assembleDebug
 ```
 
-需要 Android SDK 37。HyperMusicCover-Enhanced、HyperCanvas 以及从独立仓库构建的 [HyperImmersive](https://github.com/Lewewe/HyperImmersive) 必须使用相同签名（`keystore.properties`）。
+需要 JDK 21+、Android SDK 37 和 build-tools 37.0.0。本机脚本复用已安装工具链，
+构建、测试报告和临时文件放在 `/Volumes/Harbor/DevCache/hypermusiccover-duo/`。
+可用 `JAVA_HOME`、`ANDROID_HOME`、`GRADLE_USER_HOME` 指定其他工具链。
+发布签名配置见英文 README；没有发布密钥时产物只使用调试签名。
 
-## 致谢
+保留的 `hyper-canvas` 是上游可选依赖，其提供方目前只信任 Enhanced 包名；
+需要连同主程序身份与签名契约一起适配，不能仅靠重新编译恢复使用。
 
-- [Lewewe](https://github.com/Lewewe)：分支开发
-- [puhboo](https://github.com/puhboo)：歌词功能及 HyperCanvas 渲染器贡献
-- [zyl6932](https://github.com/zyl6932/HyperMusicCover)：原始 HyperMusicCover 项目
-- [juren233 / HyperLyrics-Enhanced](https://github.com/juren233/HyperLyrics-Enhanced)：播放器外观功能基础（[详情](docs/media-card-customization.md)）
-- [miuix](https://github.com/compose-miuix-ui/miuix) 及应用内致谢页列出的其他库
-- [Material Design Icons](https://github.com/google/material-design-icons)：歌词按钮图标中的音符（Apache-2.0）
+## 维护、反馈与许可
 
-支持开发：[Ko-fi](https://ko-fi.com/yzc26623)（国际）· [爱发电](https://afdian.com/a/yzc26623)（中国大陆）· 许可证：[AGPL-3.0](LICENSE)
+每完成并验证一个阶段就提交、推送。问题请提交到
+[Duo Issues](https://github.com/pku-zhb/hypermusiccover-duo/issues)，附设备、系统／模块版本、
+内外屏状态和复现步骤。
+
+感谢 Lewewe、zyl6932、puhboo、juren233、btm_m / HyperChanger 和应用致谢页列出的贡献者。
+遵循 [AGPL-3.0](LICENSE)，保留 [NOTICE](NOTICE) 与依赖许可。本项目不沿用上游捐赠渠道。

@@ -1,11 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">hypermusiccover</string>
-    <string name="about_source_code_summary">https://github.com/Lewewe/HyperMusicCover-Enhanced</string>
-    <string name="about_telegram">Telegram Group</string>
-    <string name="about_telegram_summary">https://t.me/HyperMusicCoverEnhanced</string>
+    <string name="app_name">hypermusiccover-duo</string>
+    <string name="about_source_code_summary">https://github.com/pku-zhb/hypermusiccover-duo</string>
     <string name="about_feedback">Feedback</string>
-    <string name="about_feedback_summary">https://github.com/Lewewe/HyperMusicCover-Enhanced/issues</string>
+    <string name="about_feedback_summary">https://github.com/pku-zhb/hypermusiccover-duo/issues</string>
     <string name="cover_bias">Vertical position</string>
     <string name="cover_full_blur">Background blur</string>
     <string name="cover_full_blur_summary">How strongly the artwork behind the cover is blurred</string>
@@ -119,14 +117,6 @@
     <string name="home_android_version">Android</string>
     <string name="home_unknown">Unknown</string>
     <string name="home_loading">Loading…</string>
-    <string name="donate_title">Donate</string>
-    <string name="donate_home_summary">The module is free — support its continued development</string>
-    <string name="donate_thanks_title">Thank you for your support</string>
-    <string name="donate_thanks_summary">HyperMusicCover-Enhanced is free and open source. Your support helps maintain this version and improve the lock screen experience.</string>
-    <string name="donate_scan_hint">Scan the QR code or save this image to support HyperMusicCover-Enhanced on Afdian.</string>
-    <string name="donate_save">Save to album</string>
-    <string name="donate_saved">Saved to album</string>
-    <string name="donate_save_failed">Could not save</string>
     <string name="card_section">Media card</string>
     <string name="card_title_tap">Tap the title to pause</string>
     <string name="media_bar_glow">Progress bar glow</string>
@@ -324,11 +314,6 @@
     <string name="fp_sink_restart_hint">Restart System UI to apply this change.</string>
     <string name="fp_sink_restart_failed">Could not restart System UI. Check root access and try again.</string>
     <string name="credits_original_author">Original author of HyperMusicCover, who built the lock screen music interface and the module foundation this Enhanced version is based on.</string>
-    <string name="donate_afdian">Afdian (China)</string>
-    <string name="donate_kofi">Ko-fi (International)</string>
-    <string name="donate_open_kofi">Open Ko-fi</string>
-    <string name="donate_scan_hint_kofi">Scan the QR code or save it to support HyperMusicCover-Enhanced on Ko-fi, with PayPal or a card.</string>
-    <string name="donate_open_afdian">Open Afdian</string>
     <string name="clock_size_summary">Size of the reduced clock while big cover art is open, up to 55% of its original size.</string>
     <string name="lyrics_bpm_companion">Kaomoji companion</string>
     <string name="lyrics_bpm_companion_summary">Show a beat-reactive kaomoji whenever neither the lyrics nor the big cover are on screen. The lyrics button searches for lyrics.</string>
@@ -499,4 +484,7 @@
     <string name="fold_landscape_startup_summary">Applied on first entering inner landscape; AOD wake retains current choices.</string>
     <string name="fold_landscape_music_view">Inner landscape music view</string>
     <string name="fold_music_artwork_and_lyrics">Artwork and lyrics</string>
+    <string name="about_maintainer">Maintainer</string>
+    <string name="about_releases">Releases</string>
+    <string name="about_duo_summary">Lock-screen music and lyrics for MiDuo and foldable displays.</string>
 </resources>

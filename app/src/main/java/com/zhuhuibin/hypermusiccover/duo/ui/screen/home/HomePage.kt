@@ -1,0 +1,603 @@
+/*
+ * Layout adapted from HyperNavBar (https://github.com/HyperNavBar/HyperNavBar),
+ * licensed under the Apache License, Version 2.0.
+ *
+ * Changes in HyperMusicCover: the status card reports whether the hook answered rather than
+ * root/immersion state, and the two figures beside it are this module's own.
+ */
+package com.zhuhuibin.hypermusiccover.duo.ui.screen.home
+
+import android.annotation.SuppressLint
+import android.content.Intent
+import android.os.Build
+import android.provider.Settings
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.ArrowUpward
+import androidx.compose.material.icons.rounded.CheckCircleOutline
+import androidx.compose.material.icons.rounded.ErrorOutline
+import androidx.compose.material.icons.rounded.Favorite
+import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.zhuhuibin.hypermusiccover.duo.BuildConfig
+import com.zhuhuibin.hypermusiccover.duo.LsposedService
+import com.zhuhuibin.hypermusiccover.duo.ModuleBridge
+import com.zhuhuibin.hypermusiccover.duo.R
+import com.zhuhuibin.hypermusiccover.duo.ui.component.DropdownItem
+import com.zhuhuibin.hypermusiccover.duo.ui.screen.about.UpdateController
+import com.zhuhuibin.hypermusiccover.duo.ui.screen.about.UpdateNotesDialog
+import com.zhuhuibin.hypermusiccover.duo.ui.screen.about.UpdateStatusDialog
+import com.zhuhuibin.hypermusiccover.duo.ui.component.MenuPopupDefaults
+import com.zhuhuibin.hypermusiccover.duo.ui.util.PageScaffold
+import com.zhuhuibin.hypermusiccover.duo.ui.util.isInDarkTheme
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import top.yukonga.miuix.kmp.basic.BasicComponent
+import top.yukonga.miuix.kmp.basic.ButtonDefaults
+import top.yukonga.miuix.kmp.basic.TextButton
+import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.basic.CardDefaults
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.IconButton
+import top.yukonga.miuix.kmp.basic.ListPopupColumn
+import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
+import top.yukonga.miuix.kmp.basic.PopupPositionProvider
+import top.yukonga.miuix.kmp.basic.Scaffold
+import top.yukonga.miuix.kmp.overlay.OverlayListPopup
+import top.yukonga.miuix.kmp.preference.ArrowPreference
+import top.yukonga.miuix.kmp.theme.LocalDismissState
+import top.yukonga.miuix.kmp.theme.MiuixTheme
+import top.yukonga.miuix.kmp.utils.PressFeedbackType
+import top.yukonga.miuix.kmp.window.WindowDialog
+import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.extended.Update
+import top.yukonga.miuix.kmp.basic.Text as MiuixText
+
+@SuppressLint("LocalContext")
+@Composable
+fun HomePageView(
+    isBlurEnabled: Boolean,
+    isCurrent: () -> Boolean,
+    resumeKey: Int = 0,
+    extraBottomPadding: Dp = 0.dp,
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val scrollBehavior = MiuixScrollBehavior()
+    val title = stringResource(R.string.tab_home)
+
+    // These used to run on every re-composition, and two of them are not reads of this process:
+    // `Settings.Global` is a ContentProvider call into system_server and `getPackageInfo` was a
+    // PackageManager call into it as well. None of the answers can change while the app is up, so
+    // each is asked for once.
+    val unknown = stringResource(R.string.home_unknown)
+    val deviceModel = remember(unknown) { Build.MODEL.ifEmpty { unknown } }
+    val deviceName = remember(context, deviceModel) {
+        Settings.Global.getString(context.contentResolver, Settings.Global.DEVICE_NAME)
+            ?: deviceModel
+    }
+    val systemVersion = remember {
+        "Android ${Build.VERSION.RELEASE} (SDK ${Build.VERSION.SDK_INT})"
+    }
+    val loadingText = stringResource(R.string.home_loading)
+    var hyperOSVersion by remember { mutableStateOf(loadingText) }
+    LaunchedEffect(Unit) {
+        hyperOSVersion = withContext(Dispatchers.IO) { SystemVersion.hyperOs(loadingText) }
+    }
+    // BuildConfig rather than the installed package's metadata: it is the same string for this
+    // build and it costs nothing, where the package manager had to be asked every time.
+    val moduleVersion = "v" + BuildConfig.VERSION_NAME
+
+    // Where the card starts. This page is thrown away and built again whenever the pager takes it
+    // more than one page from where the user is standing (MainActivity's beyondViewportPageCount),
+    // so nothing here survives a trip to About - and the state a rebuilt page would otherwise
+    // begin from says the module is dead, which is the red card that used to flash before the
+    // answer landed. It starts from the last answer instead, in the same frame the query is sent,
+    // and the query's own answer replaces it a broadcast later.
+    val last = remember { ModuleBridge.lastAnswer() }
+    var state by remember { mutableStateOf(last ?: ModuleBridge.State()) }
+    var checked by remember { mutableStateOf(last != null) }
+
+    // Not cleared while a query is in flight: there is an answer on screen either way, and
+    // blanking the second line to say so would be the flicker this page already refuses to show.
+    suspend fun refresh() {
+        state = ModuleBridge.query(context)
+        checked = true
+    }
+
+    // Asked when this page first comes to the front, and again when the app is resumed with it
+    // up - KernelSU's home page does the same (HomeViewModel + HomeScreen: hasActivated, then a
+    // refresh on resume). Not on every visit: the answer already held is the one the module would
+    // give, the card's own tap re-asks, and a module restarted behind the app's back is what the
+    // resume is for. Keyed on the answer rather than on the pager: while this page is not the one
+    // on screen the effect is not running, so swiping past it does not cost a query into SystemUI.
+    val current = isCurrent()
+    var activated by remember { mutableStateOf(last != null) }
+    LaunchedEffect(current) {
+        if (current && !activated) {
+            activated = true
+            refresh()
+        }
+    }
+    // The first run of this effect is the composition, not a resume - it is there to arm the one
+    // after it, which is what KernelSU's own flag of the same name does (initialResumeHandled).
+    // Without it the page would ask twice on the way in, once from each effect.
+    var resumed by remember { mutableStateOf(false) }
+    LaunchedEffect(resumeKey) {
+        if (resumed && activated && current) refresh()
+        resumed = true
+    }
+
+    // Processes still on the build before this one: installing does not reload a module, and
+    // the old one goes on running until its process restarts. Asked with the status, and again
+    // once LSPosed's service binds, which can be after the page is up.
+    val service by LsposedService.service.collectAsState()
+    var stale by remember { mutableStateOf(0) }
+    // The row is a whole card wide and sits right under the status card, where a scroll starts;
+    // a restart blanks the screen and stops whatever the scoped apps were doing, so it asks.
+    var confirmRestart by remember { mutableStateOf(false) }
+    LaunchedEffect(current, resumeKey, service) {
+        if (current) stale = withContext(Dispatchers.IO) { LsposedService.staleCount() }
+    }
+
+    PageScaffold(
+        title = title,
+        isBlurEnabled = isBlurEnabled,
+        extraBottomPadding = extraBottomPadding,
+        actions = { RestartMenu() },
+    ) {
+        item {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp)
+                    .padding(top = 12.dp)
+            ) {
+                val darkTheme = isInDarkTheme()
+                val dynamicColor = MiuixTheme.isDynamicColor
+                val ok = state.alive
+                val statusColor = if (ok) {
+                    when {
+                        dynamicColor -> MiuixTheme.colorScheme.secondaryContainer
+                        darkTheme -> Color(0xFF1A3825)
+                        else -> Color(0xFFDFFAE4)
+                    }
+                } else {
+                    when {
+                        dynamicColor -> MiuixTheme.colorScheme.errorContainer
+                        darkTheme -> Color(0xFF3D1C1C)
+                        else -> Color(0xFFFDE8E8)
+                    }
+                }
+                val iconTint = if (ok) {
+                    if (dynamicColor) MiuixTheme.colorScheme.primary.copy(alpha = 0.8f)
+                    else Color(0xFF36D167)
+                } else {
+                    if (dynamicColor) MiuixTheme.colorScheme.error.copy(alpha = 0.8f)
+                    else Color(0xFFDC3545)
+                }
+                val titleText = if (ok) {
+                    stringResource(R.string.home_status_active)
+                } else {
+                    stringResource(R.string.home_status_inactive)
+                }
+                // When it is working there is nothing to instruct the user about, so
+                // the lines say what is running instead; when it is not, the hint is the
+                // one thing worth reading.
+                //
+                // Neither line reacts to a re-check being in flight. Tapping the card
+                // used to blank this one to "loading", and since a re-check keeps the
+                // previous answer until the new one arrives, that was a flicker showing
+                // nothing the previous answer had not already said.
+                val lineTwo = if (checked && !ok) {
+                    stringResource(R.string.home_status_inactive_hint)
+                } else {
+                    moduleVersion
+                }
+                // The card's bottom-left corner names the app, not the layout: there is
+                // only one layout, so a line saying which one it is told the reader
+                // nothing, while the name is what someone looking at a stranger's lock
+                // screen would want to read off it. Null while the module is not live,
+                // because then the hint above is the only line worth having.
+                val workingMode = if (ok) {
+                    stringResource(R.string.app_name)
+                } else {
+                    null
+                }
+
+                // Laid out the way KernelSU's HomeMiuix card is: three boxes stacked
+                // on top of each other rather than three lines in a column. The title and
+                // version sit top-left, the working mode is pinned bottom-left, and the
+                // oversized icon bleeds off the bottom-right corner - the mode and the
+                // icon balance each other diagonally, and the empty middle is what stops
+                // it looking cramped. Stacking all three as a column instead put them in
+                // a huddle at the top with the icon crowding them.
+                //
+                // The height comes from Row(IntrinsicSize.Min): the boxes inside all
+                // fillMaxSize and so contribute none of their own, and without this the
+                // card collapses to the height of the text.
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(IntrinsicSize.Min),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.defaultColors(color = statusColor),
+                        onClick = { scope.launch { refresh() } },
+                        showIndication = true,
+                        pressFeedbackType = PressFeedbackType.Tilt
+                    ) {
+                        Box {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .offset(27.dp, 31.dp),
+                                contentAlignment = Alignment.BottomEnd
+                            ) {
+                                Icon(
+                                    modifier = Modifier.size(110.dp),
+                                    imageVector = if (ok) Icons.Rounded.CheckCircleOutline
+                                    else Icons.Rounded.ErrorOutline,
+                                    tint = iconTint,
+                                    contentDescription = null
+                                )
+                            }
+                            if (workingMode != null) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(16.dp, 10.dp),
+                                    contentAlignment = Alignment.BottomStart,
+                                ) {
+                                    MiuixText(
+                                        text = workingMode,
+                                        fontSize = 16.sp,
+                                        fontWeight = FontWeight.Medium,
+                                    )
+                                }
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(16.dp, 14.dp),
+                                contentAlignment = Alignment.TopStart,
+                            ) {
+                                Column {
+                                    MiuixText(
+                                        text = titleText,
+                                        fontSize = 22.sp,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                    Spacer(Modifier.height(1.dp))
+                                    MiuixText(
+                                        text = lineTwo,
+                                        fontSize = 15.sp,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+            }
+        }
+
+        // Right under the status, while there is something to restart: the module is answering,
+        // but in some processes as the version before. One tap restarts what LSPosed lists.
+        if (stale > 0) {
+            item {
+                Card(
+                    modifier = Modifier
+                        .padding(top = 12.dp)
+                        .padding(horizontal = 12.dp)
+                ) {
+                    ArrowPreference(
+                        title = stringResource(R.string.home_stale_title),
+                        summary = stringResource(R.string.home_stale_summary, stale),
+                        onClick = { confirmRestart = true },
+                    )
+                }
+            }
+        }
+
+        // No heading over this one. The four rows say what they are - a heading reading
+        // "device information" over a list of device facts only repeated them - and the gap it
+        // used to hold is now the card's own, so the card sits exactly where it always did.
+        // The module's own version was a fifth row and is gone: the status card above already
+        // carries it, and the same number twice on one page is one of them to read.
+        item {
+            Card(
+                modifier = Modifier
+                    .padding(top = 12.dp)
+                    .padding(horizontal = 12.dp)
+                    .padding(bottom = 12.dp)
+            ) {
+                Column {
+                    BasicComponent(
+                        title = stringResource(R.string.home_device_name),
+                        summary = deviceName,
+                    )
+                    BasicComponent(
+                        title = stringResource(R.string.home_device_model),
+                        summary = deviceModel,
+                    )
+                    BasicComponent(
+                        title = stringResource(R.string.home_hyperos_version),
+                        summary = hyperOSVersion,
+                    )
+                    BasicComponent(
+                        title = stringResource(R.string.home_android_version),
+                        summary = systemVersion,
+                    )
+                }
+            }
+        }
+
+    }
+
+    WindowDialog(
+        show = confirmRestart,
+        title = stringResource(R.string.restart_scope),
+        summary = stringResource(R.string.restart_confirm_summary),
+        onDismissRequest = { confirmRestart = false },
+    ) {
+        val dismiss = LocalDismissState.current
+        Row(horizontalArrangement = Arrangement.SpaceBetween) {
+            TextButton(
+                modifier = Modifier.weight(1f),
+                text = stringResource(R.string.update_cancel),
+                onClick = { dismiss?.invoke() },
+            )
+            Spacer(Modifier.width(20.dp))
+            TextButton(
+                modifier = Modifier.weight(1f),
+                text = stringResource(R.string.restart_menu),
+                onClick = {
+                    confirmRestart = false
+                    scope.launch {
+                        withContext(Dispatchers.IO) { ModuleBridge.restartScope(context) }
+                        stale = 0
+                    }
+                },
+                colors = ButtonDefaults.textButtonColorsPrimary(),
+            )
+        }
+    }
+}
+
+/**
+ * The status card's shape, there only while a newer release exists; tapping it is the whole update.
+ * The bar is a white wash rather than a second colour so it stays a little lighter in every theme.
+ */
+@Composable
+private fun UpdateCard(update: UpdateController, oldVersion: String) {
+    val context = LocalContext.current
+    val dynamicColor = MiuixTheme.isDynamicColor
+    val cardColor = when {
+        dynamicColor -> MiuixTheme.colorScheme.primaryContainer
+        isInDarkTheme() -> Color(0xFF1C3350)
+        else -> Color(0xFFB3D4F5)
+    }
+    val iconTint = if (dynamicColor) MiuixTheme.colorScheme.primary.copy(alpha = 0.8f) else Color(0xFF3D8BEA)
+    val progress by animateFloatAsState(if (update.installing) update.progress ?: 0f else 0f)
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp)
+            .padding(top = 12.dp),
+    ) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.defaultColors(color = cardColor),
+        onClick = { update.directUpdate(context) },
+        showIndication = true,
+        pressFeedbackType = PressFeedbackType.Sink,
+    ) {
+        Box(Modifier.fillMaxWidth()) {
+            Box(Modifier.matchParentSize()) {
+                Box(
+                    Modifier
+                        .fillMaxHeight()
+                        .fillMaxWidth(progress)
+                        .background(Color.White.copy(alpha = 0.2f))
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .offset(27.dp, 31.dp),
+                contentAlignment = Alignment.BottomEnd,
+            ) {
+                Icon(
+                    modifier = Modifier.size(110.dp),
+                    imageVector = MiuixIcons.Update,
+                    tint = iconTint,
+                    contentDescription = null,
+                )
+            }
+            Column(modifier = Modifier.padding(16.dp, 14.dp)) {
+                MiuixText(
+                    text = stringResource(R.string.update_card_title),
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Spacer(Modifier.height(1.dp))
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    MiuixText(text = "v" + update.update?.versionName, fontSize = 15.sp)
+                    Icon(
+                        modifier = Modifier
+                            .padding(vertical = 5.dp)
+                            .size(16.dp),
+                        imageVector = Icons.Rounded.ArrowUpward,
+                        tint = MiuixTheme.colorScheme.onSurface,
+                        contentDescription = null,
+                    )
+                    MiuixText(text = oldVersion, fontSize = 15.sp)
+                }
+            }
+            ChangelogPill(Modifier.align(Alignment.TopEnd).padding(10.dp).clearAndSetSemantics {})
+        }
+    }
+    // The pill is drawn in the card, to sink with it, and pressed out here: in the card a press on
+    // it would also be the card's download and sink. An unseen copy, so the two are the same size;
+    // the padding is the touch target around the small pill.
+    ChangelogPill(
+        Modifier
+            .align(Alignment.TopEnd)
+            .alpha(0f)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                role = Role.Button,
+                onClick = update.showNotes,
+            )
+            .padding(10.dp),
+    )
+    }
+    UpdateNotesDialog(
+        show = update.states.notes,
+        update = update.update,
+        onDismiss = { update.states.notes = false },
+        onConfirm = {
+            update.states.notes = false
+            update.directUpdate(context)
+        },
+    )
+}
+
+@Composable
+private fun ChangelogPill(modifier: Modifier) {
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(50))
+            .background(Color.White.copy(alpha = 0.2f))
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+    ) {
+        MiuixText(text = stringResource(R.string.update_notes_title), fontSize = 13.sp)
+    }
+}
+
+private object SystemVersion {
+    /** ro.* properties are the only place the HyperOS version is written down. */
+    private fun prop(key: String): String = try {
+        @Suppress("PrivateApi")
+        val cls = Class.forName("android.os.SystemProperties")
+        val get = cls.getMethod("get", String::class.java, String::class.java)
+        (get.invoke(null, key, "") as? String).orEmpty()
+    } catch (_: Throwable) {
+        ""
+    }
+
+    /**
+     * The incremental alone: it already starts with the release name (OS4.0.0.35.XPBCNXM), so
+     * printing the name in front of it just stutters - "OS4.0 · OS4.0.0.35.XPBCNXM".
+     */
+    fun hyperOs(fallback: String): String {
+        val incremental = prop("ro.mi.os.version.incremental").ifEmpty { Build.DISPLAY }
+        if (incremental.isNotEmpty()) return incremental
+        val name = prop("ro.mi.os.version.name").ifEmpty { prop("ro.miui.ui.version.name") }
+        return name.ifEmpty { fallback }
+    }
+}
+
+/**
+ * The two processes this module lives in, restartable from the one place a user would look for
+ * them. They are not settings, so they do not belong on a settings page - they are the "have you
+ * tried turning it off and on again" of an Xposed module, which is why they sit in the top bar
+ * the way KernelSU puts its reboot menu there.
+ *
+ * The popup anchors to its parent, hence the Box around the button, and it is drawn by the
+ * root Scaffold, so it covers the window rather than being clipped to this page.
+ */
+@Composable
+private fun RestartMenu() {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var showMenu by remember { mutableStateOf(false) }
+
+    val entries = listOf(
+        stringResource(R.string.restart_scope) to { ModuleBridge.restartScope(context) },
+        stringResource(R.string.restart_systemui) to ModuleBridge::restartSystemUi,
+        stringResource(R.string.restart_wallpaper) to ModuleBridge::restartWallpaper,
+    )
+
+    Box {
+        // holdDownState keeps the button looking pressed while its menu is open, which is
+        // the one thing tying the two together now that the popup is drawn by the root.
+        IconButton(onClick = { showMenu = true }, holdDownState = showMenu) {
+            // Refresh, not RestartAlt: RestartAlt is drawn as two subpaths that stop short of
+            // each other at the bottom centre, and at 24dp that gap reads as a piece missing
+            // out of the icon rather than as part of the glyph. Refresh is one closed path.
+            Icon(
+                imageVector = Icons.Rounded.Refresh,
+                contentDescription = stringResource(R.string.restart_menu),
+                tint = MiuixTheme.colorScheme.onBackground,
+            )
+        }
+        OverlayListPopup(
+            show = showMenu,
+            popupPositionProvider = MenuPopupDefaults.MenuPositionProvider,
+            alignment = PopupPositionProvider.Align.TopEnd,
+            onDismissRequest = { showMenu = false },
+        ) {
+            ListPopupColumn {
+                entries.forEachIndexed { index, entry ->
+                    DropdownItem(
+                        text = entry.first,
+                        optionSize = entries.size,
+                        index = index,
+                        onSelectedIndexChange = {
+                            showMenu = false
+                            // No result is reported. A Toast is not a channel this app has - they
+                            // are dropped whenever notifications are off, which is this app's
+                            // default - and the restart is its own feedback: the screen blinks and
+                            // the lock screen comes back.
+                            scope.launch { withContext(Dispatchers.IO) { entry.second() } }
+                        },
+                    )
+                }
+            }
+        }
+    }
+}

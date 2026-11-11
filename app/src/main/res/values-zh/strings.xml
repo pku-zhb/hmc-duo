@@ -8,12 +8,10 @@
     <string name="lock_follow_native_glass_summary">预览功能：胶囊和快捷按钮底板跟随原生播放器最终使用的玻璃参数，包括 HyperLight 的调整。</string>
     <string name="cover_fold_columns">内屏横屏双栏</string>
     <string name="cover_fold_columns_summary">预览功能：内屏横屏且空间足够时，左侧显示封面与播放控制，右侧显示歌词。折叠或转为竖屏后恢复常规布局。</string>
-    <string name="app_name">hypermusiccover</string>
-    <string name="about_source_code_summary">https://github.com/Lewewe/HyperMusicCover-Enhanced</string>
-    <string name="about_telegram">Telegram群组</string>
-    <string name="about_telegram_summary">https://t.me/HyperMusicCoverEnhanced</string>
+    <string name="app_name">hypermusiccover-duo</string>
+    <string name="about_source_code_summary">https://github.com/pku-zhb/hypermusiccover-duo</string>
     <string name="about_feedback">反馈与建议</string>
-    <string name="about_feedback_summary">https://github.com/Lewewe/HyperMusicCover-Enhanced/issues</string>
+    <string name="about_feedback_summary">https://github.com/pku-zhb/hypermusiccover-duo/issues</string>
     <string name="cover_bias">封面纵向位置</string>
     <string name="cover_full_blur">背景模糊度</string>
     <string name="cover_full_blur_summary">封面后方专辑图的模糊程度</string>
@@ -119,14 +117,6 @@
     <string name="home_android_version">Android 版本</string>
     <string name="home_unknown">未知</string>
     <string name="home_loading">加载中…</string>
-    <string name="donate_title">捐赠支持</string>
-    <string name="donate_home_summary">模块免费，支持 Enhanced 版本持续维护</string>
-    <string name="donate_thanks_title">感谢你的支持</string>
-    <string name="donate_thanks_summary">HyperMusicCover-Enhanced 免费且开源。你的支持将用于维护这个版本、修复问题和改进锁屏体验。</string>
-    <string name="donate_scan_hint">扫描二维码，或将图片保存到相册，在爱发电支持 HyperMusicCover-Enhanced。</string>
-    <string name="donate_save">保存到相册</string>
-    <string name="donate_saved">已保存到相册</string>
-    <string name="donate_save_failed">保存失败</string>
     <string name="card_section">媒体卡片</string>
     <string name="card_title_tap">点击歌名暂停播放</string>
     <string name="media_bar_glow">进度条光效</string>
@@ -340,11 +330,6 @@
     <string name="fp_sink_restart_hint">请重启系统界面以应用此更改。</string>
     <string name="fp_sink_restart_failed">无法重启系统界面，请检查 Root 权限后重试。</string>
     <string name="credits_original_author">HyperMusicCover 原作者，为这个 Enhanced 版本提供了最初的锁屏音乐界面和模块基础。</string>
-    <string name="donate_afdian">爱发电（国内）</string>
-    <string name="donate_kofi">Ko-fi（国际）</string>
-    <string name="donate_open_kofi">打开 Ko-fi</string>
-    <string name="donate_scan_hint_kofi">扫描二维码或保存到相册，通过 PayPal 或银行卡在 Ko-fi 支持 HyperMusicCover-Enhanced。</string>
-    <string name="donate_open_afdian">打开爱发电</string>
     <string name="clock_size_summary">大封面展开时，时钟缩小后的大小，最高为原始大小的 55%。</string>
     <string name="lyrics_bpm_players">节拍媒体播放器</string>
     <string name="lyrics_bpm_players_summary">选择哪些媒体播放器可以驱动节拍伴侣。全部取消选择则允许所有播放器。</string>
@@ -522,7 +507,6 @@
     <string name="lock_hide_charging_hint">隐藏锁屏充电提示</string>
     <string name="lock_hide_charging_hint_summary">隐藏锁屏底部的充电状态文字。</string>
     <string name="fold_updates_paused">更新功能已暂停</string>
-    <string name="fold_link_pending">链接待配置</string>
     <string name="credits_fold_upstream">上游 Enhanced 增强版及其维护者。本 Fold 版本基于其封面、歌词、锁屏和息屏适配工作继续开发。</string>
     <string name="credits_group_upstream">上游项目</string>
     <string name="fold_island_glass_fixed">柔光玻璃</string>
@@ -542,4 +526,7 @@
     <string name="fold_landscape_startup_summary">首次进入内屏横屏时独立应用；熄屏再唤醒保留当前状态。</string>
     <string name="fold_landscape_music_view">内屏横屏音乐界面</string>
     <string name="fold_music_artwork_and_lyrics">封面和歌词</string>
+    <string name="about_maintainer">维护者</string>
+    <string name="about_releases">版本发布</string>
+    <string name="about_duo_summary">为 MiDuo 与折叠屏打造的锁屏音乐和歌词体验。</string>
 </resources>

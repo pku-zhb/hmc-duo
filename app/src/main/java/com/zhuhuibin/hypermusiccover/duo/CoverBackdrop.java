@@ -1,0 +1,148 @@
+package com.zhuhuibin.hypermusiccover.duo;
+
+import android.content.Intent;
+import android.os.SystemClock;
+
+/** Keep the artwork itself cached while the compact player shows the normal wallpaper. */
+final class CoverBackdrop {
+    private static volatile long decision;
+    private static android.view.View dimLayer;
+    private static float dimTarget = Float.NaN;
+    private static boolean nativeWallpaper;
+
+    /** Small live snapshot for diagnosing dim visibility without dumping the view tree. */
+    static String describe() {
+        android.view.View view = dimLayer;
+        String state = "hidden=" + hidden() + " cover=" + Main.coverModeOn()
+                + " locked=" + Main.keyguardLocked() + " dim=" + Main.sWallpaperDim
+                + " target=" + dimTarget + " compact=" + LockLyrics.wantsCompactArtwork()
+                + " lyrics=" + LockLyrics.hasLyrics() + " window=" + LockLyrics.wantsWindow();
+        if (view == null) return state + " layer=none";
+        state += " alpha=" + view.getAlpha() + " shown=" + view.isShown()
+                + " size=" + view.getWidth() + "x" + view.getHeight();
+        for (Object current = view; current instanceof android.view.View;
+                current = ((android.view.View) current).getParent()) {
+            android.view.View v = (android.view.View) current;
+            state += " [" + v.getClass().getSimpleName() + " a=" + v.getAlpha()
+                    + " vis=" + v.getVisibility() + "]";
+        }
+        return state;
+    }
+
+    static boolean hidden() {
+        return Main.sHidePlayerBackground || Main.coverOnTapResting() || nativeForRailCard();
+    }
+
+    static boolean nativeForRailCard() {
+        return SquareCardWallpaperPolicy.nativeBackdrop(FoldSettingsPolicy.nativeBackdrop(Main.sRightRail),
+                Main.effectiveCoverStyle().mode == CoverCardStyle.CARD);
+    }
+
+    static boolean nativeWallpaperScene() {
+        return Main.coverModeOn() && hidden() && LockLyrics.compactWithoutLyrics()
+                && (!LockLyrics.hasLyrics() || Main.coverOnTapResting());
+    }
+
+    static void sync(boolean force) {
+        syncClock();
+        updateDim();
+        boolean wallpaper = nativeWallpaperScene();
+        if (force || wallpaper != nativeWallpaper) {
+            nativeWallpaper = wallpaper;
+            StatusBarArtwork.refresh();
+        }
+        boolean next = hidden();
+        long previous = decision;
+        if (!force && previous != 0L && ((previous & 1L) != 0L) == next) return;
+        long sequence = Math.max((previous >>> 1) + 1L, SystemClock.uptimeMillis());
+        decision = sequence << 1 | (next ? 1L : 0L);
+        Intent out = CoverPush.wallpaperIntent("backdrop");
+        putState(out);
+        if (Main.sAppCtx != null) ProbeGuard.send(Main.sAppCtx, out);
+        if (Main.sVideoWallpaper && Main.sCover != null)
+            Main.sCover.setVisibility(CoverPush.videoCoverSuppressed()
+                    ? android.view.View.INVISIBLE : android.view.View.VISIBLE);
+    }
+
+    /** A lyricless compact player leaves the native wallpaper and clock unobstructed. */
+    private static void syncClock() {
+        if (!Main.coverModeOn() || !LockscreenSurfacePolicy.visible(Main.keyguardLocked(),
+                MiniPlayerScene.INSTANCE.getKeyguardGoingAway())) return;
+        boolean nativeScene = nativeWallpaperScene();
+        boolean held = LockHold.heldBy(LockHold.Owner.COVER);
+        if (nativeScene && held) {
+            LockHold.give(LockHold.Owner.COVER, Main.screenOnCached());
+        } else if (!nativeScene && !held) {
+            LockHold.take(LockHold.Owner.COVER, Main.screenOnCached(), "wallpaper artwork");
+        }
+    }
+
+    /** Lifecycle/scene transitions own visibility, not a condition inside the cached drawing. */
+    static void refreshVisibility() {
+        if (dimLayer == null) return;
+        boolean eligible = LockscreenSurfacePolicy.visible(Main.keyguardLocked(),
+                MiniPlayerScene.INSTANCE.getKeyguardGoingAway()) && Main.onKeyguardNow();
+        int visibility = eligible ? android.view.View.VISIBLE : android.view.View.INVISIBLE;
+        boolean changed = dimLayer.getVisibility() != visibility;
+        if (changed) dimLayer.setVisibility(visibility);
+        if (!eligible) {
+            dimLayer.animate().cancel();
+            dimLayer.setAlpha(0f);
+            dimTarget = Float.NaN;
+        } else if (changed) updateDim();
+    }
+
+    private static void updateDim() {
+        if (dimLayer == null && !hidden()) return;
+        android.view.ViewGroup layer = CoverPush.coverLayer();
+        if (layer == null) return;
+        android.view.ViewGroup parent = layer;
+        android.view.View below = null;
+        int rootId = layer.getResources().getIdentifier("keyguard_root_view", "id", "com.android.systemui");
+        // AOD scales and clips the keyguard root. A sibling covers the original wallpaper bounds.
+        for (Object current = layer; rootId != 0 && current instanceof android.view.View;
+                current = ((android.view.View) current).getParent()) {
+            android.view.View view = (android.view.View) current;
+            if (view.getId() == rootId && view.getParent() instanceof android.view.ViewGroup) {
+                parent = (android.view.ViewGroup) view.getParent();
+                below = view;
+                break;
+            }
+        }
+        if (dimLayer == null || dimLayer.getParent() != parent) {
+            if (dimLayer != null && dimLayer.getParent() instanceof android.view.ViewGroup)
+                ((android.view.ViewGroup) dimLayer.getParent()).removeView(dimLayer);
+            // Keep the display list independent of lock state. A conditional draw can cache
+            // an empty background while unlocked and retain it when lyrics no longer blur.
+            dimLayer = new android.view.View(parent.getContext());
+            dimLayer.setTag("HMCWallpaperDim");
+            dimLayer.setBackgroundColor(android.graphics.Color.BLACK);
+            dimLayer.setClickable(false);
+            dimLayer.setImportantForAccessibility(android.view.View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+            dimLayer.setAlpha(0f);
+            int index = below != null ? parent.indexOfChild(below) : parent.getChildCount();
+            if (below == null) for (int i = 0; i < parent.getChildCount(); i++) {
+                if (parent.getChildAt(i) instanceof CoverCardLayer) { index = i; break; }
+            }
+            parent.addView(dimLayer, index, new android.view.ViewGroup.LayoutParams(-1, -1));
+            dimTarget = Float.NaN;
+        }
+        refreshVisibility();
+        boolean dimScene = Main.coverModeOn() && (!LockLyrics.wantsCompactArtwork()
+                || LockLyrics.hasLyrics() && LockLyrics.wantsWindow());
+        float alpha = hidden() && dimScene && LockscreenSurfacePolicy.visible(Main.keyguardLocked(),
+                MiniPlayerScene.INSTANCE.getKeyguardGoingAway()) && Main.onKeyguardNow()
+                ? Main.sWallpaperDim / 100f : 0f;
+        if (alpha == dimTarget) return;
+        dimTarget = alpha;
+        dimLayer.animate().cancel();
+        if (Main.screenOnCached()) dimLayer.animate().alpha(alpha).setDuration(240L).start();
+        else dimLayer.setAlpha(alpha);
+    }
+
+    static void putState(Intent out) {
+        long state = decision;
+        out.putExtra("backdrophidden", (state & 1L) != 0L);
+        out.putExtra("backdropseq", state >>> 1);
+    }
+}

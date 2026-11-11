@@ -1,68 +1,85 @@
 <p align="center"><strong>English</strong> · <a href="README.zh-CN.md">简体中文</a></p>
 
-<div align="center">
-  <img src="docs/images/app-icon.png" alt="HyperMusicCover-Enhanced app icon" width="128" height="128" />
-  <h1>HyperMusicCover-Enhanced</h1>
-  <p><strong>Big artwork, lyrics and audio visualizers on the HyperOS 4 lock screen.</strong></p>
-  <p>
-    <a href="https://github.com/Lewewe/HyperMusicCover-Enhanced/releases"><img alt="Download" src="https://img.shields.io/github/v/release/Lewewe/HyperMusicCover-Enhanced?style=flat-square&amp;label=Download&amp;color=f38caf" /></a>
-    <a href="https://t.me/HyperMusicCoverEnhanced"><img alt="Official Telegram group" src="https://img.shields.io/badge/Telegram-Official_group-26A5E4?style=flat-square&amp;logo=telegram" /></a>
-    <a href="LICENSE"><img alt="License AGPL-3.0" src="https://img.shields.io/badge/License-AGPL--3.0-ffaaa3?style=flat-square" /></a>
-  </p>
-</div>
+# hypermusiccover-duo
 
-An LSPosed module forked from [HyperMusicCover](https://github.com/zyl6932/HyperMusicCover).
+Lock-screen music, lyrics and a vertical notification rail for Xiaomi Fold with
+MiDuo on HyperOS. Maintained by [pku-zhb](https://github.com/pku-zhb).
 
-## Features
+A dedicated adaptation of [HyperMusicCover-Enhanced](https://github.com/Lewewe/HyperMusicCover-Enhanced),
+which builds on [HyperMusicCover](https://github.com/zyl6932/HyperMusicCover).
+General device compatibility is not a goal.
 
-| | |
-| --- | --- |
-| 🎨 **Big cover art** | Full-screen artwork with smooth track changes, or your own wallpaper behind it |
-| 🌈 **Moving backdrop** | Artwork colours drift behind the big cover, as a gradient or a mesh gradient |
-| 🎤 **Lyrics** | Synced and word-timed lyrics, translation, font packs and effects |
-| (・ω・) **Kaomoji companion** | A face that bops to the beat when neither lyrics nor the big cover are up |
-| 📊 **Audio visualizer** *(beta)* | Super Island and player bars that follow the music, even at zero volume |
-| 🎛️ **Player styling** | Artwork shape, backgrounds, materials, colors and scrolling titles |
-| 🎬 **Spotify Canvas** | Video backgrounds through the optional [HyperCanvas](https://github.com/Lewewe/HyperCanvas) extension |
-| 🌙 **StandBy** *(alpha)* | Full-screen clock, music and widgets on the charger through the optional [HyperImmersive](https://github.com/Lewewe/HyperImmersive) extension |
-| 🔔 **Notifications & AOD** | Works with the notification stack, HyperOS and ColorOS-style pills and always-on display |
-| ⬆️ **One-tap updates** | A card on Home downloads and installs a new release, then restarts the scope when root is granted |
+## Current features
 
-Full change list: [release notes](https://github.com/Lewewe/HyperMusicCover-Enhanced/releases). This page follows `main`, so some features arrive with the next release.
+- Square artwork, synchronized/word-timed lyrics and lyric translation.
+- A vertical music/notification capsule beside MiDuo's shortcut column.
+- Separate inner-landscape startup choices and a cover/lyrics two-column layout.
+- Native player, clock and notification reflow with AOD/wake handling.
+- Native Soft Glass or the native player's final material, including HyperLight.
+- Settings export/import and on-device diagnostic counters.
 
-## Install
+Full-screen cover/background switching, waveform and optional extension pages
+remain unavailable pending compatibility work. Automatic updates are disabled;
+published Duo builds use this repository's Releases, never the upstream feed.
+See [implementation status](docs/fold-settings-roadmap.md) for device-confirmed
+behavior and open issues. Host tests do not establish phone compatibility.
 
-**Requires:** rooted HyperOS 4 (Android 15+) with LSPosed (modern Xposed API).
+## Install and migrate
 
-1. Download the APK from [Releases](https://github.com/Lewewe/HyperMusicCover-Enhanced/releases) and install it.
-2. Enable the module in LSPosed with its recommended scopes, then reboot.
-3. Open the app to set it up.
+Requires rooted HyperOS 4, Android 15+, and LSPosed with modern Xposed API 102.
+The vertical rail requires MiDuo's right-hand shortcut column.
 
-For Spotify Canvas: **Extensions → HyperCanvas → Download**, then follow the steps shown in the app.
+Application ID and source namespace: `com.zhuhuibin.hypermusiccover.duo`.
+Launcher name: `hypermusiccover-duo`. This installs separately from Enhanced and
+`com.zhuhuibin.hypermusiccover.fold`; Android does not transfer their app data.
 
-For StandBy: **Extensions → HyperImmersive → Download**, then follow the steps shown in the app.
+1. Export settings from the previous app before removing it.
+2. Install a Duo APK from [Releases](https://github.com/pku-zhb/hypermusiccover-duo/releases)
+   when published, or build locally.
+3. Disable the previous music module in LSPosed, enable Duo and its recommended
+   scopes. Do not enable both music modules together.
+4. Restart scoped processes and import settings. Removed options stay disabled.
 
-## Feedback
+Preview builds require device acceptance. This repository does not imply a stable
+Duo release exists. APKs signed with different keys cannot update each other.
 
-Tested mainly on Xiaomi 17 Pro. Ask in the [Telegram group](https://t.me/HyperMusicCoverEnhanced) or [open an issue](https://github.com/Lewewe/HyperMusicCover-Enhanced/issues) with your device, HyperOS version, module version and music app.
-
-## Build
+## Build and check
 
 ```sh
-git clone --recurse-submodules https://github.com/Lewewe/HyperMusicCover-Enhanced.git
-cd HyperMusicCover-Enhanced
-./gradlew :app:assembleRelease :hyper-canvas:assembleRelease
+git clone --recurse-submodules https://github.com/pku-zhb/hypermusiccover-duo.git
+cd hypermusiccover-duo
+tools/build.sh :app:testDebugUnitTest :app:assembleDebug
 ```
 
-Needs Android SDK 37. HyperMusicCover-Enhanced, HyperCanvas and [HyperImmersive](https://github.com/Lewewe/HyperImmersive), which builds from its own repository, must be signed with the same key (`keystore.properties`).
+Requires JDK 21+, Android SDK 37 and build tools 37.0.0. On this Mac the script
+reuses the installed SDK/cache and writes output to
+`/Volumes/Harbor/DevCache/hypermusiccover-duo/`. Set `JAVA_HOME`, `ANDROID_HOME`
+and `GRADLE_USER_HOME` to use another installed toolchain. On other machines,
+set `HMC_BUILD_ROOT` and pass `-I tools/gradle-init.gradle` to Gradle.
 
-## Credits
+Release builds accept `SIGNING_STORE_FILE`, `SIGNING_STORE_PASSWORD`,
+`SIGNING_KEY_ALIAS` and `SIGNING_KEY_PASSWORD`, or an ignored `keystore.properties`.
+Keep credentials outside source control. Without a release key, the build uses
+the debug key and is only a development artifact.
 
-- [Lewewe](https://github.com/Lewewe): fork development
-- [puhboo](https://github.com/puhboo): lyrics and HyperCanvas renderer contributions
-- [zyl6932](https://github.com/zyl6932/HyperMusicCover): original HyperMusicCover
-- [juren233 / HyperLyrics-Enhanced](https://github.com/juren233/HyperLyrics-Enhanced): player styling foundation ([details](docs/media-card-customization.md))
-- [miuix](https://github.com/compose-miuix-ui/miuix) and the other libraries listed in the app's Credits page
-- [Material Design Icons](https://github.com/google/material-design-icons): the music note in the lyrics button's icon (Apache-2.0)
+The optional `hyper-canvas` submodule is an upstream dependency. Its provider
+currently trusts the Enhanced host package. Building it alone does not make it
+Duo-compatible; its UI stays disabled until that contract is migrated.
 
-Support development: [Ko-fi](https://ko-fi.com/yzc26623) (international) · [Afdian](https://afdian.com/a/yzc26623) (mainland China) · License: [AGPL-3.0](LICENSE)
+## Development and feedback
+
+Commit and push each validated milestone. Keep layout, native gestures, text and
+release identity changes independently reviewable. Report bugs in
+[Duo Issues](https://github.com/pku-zhb/hypermusiccover-duo/issues) with device,
+OS/module version, display form and reproduction steps.
+
+## Attribution and licence
+
+- Lewewe: Enhanced upstream development.
+- zyl6932: original HyperMusicCover.
+- puhboo: lyric functionality and HyperCanvas rendering.
+- juren233 / HyperLyrics-Enhanced: media-card customization foundations.
+- btm_m / HyperChanger and the contributors in the app's Credits page.
+
+[AGPL-3.0](LICENSE). [NOTICE](NOTICE) and bundled licence texts retain upstream
+attribution. This project does not use the upstream donation channels.

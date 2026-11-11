@@ -8,14 +8,14 @@ import subprocess
 import tempfile
 
 root = Path(__file__).resolve().parents[1]
-source = root / 'app/src/main/java/com/os4/musiccover'
+source = root / 'app/src/main/java/com/zhuhuibin/hypermusiccover/duo'
 with tempfile.TemporaryDirectory(prefix='hmc-original-match-') as temp:
     work = Path(temp)
-    package = work / 'com/os4/musiccover'
+    package = work / 'com/zhuhuibin/hypermusiccover/duo'
     package.mkdir(parents=True)
     for name in ('LyricMatch.java', 'OriginalLyricMatch.java', 'LyricSearchAliases.java'):
         (package / name).write_text((source / name).read_text())
-    (package / 'Adapters.java').write_text('''package com.os4.musiccover;
+    (package / 'Adapters.java').write_text('''package com.zhuhuibin.hypermusiccover.duo;
 final class LockLyrics {
  static final int SEARCH_ORIGINAL=0, SEARCH_EXTENDED=1;
  static int sSearchMode=SEARCH_ORIGINAL;
@@ -33,7 +33,7 @@ final class NcmLyrics {
  }
 }
 ''')
-    (package / 'ModeMatchAudit.java').write_text('''package com.os4.musiccover;
+    (package / 'ModeMatchAudit.java').write_text('''package com.zhuhuibin.hypermusiccover.duo;
 import java.util.Arrays;
 public final class ModeMatchAudit {
  public static void main(String[] args) {
@@ -69,4 +69,4 @@ public final class ModeMatchAudit {
 }
 ''')
     subprocess.run(['javac', '-d', str(work), *map(str, package.glob('*.java'))], check=True)
-    subprocess.run(['java', '-cp', str(work), 'com.os4.musiccover.ModeMatchAudit'], check=True)
+    subprocess.run(['java', '-cp', str(work), 'com.zhuhuibin.hypermusiccover.duo.ModeMatchAudit'], check=True)

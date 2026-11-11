@@ -1,0 +1,39 @@
+package com.zhuhuibin.hypermusiccover.duo;
+
+import org.junit.Test;
+
+import static org.junit.Assert.*;
+
+public class ArtworkQualityTimingTest {
+    @Test public void pollingUsesOriginalHalfSecondCadence() {
+        for (int remaining = CoverPush.QUALITY_CHECKS; remaining > 0; remaining--) {
+            assertEquals(500L, CoverPush.artworkQualityDelayMs(remaining));
+        }
+    }
+
+    @Test public void pollingRetainsBoundedFiveSecondWindow() {
+        long elapsed = 0L;
+        for (int remaining = CoverPush.QUALITY_CHECKS; remaining > 0; remaining--) {
+            elapsed += CoverPush.artworkQualityDelayMs(remaining);
+        }
+        assertEquals(5000L, elapsed);
+        assertEquals(10, CoverPush.QUALITY_CHECKS);
+    }
+
+    @Test public void onlyThumbnailsUnder300WaitForSharperArtwork() {
+        assertTrue(CoverPush.shouldSoftenArtwork(144, 144));
+        assertTrue(CoverPush.shouldSoftenArtwork(299, 299));
+        assertTrue(CoverPush.shouldSoftenArtwork(299, 168));
+        assertFalse(CoverPush.shouldSoftenArtwork(300, 300));
+        assertFalse(CoverPush.shouldSoftenArtwork(320, 180));
+        assertFalse(CoverPush.shouldSoftenArtwork(363, 363));
+        assertFalse(CoverPush.shouldSoftenArtwork(400, 400));
+        assertFalse(CoverPush.shouldSoftenArtwork(0, 0));
+    }
+
+    @Test public void largerCopiesAreStillSoughtBelow480() {
+        assertFalse(CoverPush.fullSizeArtwork(400, 400));
+        assertTrue(CoverPush.fullSizeArtwork(480, 270));
+        assertTrue(CoverPush.fullSizeArtwork(500, 500));
+    }
+}

@@ -21,7 +21,7 @@ fun signingValue(key: String, env: String): String? =
 val releaseStorePath = signingValue("storeFile", "SIGNING_STORE_FILE")
 
 android {
-    namespace = "com.os4.musiccover"
+    namespace = "com.zhuhuibin.hypermusiccover.duo"
     compileSdk = 37
 
     defaultConfig {
@@ -29,14 +29,14 @@ android {
         // and disable the old module when migrating. Internal classes and probe actions keep
         // their namespace so callers and documented diagnostics remain compatible.
         applicationId = (findProperty("mcApplicationId") as String?)
-            ?: "com.yzc26623.HyperMusicCoverEnhanced"
+            ?: "com.zhuhuibin.hypermusiccover.duo"
         manifestPlaceholders["mcAppLabel"] = (findProperty("mcAppLabel") as String?)
             ?: "@string/app_name"
         minSdk = 35
         targetSdk = 37
         // Build properties can override the release version for local test builds.
-        versionCode = (findProperty("mcVersionCode") as String?)?.toInt() ?: 10101001
-        versionName = ((findProperty("mcVersionName") as String?) ?: "1.1.1-1") +
+        versionCode = (findProperty("mcVersionCode") as String?)?.toInt() ?: 20001
+        versionName = ((findProperty("mcVersionName") as String?) ?: "0.2.0-preview.1") +
                 ((findProperty("mcVersionSuffix") as String?) ?: "")
     }
 

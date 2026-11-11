@@ -11,7 +11,7 @@ dependencyResolutionManagement {
         mavenCentral()
     }
 }
-rootProject.name = "HyperMusicCover"
+rootProject.name = "hypermusiccover-duo"
 include(":app")
 
 include(":hyper-canvas")
