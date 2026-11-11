@@ -13,10 +13,11 @@ General device compatibility is not a goal.
 
 - Square artwork, synchronized/word-timed lyrics and lyric translation.
 - A vertical capsule with ordered notification, live-card and music bubbles beside
-  MiDuo's shortcut column; swipe to switch or tap a bubble to select it.
-- Upward swipes in the left clock/notification area expand the selected capsule
-  before remaining collapsed content and swipe-to-unlock.
-- Separate inner-landscape startup choices and a cover/lyrics two-column layout.
+  MiDuo's shortcut column; swipe to switch or tap a bubble to open its card.
+- Upward swipes in the left clock/notification area expand notifications, live
+  cards, then music; swipe-to-unlock follows when all available content is open.
+- Select which categories collapse on lock, or keep the last lock-screen state.
+  Inner landscape has separate category defaults and a cover/lyrics two-column layout.
 - Native player, clock and notification reflow with AOD/wake handling.
 - Native Soft Glass or the native player's final material, including HyperLight.
 - Settings export/import and on-device diagnostic counters.
