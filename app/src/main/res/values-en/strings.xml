@@ -496,4 +496,10 @@
     <string name="fold_collapsed_categories_summary">Selected categories start in capsules. Select none to expand everything, or all to collapse everything.</string>
     <string name="fold_live_cards">Live cards</string>
     <string name="fold_notifications">Notifications</string>
+    <string name="duo_notification_section">Lock-screen notifications</string>
+    <string name="duo_notification_show_all">Show all notifications on the lock screen</string>
+    <string name="duo_notification_show_all_summary">Show notifications hidden by app lock-screen rules. System privacy settings still apply.</string>
+    <string name="duo_notification_retain">Keep notifications on the lock screen</string>
+    <string name="duo_notification_retain_summary">Keep existing notifications visible after unlocking and locking again, until dismissed.</string>
+    <string name="duo_notification_other_module">Disable the corresponding HyperLight options when using these features in Duo.</string>
 </resources>
