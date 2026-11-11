@@ -488,7 +488,6 @@
     <string name="mini_general_section">General</string>
     <string name="mini_notifications_section">Notifications</string>
     <string name="mini_background_section">Background</string>
-    <string name="fold_text_pending">Pending redesign. Text currently uses two vertical columns with ellipsis.</string>
     <string name="fold_material_section">Material</string>
     <string name="fold_material">Island and shortcut material</string>
     <string name="fold_material_summary">Follow the native player’s final glass parameters, including HyperLight adjustments.</string>
@@ -521,4 +520,6 @@
     <string name="about_maintainer">Maintainer</string>
     <string name="about_releases">Releases</string>
     <string name="about_duo_summary">Lock-screen music and lyrics for MiDuo and foldable displays.</string>
+    <string name="duo_vertical_text">Vertical text</string>
+    <string name="duo_vertical_text_summary">Upright CJK, sideways words and horizontal short numbers. Open the card to read longer content.</string>
 </resources>

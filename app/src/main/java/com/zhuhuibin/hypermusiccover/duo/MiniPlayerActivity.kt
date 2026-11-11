@@ -107,10 +107,9 @@ private fun MiniPlayerPage(blur: Boolean, refreshKey: Int, onBack: () -> Unit) {
                             MiniPlayerConfig.STYLE_COLOROS).coerceIn(0, 1),
                         enabled = alive && config.optBoolean(MiniPlayerConfig.ENABLED),
                         onSelectedIndexChange = { push(MiniPlayerConfig.PILL_STYLE, it) })
-                    SwitchPreference(title = stringResource(R.string.mini_note_text_scroll),
-                        summary = stringResource(R.string.fold_text_pending),
-                        checked = false, enabled = false,
-                        onCheckedChange = {})
+                    top.yukonga.miuix.kmp.basic.BasicComponent(
+                        title = stringResource(R.string.duo_vertical_text),
+                        summary = stringResource(R.string.duo_vertical_text_summary))
                     SwitchPreference(title = stringResource(R.string.mini_status_at_date),
                         summary = stringResource(R.string.mini_status_at_date_summary),
                         checked = config.optBoolean(MiniPlayerConfig.STATUS_AT_DATE),

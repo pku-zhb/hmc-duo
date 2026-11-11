@@ -496,7 +496,6 @@
     <string name="mini_general_section">常规</string>
     <string name="mini_notifications_section">通知</string>
     <string name="mini_background_section">背景</string>
-    <string name="fold_text_pending">待重新设计：目前使用竖排两列，长文字以省略号显示。</string>
     <string name="fold_material_section">材质</string>
     <string name="fold_material">胶囊和快捷按钮材质</string>
     <string name="fold_material_summary">跟随模式使用原生播放器最终的玻璃参数，包括 HyperLight 的调整。</string>
@@ -529,4 +528,6 @@
     <string name="about_maintainer">维护者</string>
     <string name="about_releases">版本发布</string>
     <string name="about_duo_summary">为 MiDuo 与折叠屏打造的锁屏音乐和歌词体验。</string>
+    <string name="duo_vertical_text">竖排文字</string>
+    <string name="duo_vertical_text_summary">汉字直立，英文词组侧转，短数字横排；长内容展开后阅读。</string>
 </resources>

@@ -100,7 +100,6 @@ internal class MiniPlayerView(context: Context) : FrameLayout(context) {
         private set
     private var verticalGeometryWidth = 0
     private var verticalGeometryHeight = 0
-    private var verticalRows = 1
     private var rawTitle: CharSequence = ""
     private var rawArtist: CharSequence = ""
 
@@ -116,7 +115,9 @@ internal class MiniPlayerView(context: Context) : FrameLayout(context) {
         val room = dp(3)
         for (line in listOf(title, artist)) {
             line.isSingleLine = !on
-            line.maxLines = if (on) verticalRows else 1
+            line.maxLines = 1
+            line.verticalWriting = on
+            line.isSelected = !on
             line.gravity = if (on) Gravity.TOP or Gravity.CENTER_HORIZONTAL else Gravity.CENTER_VERTICAL
             line.setPadding(0, if (on) 0 else room, 0, if (on) 0 else room)
             line.layoutParams = if (on) LinearLayout.LayoutParams(0, -1, 1f)
@@ -959,7 +960,7 @@ internal class MiniPlayerView(context: Context) : FrameLayout(context) {
 
     fun frameState(): String = "vertical=$vertical morph=$morphing layoutOnly=$layoutOnly" +
         " actual=${width}x$height rest=${restWidth()}x${restHeight()} morphFrame=${morphW}x$morphH" +
-        " writing=${if (vertical) "vertical-rtl" else "horizontal"} rows=$verticalRows" +
+        " writing=${if (vertical) "vertical-mixed-rtl" else "horizontal"}" +
         " contentY=${content.translationY} shellNudge=$nudgeY contentSwitch=$railContentSwitching"
 
     override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
@@ -1231,13 +1232,6 @@ internal class MiniPlayerView(context: Context) : FrameLayout(context) {
         }
         slot.layoutParams = params(face.artwork)
         textColumn.layoutParams = params(face.text)
-        val rows = ((face.text.height() - dp(4)) / max(title.lineHeight, artist.lineHeight).coerceAtLeast(1))
-            .toInt().coerceAtLeast(1)
-        if (verticalRows != rows) {
-            verticalRows = rows
-            title.maxLines = rows; artist.maxLines = rows
-            updateWrittenText()
-        }
         toggle.layoutParams = params(face.action)
         toggle2.layoutParams = params(face.secondAction)
         toggle2.visibility = if (full != null && secondShown > .001f) View.VISIBLE else View.GONE
@@ -1257,8 +1251,8 @@ internal class MiniPlayerView(context: Context) : FrameLayout(context) {
     }
 
     private fun updateWrittenText() {
-        val right = if (vertical) VerticalPillText.column(rawTitle, verticalRows) else rawTitle
-        val left = if (vertical) VerticalPillText.column(rawArtist, verticalRows) else rawArtist
+        val right = rawTitle
+        val left = rawArtist
         if (!TextUtils.equals(title.text, right)) title.text = right
         if (!TextUtils.equals(artist.text, left)) artist.text = left
     }
@@ -1376,6 +1370,17 @@ internal class LiveArtHost(context: Context, private val child: View, private va
  * when an end's strength changes by a step.
  */
 internal class EdgeBlurText(context: Context) : TextView(context) {
+    private val verticalRenderer = VerticalTextRenderer()
+    var verticalWriting = false
+        set(value) {
+            if (field == value) return
+            field = value
+            isHorizontalFadingEdgeEnabled = !value
+            edgeEffect = null
+            setRenderEffect(null)
+            invalidate()
+        }
+
     private val edgePx = 16f * resources.displayMetrics.density
     private val blurPx = 3f * resources.displayMetrics.density
     private var shader: android.graphics.RuntimeShader? = null
@@ -1395,6 +1400,7 @@ internal class EdgeBlurText(context: Context) : TextView(context) {
     override fun getRightFadingEdgeStrength(): Float = super.getRightFadingEdgeStrength().also { right = it }
 
     override fun onDraw(canvas: Canvas) {
+        if (verticalWriting) { verticalRenderer.draw(canvas, this); return }
         super.onDraw(canvas)
         // The strengths were read for this frame's fade just before; the blur follows them.
         val l = step(left)
@@ -1409,7 +1415,7 @@ internal class EdgeBlurText(context: Context) : TextView(context) {
     private fun step(v: Float) = (v.coerceIn(0f, 1f) * 10f).roundToInt() / 10f
 
     private fun applyEdges(l: Float, r: Float) {
-        if (l == 0f && r == 0f || width <= 0) {
+        if (verticalWriting || l == 0f && r == 0f || width <= 0) {
             edgeEffect = null
             push()
             return
