@@ -4,6 +4,13 @@ import org.junit.Test;
 import static org.junit.Assert.*;
 
 public class ShortcutGesturePolicyTest {
+    @Test public void visibleWakeRampAcceptsTorchBeforeFullOpacity() {
+        for (float alpha : new float[]{.1f, .25f, .5f, .97f, 1f})
+            assertTrue(ShortcutGesturePolicy.torchVisible(alpha));
+        for (float alpha : new float[]{0f, .01f, .099f, Float.NaN, Float.POSITIVE_INFINITY})
+            assertFalse(ShortcutGesturePolicy.torchVisible(alpha));
+    }
+
     // Contract from the on-device ShortcutMoveController: left consumes positive X,
     // right consumes negative X, after paging slop; release activation remains native.
     private float nativeDistance(boolean left, float start, float x, float slop) {

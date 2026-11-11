@@ -25,11 +25,14 @@ internal object ShortcutGestureRuntime {
     private var lastPeak = 0f
     private var lastActive = false
 
-    private fun eligible() = MiniPlayerRuntime.detachedRail() && Main.screenOnCached() &&
+    private fun eligible() = MiniPlayerRuntime.detachedRail() && Main.screenOn() &&
         Main.keyguardLocked() && !Main.bouncerShown() && !MiniPlayerScene.aodActive && !MiniPlayerScene.keyguardGoingAway
 
     fun hitsTorch(icon: View, other: View?, x: Float, y: Float): Boolean {
-        if (!eligible() || !icon.isShown || icon.alpha < .98f || icon.width <= 0) return false
+        // Native hit testing waits for alpha == 1. Accept the visible wake ramp while
+        // retaining native activation and rejecting doze, hidden icons and unlock.
+        if (!eligible() || !icon.isShown || !ShortcutGesturePolicy.torchVisible(icon.alpha) ||
+            icon.width <= 0 || icon.height <= 0) return false
         val at = IntArray(2).also(icon::getLocationOnScreen)
         val dx = x - at[0] - icon.width / 2f
         val dy = y - at[1] - icon.height / 2f
