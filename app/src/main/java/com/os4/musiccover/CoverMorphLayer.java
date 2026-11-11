@@ -84,6 +84,7 @@ final class CoverMorphLayer extends View implements Choreographer.FrameCallback 
     }
 
     private static boolean begin(boolean toCover, boolean compactToggle) {
+        if (MiniPlayerRuntime.detachedRail()) return false;
         if (Looper.myLooper() != Looper.getMainLooper() || !Main.coverMorphEligible()) return false;
         // The square card only. The full-screen cover keeps its own transition - the clock
         // squeeze and the wallpaper crossfade - untouched.
@@ -121,6 +122,7 @@ final class CoverMorphLayer extends View implements Choreographer.FrameCallback 
      * own artwork slot, which stays where the pill rests while the container moves away.
      */
     static boolean beginMiniScene(boolean toCover) {
+        if (MiniPlayerRuntime.detachedRail()) return false;
         if (Looper.myLooper() != Looper.getMainLooper() || !Main.coverMorphEligible()) return false;
         if (!Main.coverMorphCardMode()) {
             cancel();

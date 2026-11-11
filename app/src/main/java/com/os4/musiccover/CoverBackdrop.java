@@ -30,7 +30,12 @@ final class CoverBackdrop {
     }
 
     static boolean hidden() {
-        return Main.sHidePlayerBackground || Main.coverOnTapResting();
+        return Main.sHidePlayerBackground || Main.coverOnTapResting() || nativeForRailCard();
+    }
+
+    static boolean nativeForRailCard() {
+        return SquareCardWallpaperPolicy.nativeBackdrop(FoldSettingsPolicy.nativeBackdrop(Main.sRightRail),
+                Main.effectiveCoverStyle().mode == CoverCardStyle.CARD);
     }
 
     static boolean nativeWallpaperScene() {
@@ -61,7 +66,8 @@ final class CoverBackdrop {
 
     /** A lyricless compact player leaves the native wallpaper and clock unobstructed. */
     private static void syncClock() {
-        if (!Main.coverModeOn()) return;
+        if (!Main.coverModeOn() || !LockscreenSurfacePolicy.visible(Main.keyguardLocked(),
+                MiniPlayerScene.INSTANCE.getKeyguardGoingAway())) return;
         boolean nativeScene = nativeWallpaperScene();
         boolean held = LockHold.heldBy(LockHold.Owner.COVER);
         if (nativeScene && held) {
@@ -74,8 +80,16 @@ final class CoverBackdrop {
     /** Lifecycle/scene transitions own visibility, not a condition inside the cached drawing. */
     static void refreshVisibility() {
         if (dimLayer == null) return;
-        int visibility = Main.keyguardLocked() ? android.view.View.VISIBLE : android.view.View.INVISIBLE;
-        if (dimLayer.getVisibility() != visibility) dimLayer.setVisibility(visibility);
+        boolean eligible = LockscreenSurfacePolicy.visible(Main.keyguardLocked(),
+                MiniPlayerScene.INSTANCE.getKeyguardGoingAway()) && Main.onKeyguardNow();
+        int visibility = eligible ? android.view.View.VISIBLE : android.view.View.INVISIBLE;
+        boolean changed = dimLayer.getVisibility() != visibility;
+        if (changed) dimLayer.setVisibility(visibility);
+        if (!eligible) {
+            dimLayer.animate().cancel();
+            dimLayer.setAlpha(0f);
+            dimTarget = Float.NaN;
+        } else if (changed) updateDim();
     }
 
     private static void updateDim() {
@@ -116,7 +130,9 @@ final class CoverBackdrop {
         refreshVisibility();
         boolean dimScene = Main.coverModeOn() && (!LockLyrics.wantsCompactArtwork()
                 || LockLyrics.hasLyrics() && LockLyrics.wantsWindow());
-        float alpha = hidden() && dimScene ? Main.sWallpaperDim / 100f : 0f;
+        float alpha = hidden() && dimScene && LockscreenSurfacePolicy.visible(Main.keyguardLocked(),
+                MiniPlayerScene.INSTANCE.getKeyguardGoingAway()) && Main.onKeyguardNow()
+                ? Main.sWallpaperDim / 100f : 0f;
         if (alpha == dimTarget) return;
         dimTarget = alpha;
         dimLayer.animate().cancel();

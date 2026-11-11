@@ -30,9 +30,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.mutableIntStateOf
-import top.yukonga.miuix.kmp.basic.TabRow
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -54,7 +51,6 @@ import top.yukonga.miuix.kmp.preference.WindowDropdownPreference
 internal fun MediaCardPageView(isBlurEnabled: Boolean, refreshKey: Int, onBack: () -> Unit) {
     val context = LocalContext.current
     var module by remember { mutableStateOf(ModuleBridge.State()) }
-    var selectedTab by rememberSaveable { mutableIntStateOf(0) }
     val lost by ModuleBridge.lost.collectAsState()
     LaunchedEffect(refreshKey, lost) { module = ModuleBridge.queryAlive(context) }
     val values = remember(module.mediaCardConfig) { MediaCardConfig.parse(module.mediaCardConfig) }
@@ -64,69 +60,40 @@ internal fun MediaCardPageView(isBlurEnabled: Boolean, refreshKey: Int, onBack: 
         changes.forEach { (key, value) -> ModuleBridge.setMediaCardStyle(context, key, value) }
     }
     val push: (String, Int) -> Unit = { key, value -> pushAll(listOf(key to value)) }
-    PageScaffold(title = stringResource(R.string.media_customization_title), isBlurEnabled = isBlurEnabled, onBack = onBack,
-        pinned = {
-            TabRow(tabs = listOf(stringResource(R.string.media_visualization_tab), stringResource(R.string.media_appearance_tab)),
-                selectedTabIndex = selectedTab, onTabSelected = { selectedTab = it },
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp))
-        }) {
-        item { Text(stringResource(R.string.media_style_note), modifier = Modifier.padding(16.dp)) }
-        if (selectedTab == 0) {
-            item { SmallTitle(stringResource(R.string.media_super_island_wave)) }
-            item {
-                Card(Modifier.padding(horizontal = 12.dp).padding(bottom = 12.dp)) {
-                    BetaSwitch(title = stringResource(R.string.media_audio_wave), summary = stringResource(R.string.media_audio_wave_summary), values.getValue("island.visualizer") != 0, module.alive) { push("island.visualizer", if (it) 1 else 0) }
-                    if (values.getValue("island.visualizer") != 0) {
-                        WaveColorChoice(values, module.alive, pushAll)
-                        MediaSwitch("island", "btSync", R.string.media_wave_bt_sync, values, module.alive, push, R.string.media_wave_bt_sync_summary)
-                        if (values.getValue("island.btSync") != 0) {
-                            ValueSlider(title = stringResource(R.string.media_wave_bt_adjustment),
-                                summary = stringResource(R.string.media_wave_bt_adjustment_summary),
-                                value = values.getValue("island.btOffset").toFloat(), valueRange = -250f..250f,
-                                enabled = module.alive, detent = 0f, label = { "${it.toInt()} ms" },
-                                onValueChange = { push("island.btOffset", it.toInt()) })
-                        }
-                        MediaSwitch("island", "hideWaveDevice", R.string.media_wave_hide_device, values, module.alive, push, R.string.media_wave_hide_device_summary)
-                        MediaSwitch("notification", "lockOutputWave", R.string.media_wave_lock_screen, values, module.alive, push, R.string.media_output_wave_summary)
-                        MediaSwitch("notification", "outputWave", R.string.media_wave_notification, values, module.alive, push, R.string.media_output_wave_summary)
-                        MediaSwitch("island", "outputWave", R.string.media_wave_island, values, module.alive, push, R.string.media_output_wave_summary)
-                    }
-                }
+    PageScaffold(title = stringResource(R.string.media_customization_title),
+        isBlurEnabled = isBlurEnabled, onBack = onBack) {
+        item {
+            Card(Modifier.padding(horizontal = 12.dp, vertical = 12.dp)) {
+                top.yukonga.miuix.kmp.basic.BasicComponent(
+                    title = stringResource(R.string.media_scope_island),
+                    summary = stringResource(R.string.fold_island_glass_fixed))
             }
-        } else {
-            item { SmallTitle(stringResource(R.string.media_scroll_text)) }
-            item {
-                Card(Modifier.padding(horizontal = 12.dp).padding(bottom = 12.dp)) {
-                    MediaSwitch("notification", "scrollText", R.string.media_scope_notification,
-                        values, module.alive, push, R.string.media_scroll_text_summary)
-                    MediaSwitch("island", "scrollText", R.string.media_scope_island,
-                        values, module.alive, push, R.string.media_scroll_text_summary)
+        }
+        item { SmallTitle(stringResource(R.string.media_scroll_text)) }
+        item {
+            Card(Modifier.padding(horizontal = 12.dp).padding(bottom = 12.dp)) {
+                MediaSwitch("notification", "scrollText", R.string.media_scope_notification,
+                    values, module.alive, push, R.string.media_scroll_text_summary)
                 }
-            }
-            for (scope in MediaCardConfig.scopes) {
+        }
+            for (scope in listOf("notification")) {
                 item { SmallTitle(stringResource(if (scope == "notification") R.string.media_scope_notification else R.string.media_scope_island)) }
                 item {
                     Card(Modifier.padding(horizontal = 12.dp).padding(bottom = 12.dp)) {
-                        MediaChoice(scope, "cover", R.string.media_style_cover,
+                        if (scope == "notification") MediaChoice(scope, "cover", R.string.media_style_cover,
                             listOf(R.string.media_style_native, R.string.media_style_circle, R.string.media_style_rotating, R.string.media_style_hidden), values, module.alive, push)
                         MediaSwitch(scope, "hideSource", R.string.media_hide_source, values, module.alive, push)
                         MediaSwitch(scope, "hideDevice", R.string.media_hide_device, values, module.alive, push)
                     }
                 }
-                item {
+                if (scope == "notification") item {
                     Card(Modifier.padding(horizontal = 12.dp).padding(bottom = 16.dp)) {
                         MediaChoice(scope, "background", R.string.media_background_style,
                             listOf(R.string.media_style_native, R.string.media_background_mosaic, R.string.media_background_blur,
                                 R.string.media_background_radial, R.string.media_background_linear, R.string.media_background_soft), values, module.alive, push)
                         val style = values.getValue("$scope.background")
                         if (style == 0) {
-                            if (scope == "island") WindowDropdownPreference(title = stringResource(R.string.media_theme),
-                                items = listOf(stringResource(R.string.media_theme_default), stringResource(R.string.media_theme_oled)),
-                                // At the camera the card is always OLED black; the saved choice returns with the switch off.
-                                selectedIndex = if (module.islandIphoneTop || values.getValue("island.theme") == MediaCardConfig.ISLAND_THEME_OLED) 1 else 0,
-                                enabled = module.alive && !module.islandIphoneTop,
-                                onSelectedIndexChange = { push("island.theme", if (it == 1) MediaCardConfig.ISLAND_THEME_OLED else MediaCardConfig.ISLAND_THEME_DEFAULT) })
-                            else MediaChoice(scope, "theme", R.string.media_theme,
+                            MediaChoice(scope, "theme", R.string.media_theme,
                                 listOf(R.string.media_theme_system, R.string.media_theme_light, R.string.media_theme_dark), values, module.alive, push)
                             MediaChoice(scope, "flow", R.string.media_flow,
                                 listOf(R.string.media_style_native, R.string.media_flow_dynamic, R.string.media_flow_cover, R.string.media_flow_artwork, R.string.media_flow_disabled), values, module.alive, push)
@@ -151,7 +118,6 @@ internal fun MediaCardPageView(isBlurEnabled: Boolean, refreshKey: Int, onBack: 
                     }
                 }
             }
-        }
     }
 }
 

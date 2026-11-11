@@ -513,6 +513,9 @@ public class WallpaperProbe {
     private static final float[] sGlColor = new float[4];
     /** Which FRAME_REQUESTS entry this build answers to, once one has; -1 until then. */
     private static volatile int sFrameReq = -1;
+    private static Class<?> sProfileClass;
+    private static WallpaperFrameProfile.Binding sFrameProfile;
+    private static boolean sProfileBuild;
     /** A fade that has not seen its last frame this long after it should have is ended here. */
     private static final long GPU_FADE_GRACE_MS = 1500L;
 
@@ -2513,9 +2516,16 @@ public class WallpaperProbe {
                 : describeEngine(sDesktopEngine));
         sb.append("\nvideo engine: ").append(sVideoEngine == null ? "none"
                 : sVideoEngine.getClass().getSimpleName());
-        sb.append("\nframe request: ").append(sFrameReq < 0 ? "none has answered yet"
-                : FRAME_REQUESTS[sFrameReq][0] + "() (candidate " + (sFrameReq + 1) + " of "
-                        + FRAME_REQUESTS.length + ")");
+        WallpaperFrameProfile.Binding profile = frameProfile(sKeyguardEngine);
+        sb.append("\nframe request: ");
+        if (sProfileBuild) {
+            sb.append(profile == null ? "known build but engine shape rejected" : profile.describe());
+            sb.append(" (dispatch binding; rendered frames are reported under last fade)");
+        } else {
+            sb.append(sFrameReq < 0 ? "none has answered yet"
+                    : FRAME_REQUESTS[sFrameReq][0] + "() (candidate " + (sFrameReq + 1) + " of "
+                            + FRAME_REQUESTS.length + ")");
+        }
         Object eng = sKeyguardEngine;
         if (eng != null) {
             sb.append("\n  (Z)V methods here: ").append(oneBooleanMethods(eng));
@@ -2571,6 +2581,19 @@ public class WallpaperProbe {
      */
     private static void reloadEngine(Object eng, boolean keepAlive) {
         if (eng == null) return;
+        WallpaperFrameProfile.Binding profile = frameProfile(eng);
+        if (sProfileBuild) {
+            // Verified against the current APK. Do not call legacy u() or set the unrelated w.
+            if (profile == null) {
+                Xp.w(TAG + "reload: known 8.2.7 build, unexpected engine shape; left unchanged");
+                return;
+            }
+            try {
+                profile.reload(eng, keepAlive);
+                if (!keepAlive) Xp.log(TAG + "reload requested via " + profile.describe());
+            } catch (Throwable failure) { Xp.w(TAG + "reload profile failed: " + failure); }
+            return;
+        }
         try {
             Xp.callMethod(eng, "u");
         } catch (Throwable t) {
@@ -2623,6 +2646,12 @@ public class WallpaperProbe {
 
     /** Tries the known frame requests, the one that answered last time first. */
     private static boolean frameRequest(Object eng, boolean keepAlive) {
+        WallpaperFrameProfile.Binding profile = frameProfile(eng);
+        if (sProfileBuild) {
+            if (profile == null) return false;
+            try { profile.request(eng, keepAlive); return true; }
+            catch (Throwable failure) { Xp.w(TAG + "frame profile failed: " + failure); return false; }
+        }
         int known = sFrameReq;
         if (known >= 0 && callFrameRequest(eng, known, keepAlive)) return true;
         for (int i = 0; i < FRAME_REQUESTS.length; i++) {
@@ -2633,6 +2662,27 @@ public class WallpaperProbe {
             }
         }
         return false;
+    }
+
+    /** Cache reflection/package lookups; this is also called on every GPU fade frame. */
+    private static WallpaperFrameProfile.Binding frameProfile(Object engine) {
+        if (engine == null || sCtx == null) return null;
+        Class<?> type = engine.getClass();
+        if (sProfileClass == type) return sFrameProfile;
+        try {
+            android.content.pm.PackageInfo info = sCtx.getPackageManager()
+                    .getPackageInfo(sCtx.getPackageName(), 0);
+            sProfileBuild = WallpaperFrameProfile.matches(info.packageName,
+                    info.getLongVersionCode(), info.versionName);
+            sFrameProfile = sProfileBuild ? WallpaperFrameProfile.bind(type) : null;
+            sProfileClass = type;
+        } catch (Throwable failure) {
+            Xp.w(TAG + "frame profile identification unavailable: " + failure);
+            // Leave the class unresolved so a transient package lookup can be retried.
+            sFrameProfile = null;
+            sProfileBuild = false;
+        }
+        return sFrameProfile;
     }
 
     private static boolean callFrameRequest(Object eng, int entry, boolean keepAlive) {

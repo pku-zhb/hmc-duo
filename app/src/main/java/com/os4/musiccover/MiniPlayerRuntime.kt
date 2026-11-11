@@ -50,6 +50,8 @@ object MiniPlayerRuntime {
     private var materialFailed = false
     private val selectionLock = Any()
     private val sessionSelection = MiniPlayerSessionSelection()
+    internal val entryDefaults = LockscreenEntryState()
+    internal var applyingEntryDefaults = false
     private var prefs: SharedPreferences? = null
     private var loader: ClassLoader? = null
     private var lastRoot: WeakReference<View>? = null
@@ -63,6 +65,10 @@ object MiniPlayerRuntime {
     @JvmStatic fun configJson(context: Context): String = MiniPlayerConfig.fromPreferences(prefs(context))
 
     /** Only automatic cover entry changes; manual entry and existing scenes stay intact. */
+    @JvmStatic fun automaticCoverAllowed(context: Context?): Boolean = context == null ||
+        MiniPlayerConfig.automaticCoverAllowed(prefs(context).getString("config", null),
+            FoldArtworkLayout.innerLandscape(Main.screenWidth().toFloat(), Main.screenHeight().toFloat(), Main.density()))
+
     @JvmStatic fun mediaCollapsedByDefault(context: Context?): Boolean =
         context != null && MiniPlayerConfig.mediaCollapsedByDefault(
             prefs(context).getString("config", null))
@@ -76,6 +82,7 @@ object MiniPlayerRuntime {
         MiniPlayerConfig.apply(prefs(context), raw)
         DateStatus.configChanged()
         materialGeneration++
+        LockScreenRailRuntime.refresh()
         lastRoot?.get()?.let { root -> root.post { attach(root, lastShortcutController?.get()) } }
         refresh()
     }
@@ -754,9 +761,6 @@ object MiniPlayerRuntime {
     /** One frame of the AOD's colours on one view, as the card's listener puts them on its media_bg. */
     private fun dimView(view: ImageView, args: Array<Any?>) {
         if (!view.isAttachedToWindow) return
-        // The custom backdrop owns its tint and rendering mode, including during style resets.
-        // Replaying the OEM AOD glass recipe here can turn its Gaussian blur into a flat fill.
-        if (configuredBackdropViews.containsKey(view)) return
         val ctx = view.context
         val blurOpened = blurOpenedMethod?.let { runCatching { it.invoke(null, ctx) as Boolean }.getOrNull() } ?: true
         runCatching {
@@ -937,6 +941,7 @@ object MiniPlayerRuntime {
             synchronized(controllers) { controllers.remove(host) }
             return
         }
+        RailShortcutTapRuntime.install(shortcutController)
         val (left, right) = resolveShortcuts(shortcutController) ?: findShortcuts(root) ?: return
         if (left === right) return
         if (old != null && old.left === left && old.right === right) {
@@ -1122,6 +1127,7 @@ object MiniPlayerRuntime {
         }
         val target = routed?.get() ?: return false
         routedTracker?.addMovement(ev)
+        if (detachedRail()) return routeVerticalTouch(ev, target)
         val dx = ev.rawX - routedX
         val dy = ev.rawY - routedY
         val d = target.resources.displayMetrics.density
@@ -1262,6 +1268,51 @@ object MiniPlayerRuntime {
 
     /** The super island's swipe threshold (island_swipe_threshold). */
     private const val ISLAND_SWIPE_DP = 50f
+
+    /** The upright rail owns its long axis: vertical swipes switch, cross-axis pulls do not. */
+    private fun routeVerticalTouch(ev: MotionEvent, target: MiniPlayerView): Boolean {
+        val action = ev.actionMasked
+        val dx = ev.rawX - routedX
+        val dy = ev.rawY - routedY
+        val owner = live().firstOrNull { it.pill() === target }
+        val density = target.resources.displayMetrics.density
+        if (action == MotionEvent.ACTION_DOWN && !routedSmall) {
+            target.finishRailContentTransition()
+            target.clearNudge()
+        }
+        if (!routedDrag && action == MotionEvent.ACTION_MOVE &&
+            kotlin.math.hypot(dx, dy) > ViewConfiguration.get(target.context).scaledTouchSlop) {
+            routedDrag = true
+            if (!routedSmall) dispatchTo(target, ev, MotionEvent.ACTION_CANCEL)
+        }
+        if (!routedDrag) {
+            if (!routedSmall) dispatchTo(target, ev, action)
+            else if (action == MotionEvent.ACTION_UP) owner?.selectSmallIsland()
+        } else if (action == MotionEvent.ACTION_MOVE) {
+            val along = if (kotlin.math.abs(dy) > kotlin.math.abs(dx)) dy else 0f
+            if (routedSmall) owner?.setSmallNudge(routedBaseX,
+                routedBaseY + RailContentMotion.pull(along, density) / 2f)
+            else target.pullRailContent(along)
+        }
+        if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
+            routedTracker?.computeCurrentVelocity(1000)
+            val vx = routedTracker?.xVelocity ?: 0f
+            val vy = routedTracker?.yVelocity ?: 0f
+            if (routedDrag && action != MotionEvent.ACTION_CANCEL) {
+                val direction = PillAxisGeometry.swipe(true, dx, dy, vx, vy,
+                    target.layoutParams.height.toFloat(), density)
+                if (direction != 0) {
+                    if ((owner?.islandCount() ?: 0) >= 2) owner?.switchIsland(direction > 0)
+                    else if (!routedSmall && direction > 0) owner?.openRailCard()
+                }
+                noteTouch("vertical swipe dy=${dy.toInt()} direction=$direction")
+            }
+            if (routedSmall) owner?.springSmallNudgeBack(0f, 0f)
+            else target.releaseRailContent()
+            endRoute()
+        }
+        return true
+    }
 
     /** Up past this, a pull stops being a nudge and opens (or goes back into the scene). */
     private const val DRAG_THRESHOLD_DP = 72f
@@ -1526,6 +1577,28 @@ object MiniPlayerRuntime {
         controllers.values.firstOrNull()?.left
     }
 
+    @JvmStatic fun railVisualDiscDiameter(): Float = live().firstOrNull()?.railVisibleDiscDiameter()
+        ?: 38.4f * Main.density()
+    @JvmStatic fun railIndicatorExtent(): Float = if (colorOsStyle())
+        ColorOsPill.BRACKET_OUT_DP * Main.density() else 0f
+
+    @JvmStatic fun railShortcutViews(): Array<View>? = synchronized(controllers) {
+        controllers.values.firstOrNull { it.left.isAttachedToWindow && it.right.isAttachedToWindow }
+            ?.let { arrayOf(it.left, it.right) }
+    }
+
+    @JvmStatic @JvmName("railShortcutLayoutBoxes") internal fun railShortcutLayoutBoxes(): Array<FoldMusicLayout.Box>? =
+        live().firstNotNullOfOrNull { it.railShortcutLayoutBoxes() }
+
+    @JvmStatic fun pillForDiagnostics(): View? = synchronized(controllers) {
+        controllers.values.firstNotNullOfOrNull { it.controller.pill()?.takeIf { p -> p.isAttachedToWindow } }
+    }
+
+    @JvmStatic fun refreshNativeMaterial() {
+        materialGeneration++
+        refresh()
+    }
+
     /**
      * For the settings preview, in px: host width, then the torch's and the camera's laid-out
      * centre and icon size (x, y, w, h each). Null until a shortcut row has been built.
@@ -1621,6 +1694,29 @@ object MiniPlayerRuntime {
             }
         }
         return sb.toString()
+    }
+
+    /** Explicit read-only probe: material provenance and view ancestry, never notification text. */
+    @JvmStatic fun describeMaterialTargets(): String = buildString {
+        append("material=").append(cardEffect).append(" generation=").append(materialGeneration)
+        append("\nrecipe=")
+        append(cardRecipe?.joinToString(" -> ") { "${it.method.declaringClass.name}.${it.method.name}" }
+            ?: "not captured")
+        val targets = dressedViews.toList().filter { it.isAttachedToWindow }.take(16)
+        append("\ntargets=").append(targets.size)
+        for (target in targets) {
+            append("\n  ")
+            var view: View? = target
+            repeat(10) {
+                val v = view ?: return@repeat
+                if (it > 0) append(" <- ")
+                append(v.javaClass.name)
+                val id = runCatching { v.resources.getResourceEntryName(v.id) }.getOrNull()
+                if (id != null) append('#').append(id)
+                append('[').append(v.width).append('x').append(v.height).append(']')
+                view = v.parent as? View
+            }
+        }
     }
 
     @JvmStatic fun canvasPlayerInPill(): Boolean = live().any { it.canvasPlayerInPill() }
@@ -1726,6 +1822,10 @@ object MiniPlayerRuntime {
     @JvmStatic fun prepareSceneEntry(): Boolean =
         live().any { it.beginTransition(toNative = true, scene = true) }
 
+    /** Rail cards use the native stack's entrance/exit, never the capsule as a morph endpoint. */
+    @JvmStatic fun detachedRail(): Boolean = Main.sRightRail &&
+        (LockScreenRailRuntime.active() || live().any { it.pill()?.vertical == true })
+
     /** Out of the cover or lyrics: the card shrinks back into the pill. */
     @JvmStatic fun prepareSceneExit(): Boolean =
         live().any { it.beginTransition(toNative = false, scene = true) }
@@ -1735,6 +1835,10 @@ object MiniPlayerRuntime {
     /** A released notification's row under a point on screen: a swipe down there collapses it. */
     @JvmStatic fun releasedRowAt(x: Float, y: Float): String? =
         live().firstNotNullOfOrNull { it.releasedRowAt(x, y) }
+
+    @JvmStatic fun collapseRailOne(): Boolean = live().any { it.collapseRailOne() }
+    @JvmStatic fun railMediaExitActive(): Boolean = live().any { it.railMediaExiting() }
+    @JvmStatic fun railDismissState(): String = live().joinToString(" ; ") { it.railDismissState() }
 
     /**
      * The lock screen's list at its top, where a pull down on a card can fold it home.
@@ -1749,6 +1853,12 @@ object MiniPlayerRuntime {
 
     /** The list is being scrolled from a card: a card held where it landed goes with it. */
     @JvmStatic fun releaseNativeScrollPin() = live().forEach { it.releaseNativeScrollPin() }
+
+    @JvmStatic fun keyguardExiting() {
+        entryDefaults.arm()
+        live().forEach { it.onKeyguardExit() }
+    }
+    @JvmStatic fun surfaceState(): String = live().joinToString(" ; ") { it.surfaceState() }
 
     @JvmStatic fun prepareForSleep() = live().forEach { it.prepareForSleep() }
 
@@ -1881,100 +1991,8 @@ object MiniPlayerRuntime {
      * no such ancestor - the element alone drew nothing at all - so the pill is made a
      * container the way ElementSurfaceModel.updateBlurContainer makes one.
      */
-    private val backgroundMode by lazy {
-        View::class.java.getMethod("setMiBackgroundBlurMode", Int::class.javaPrimitiveType)
-    }
-    private val backgroundRadius by lazy {
-        View::class.java.getMethod("setMiBackgroundBlurRadius", Int::class.javaPrimitiveType)
-    }
-    private val viewBlurMode by lazy {
-        View::class.java.getMethod("setMiViewBlurMode", Int::class.javaPrimitiveType)
-    }
-    private val passWindowBlur by lazy {
-        View::class.java.getMethod("setPassWindowBlurEnabled", Boolean::class.javaPrimitiveType)
-    }
-
-    private val suppressedPillBackdrops = WeakHashMap<View, Boolean>()
-    private val configuredBackdropViews = WeakHashMap<ImageView, Boolean>()
-    private val configuredBackdropRadii = WeakHashMap<View, Int>()
-    private val morphBackdropRadii = WeakHashMap<View, Int>()
-
-    /** The custom pill's backdrop lives on its parent, outside materialLayer's alpha. */
-    internal fun fadePillBackdrop(view: ImageView, amount: Float) {
-        if (configuredBackdropViews[view] != true) return
-        val container = view.parent as? View ?: return
-        val base = configuredBackdropRadii[container] ?: return
-        val radius = (base * amount.coerceIn(0f, 1f)).roundToInt()
-        if (morphBackdropRadii[container] == radius) return
-        runCatching { backgroundRadius.invoke(container, radius) }
-        morphBackdropRadii[container] = radius
-    }
-
-    /** A stretched pill must not blur the player underneath its own focus animation. */
-    internal fun suppressPillBackdrop(view: ImageView, suppress: Boolean) {
-        val container = view.parent as? View ?: return
-        if (suppress) suppressedPillBackdrops[container] = true
-        else suppressedPillBackdrops.remove(container)
-        configuredBackground(view)
-    }
-
-    /** Blur the backdrop only; glyphs and shortcut icons remain outside the blurred content. */
-    private fun configuredBackground(view: ImageView): Boolean = runCatching {
-        val config = JSONObject(configJson(view.context))
-        val blur = config.optBoolean(MiniPlayerConfig.BACKGROUND_BLUR)
-        // Disabled means replay the OEM recipe without stripping its glass or blend colors.
-        if (!blur) return false
-        val container = view.parent as? View ?: return false
-        val useBlur = blur && suppressedPillBackdrops[container] != true
-        val radius = (MiniPlayerConfig.blurRadius(config.optDouble(
-            MiniPlayerConfig.BACKGROUND_BLUR_RADIUS, 30.0))
-            * view.resources.displayMetrics.density).toInt()
-        configuredBackdropRadii[container] = if (useBlur) radius else 0
-        morphBackdropRadii.remove(container)
-        run {
-            // Initialize the same cross-window blur source used by the native pill container.
-            Class.forName("miuix.core.util.MiuiBlurUtils", false, loader ?: view.context.classLoader)
-                .getMethod("setMiBlurWinType", View::class.java).invoke(null, container)
-            // Radius alone does not leave Soft Glass: explicitly select the Gaussian material.
-            for (target in listOf(container, view)) {
-                View::class.java.getMethod("setMiViewMaterialType", Int::class.javaPrimitiveType)
-                    .invoke(target, 0)
-                runCatching { View::class.java.getMethod("clearMiBackgroundBlendColor").invoke(target) }
-                runCatching { View::class.java.getMethod("setMiGlassBlurRadius",
-                    Int::class.javaPrimitiveType, Int::class.javaPrimitiveType).invoke(target, 0, 0) }
-                backgroundMode.invoke(target, if (useBlur && target === container) 1 else 0)
-                backgroundRadius.invoke(target, if (useBlur && target === container) radius else 0)
-                viewBlurMode.invoke(target, if (useBlur) 1 else 0)
-                passWindowBlur.invoke(target, useBlur)
-            }
-        }
-        view.background = null
-        view.setImageDrawable(GradientDrawable().apply {
-            setColor(MiniPlayerConfig.blurTint(config.optDouble(
-                MiniPlayerConfig.BACKGROUND_BLUR_BRIGHTNESS, 80.0)))
-        })
-        dressedViews.add(view)
-        configuredBackdropViews[view] = true
-        aodDimArgs?.let { run { dimView(view, it) } }
-        true
-    }.getOrElse {
-        Xp.log("MCMini: configured background unavailable: $it")
-        false
-    }
-
     internal fun material(view: ImageView, classLoader: ClassLoader) {
-        if (configuredBackground(view)) return
-        // Clear only our previous custom blur before replaying the native recipe.
-        if (configuredBackdropViews.remove(view) == true) runCatching {
-            run {
-                for (target in listOfNotNull(view.parent as? View, view)) {
-                    backgroundMode.invoke(target, 0)
-                    backgroundRadius.invoke(target, 0)
-                    viewBlurMode.invoke(target, 0)
-                    passWindowBlur.invoke(target, false)
-                }
-            }
-        }.onFailure { Xp.log("MCMini: custom backdrop reset failed: $it") }
+        NativeGlassRelay.register(view)
         val ctx = view.context
         runCatching {
             val res = ctx.resources
@@ -2120,6 +2138,9 @@ private class MiniPlayerController(
     private var clockTopAsked = Float.NaN
 
     private val preDraw = ViewTreeObserver.OnPreDrawListener { android.os.Trace.beginSection("MC islandsPreDraw"); try {
+        if (!LockscreenSurfacePolicy.visible(Main.keyguardLocked(), MiniPlayerScene.keyguardGoingAway)) {
+            if (!exitSurfacesHidden) onKeyguardExit()
+        } else exitSurfacesHidden = false
         holdKept()
         holdRows()
         // The rows can settle after the stack last told the clock where they are - a row let out
@@ -2135,6 +2156,7 @@ private class MiniPlayerController(
             followShortcuts()
         }
         updateDiscs()
+        applyRailMediaExitFrame()
         lottiesFollowSight()
         true
     } finally { android.os.Trace.endSection() } }
@@ -2161,6 +2183,8 @@ private class MiniPlayerController(
      * and came back: a flash.
      */
     private fun followShortcuts() {
+        LockScreenRailRuntime.positionControls()
+        updateRailAodInset()
         val view = player ?: return
         // The spread's morphs place the pill; out as the list, it is not drawn.
         if (spread != null) {
@@ -2217,7 +2241,20 @@ private class MiniPlayerController(
         val lUp = followable(left)
         val rUp = followable(right)
         val single = if (lUp != rUp) (if (lUp) left else right) else null
-        if (!rowHeldOff && lUp && rUp) {
+        val railPair = LockScreenRailRuntime.active() &&
+            listOf(left, right).all { it.isAttachedToWindow && !switchedOff(it) && it.width > 0 && it.height > 0 }
+        if (railPair) {
+            followBranch = "vertical pair"
+            if (!rowHeldOff) fade *= rowFade
+            if (!railCentre(0, drawnL) || !railCentre(1, drawnR)) return
+            if (!LockScreenRailRuntime.controlReference(host, railReference)) return
+            val motion = RailColumnMotion.follow(railReference[0], railReference[1], railReference[2],
+                (drawnL[0] + drawnR[0]) / 2f, (drawnL[1] + drawnR[1]) / 2f,
+                kotlin.math.hypot(drawnR[0] - drawnL[0], drawnR[1] - drawnL[1])) ?: return
+            matrix.reset()
+            matrix.setScale(motion.scale, motion.scale)
+            matrix.postTranslate(motion.x, motion.y)
+        } else if (!rowHeldOff && lUp && rUp) {
             followBranch = "pair"
             fade *= rowFade
             // Where each button is drawn now and where it rests, both in the host's pixels.
@@ -2283,9 +2320,9 @@ private class MiniPlayerController(
         // The squeeze, inside that: about the pill's own centre in its slot, its nudge included.
         // In pixels, not shares: with a small island the row the squeeze measured is wider
         // than the pill, and its shares of the row are not the pill's.
-        val sx = squeeze.pillScaleX(view.width.toFloat())
-        val sy = squeeze.pillScaleY()
-        val shift = squeeze.pillShiftPx()
+        val sx = if (view.vertical) 1f else squeeze.pillScaleX(view.width.toFloat())
+        val sy = if (view.vertical) 1f else squeeze.pillScaleY()
+        val shift = if (view.vertical) 0f else squeeze.pillShiftPx()
         if (kotlin.math.abs(sx - 1f) > 0.0005f || kotlin.math.abs(sy - 1f) > 0.0005f
             || kotlin.math.abs(shift) > 0.25f) {
             pillSqueeze.setScale(sx, sy, view.translationX + view.width / 2f,
@@ -2343,6 +2380,45 @@ private class MiniPlayerController(
     private val drawnR = FloatArray(2)
     private val restL = FloatArray(2)
     private val restR = FloatArray(2)
+    private val railReference = FloatArray(3)
+    private val railButtonOffsets = arrayOfNulls<GeometryLease>(2)
+    private var railButtonsDozing = false
+
+    private fun restoreRailAodInset() {
+        for (side in 0..1) {
+            val lease = railButtonOffsets[side] ?: continue
+            val button = button(side)
+            val restored = lease.restoreX(button.translationX)
+            if (restored != button.translationX) button.translationX = restored
+            railButtonOffsets[side] = null
+        }
+        railButtonsDozing = false
+    }
+
+    private fun updateRailAodInset() {
+        if (!LockScreenRailRuntime.active() || MiniPlayerScene.keyguardGoingAway) {
+            restoreRailAodInset(); return
+        }
+        if (MiniPlayerScene.aodActive || !Main.screenOnCached()) railButtonsDozing = true
+        else if (!LockScreenRailRuntime.holdGeometry()) { restoreRailAodInset(); return }
+        if (!railButtonsDozing || !LockScreenRailRuntime.controlReference(host, railReference)) return
+        followHost.reset(); host.transformMatrixToGlobal(followHost)
+        if (!followHost.invert(hostInverse)) return
+        for (side in 0..1) {
+            val button = button(side)
+            val parent = button.parent as? View ?: continue
+            if (!button.isAttachedToWindow || !drawnCentre(button, drawnL)) continue
+            val parentScale = drawnZoom(parent)
+            if (parentScale <= .01f) continue
+            val lease = railButtonOffsets[side] ?: GeometryLease(button.layoutParams.width,
+                button.translationX).also { railButtonOffsets[side] = it }
+            lease.observe(button.layoutParams.width, button.translationX)
+            val nativeCenter = drawnL[0] - (button.translationX - lease.originalX) * parentScale
+            val next = RailAodInset.translation(lease.originalX, nativeCenter, railReference[0], parentScale)
+            if (kotlin.math.abs(button.translationX - next) > .1f) button.translationX = next
+            lease.wrote(button.layoutParams.width, button.translationX)
+        }
+    }
     private val followValues = FloatArray(9)
     private val lastFollow = FloatArray(9)
 
@@ -2363,12 +2439,41 @@ private class MiniPlayerController(
         return true
     }
 
+    /** Follow the shared column/AOD transform, excluding each icon's native press and shake. */
+    private fun railCentre(side: Int, out: FloatArray): Boolean {
+        val icon = button(side)
+        val parent = icon.parent as? View ?: return false
+        if (!icon.isAttachedToWindow || icon.width <= 0) return false
+        scratch.reset(); parent.transformMatrixToGlobal(scratch); scratch.postConcat(hostInverse)
+        out[0] = icon.left + icon.width / 2f + (railButtonOffsets[side]?.writtenX ?: 0f)
+        out[1] = icon.top + icon.height / 2f
+        scratch.mapPoints(out)
+        return true
+    }
+
     /** The same centre with no transform anywhere: layout positions only. */
     private fun restCentre(v: View, out: FloatArray = FloatArray(2)): FloatArray {
         restOrigin(v, out)
         out[0] += v.width / 2f
         out[1] += v.height / 2f
         return out
+    }
+
+    fun railShortcutLayoutBoxes(): Array<FoldMusicLayout.Box>? {
+        if (!left.isAttachedToWindow || !right.isAttachedToWindow ||
+            left.width <= 0 || right.width <= 0) return null
+        return arrayOf(left, right).map { v ->
+            val at = FloatArray(2); restOrigin(v, at)
+            // Preserve MiDuo's relocation, but do not bake the root's AOD transform into
+            // the reference used to follow that same transform later.
+            var p: View? = v
+            while (p != null && p !== host) {
+                val name = runCatching { p!!.resources.getResourceEntryName(p!!.id) }.getOrNull()
+                if (name != "keyguard_root_view") { at[0] += p.translationX; at[1] += p.translationY }
+                p = p.parent as? View
+            }
+            FoldMusicLayout.Box(at[0], at[1], at[0] + v.width, at[1] + v.height)
+        }.toTypedArray()
     }
 
     private fun restOrigin(v: View, out: FloatArray) {
@@ -2475,9 +2580,32 @@ private class MiniPlayerController(
     fun switchIsland(next: Boolean, flingPx: Float = 0f) {
         // One island out as its card or not, a swipe switches the row's own islands: the card
         // stays as it is (2026-09-25).
+        player?.takeIf { it.vertical && it.railContentSwitching() }?.finishRailContentTransition()
         val keys = islandKeys
         if (!canSwitchIsland(next)) {
             resetIslandDrag()
+            return
+        }
+        if (player?.vertical == true) {
+            // The old ColorOS liquid switch shrinks WIDTH to HEIGHT, making a 149x608
+            // rail become 608x608. Keep the frame upright while changing its content.
+            endSwap()
+            endRow()
+            resetIslandDrag()
+            clearSmallNudge()
+            val at = keys.indexOf(selectedIsland).coerceAtLeast(0)
+            val target = if (colorOs()) (at + if (next) 1 else keys.size - 1) % keys.size
+                else (at + if (next) 1 else -1).coerceIn(0, keys.lastIndex)
+            val nextKey = keys[target]
+            player?.switchRailContent(next) {
+                if (nextKey in islandKeys) {
+                    selectedIsland = nextKey
+                    preferredSmall = null
+                    aloneFirst = null
+                }
+                refresh()
+                schedulePosition()
+            }
             return
         }
         if (colorOs()) {
@@ -3049,6 +3177,15 @@ private class MiniPlayerController(
                           /** ColorOS: the next island takes the capsule as a notification comes in (Swap.popIn). */
                           popIn: Boolean = false) {
         val view = player ?: return
+        if (view.vertical) {
+            endSwap()
+            endRow()
+            resetIslandDrag()
+            clearSmallNudge()
+            if (morph == null && group == null) view.endMorph()
+            schedulePosition()
+            return
+        }
         // A switch cut short goes on from what it was drawing, at its speed - the super island's
         // folme.to from the current value and velocity. Restarted from rest, the pill lost its
         // speed at every tap mid-switch, and an island shrinking into the small place (its
@@ -3221,6 +3358,7 @@ private class MiniPlayerController(
      * refresh that bound the new island. Called after that refresh.
      */
     private fun startUpdate(old: android.graphics.Picture?, oldRest: CoverMorphMotion.Box) {
+        if (MiniPlayerRuntime.detachedRail()) return
         val view = player ?: return
         if (view.visibility != View.VISIBLE || gooActive || frameTaken() && !updating()) return
         // Taking over a running update: the content it was bringing into focus goes on from as
@@ -3724,6 +3862,15 @@ private class MiniPlayerController(
         // spring. Counted busy, it jumped to its new width the moment a flight set out.
         // A media card's morph lands on the row as it is laid out, so the row is put there at once.
         val pillMorphing = morph != null && flight == null || group != null
+        // A horizontal row's remembered width and velocity have no vertical meaning. Snap the
+        // reserved rail frame into place; appearance still animates uniformly on both axes.
+        if (view?.vertical == true) {
+            rowLeft.value = left; rowLeft.target = left; rowLeft.velocity = 0f
+            rowWidth.value = width; rowWidth.target = width; rowWidth.velocity = 0f
+            rowKnown = view.visibility == View.VISIBLE
+            if (rowAnimating) endRow()
+            return
+        }
         val busy = swap != null || pillMorphing || view == null || view.visibility != View.VISIBLE
         if (!rowKnown || busy) {
             // Nothing drawn to move from, or another motion owns the frame: straight there.
@@ -3920,7 +4067,7 @@ private class MiniPlayerController(
         // The row as its own spring has it, grown out of its own middle: scaled up from
         // APPEAR_SCALE, faded and blurred in, and back the same way (the maintainer's pick,
         // 2026-10-24, over growing out of a circle at its left end).
-        val fullW = (if (rowKnown) rowWidth.value else rest.w).coerceAtLeast(rest.h)
+        val fullW = PillAxisGeometry.rowWidth(if (rowKnown) rowWidth.value else rest.w, rest.h, view.vertical)
         val left = if (rowKnown) xy[0] + rowLeft.value else rest.x
         val p = appear.value.coerceIn(0f, 1.2f)
         val s = APPEAR_SCALE + (1f - APPEAR_SCALE) * p
@@ -3936,7 +4083,7 @@ private class MiniPlayerController(
         if (view.inMorph()) backDrawn++
         if (backMinW.isNaN() || w < backMinW) backMinW = w
         view.setAppearScale(s)
-        view.setMorphFrame(CoverMorphMotion.Box(left + (fullW - w) / 2f, rest.y + (rest.h - h) / 2f, w, h), h / 2f, a)
+        view.setMorphFrame(CoverMorphMotion.Box(left + (fullW - w) / 2f, rest.y + (rest.h - h) / 2f, w, h), min(w, h) / 2f, a)
         view.setContentAlpha(a)
         view.setContentBlur((1f - a) * APPEAR_BLUR_DP * density())
         return true
@@ -3989,8 +4136,8 @@ private class MiniPlayerController(
             .coerceIn(-ROW_SQUASH_MAX, ROW_SQUASH_MAX)
         val h = rest.h * (1f - squash)
         val box = CoverMorphMotion.Box(xy[0] + rowLeft.value, rest.y + (rest.h - h) / 2f,
-            rowWidth.value.coerceAtLeast(h), h)
-        view.setMorphFrame(box, box.h / 2f, 1f)
+            PillAxisGeometry.rowWidth(rowWidth.value, h, view.vertical), h)
+        view.setMorphFrame(box, min(box.w, box.h) / 2f, 1f)
     }
 
     /** The row's spring hands the frame back: at rest, or to another motion taking it. */
@@ -4106,6 +4253,7 @@ private class MiniPlayerController(
      * [toNative] the music goes up into the card, else the card comes down into the row.
      */
     private fun prepareGroup(native: View, toNative: Boolean): MiniCardMorph? {
+        if (MiniPlayerRuntime.detachedRail()) return null
         musicComingDown = !toNative
         try {
             return prepareGroupUnsafe(native, toNative)
@@ -5075,6 +5223,8 @@ private class MiniPlayerController(
      * them smaller than the capsule, which balances the row (the user's request, 2026-10-18).
      * At full size they take that room back from the capsule's width (see pillRest).
      */
+    fun railVisibleDiscDiameter(): Float = (dp(48f) * shortcutScale()).roundToInt().toFloat()
+
     private fun shortcutScale(): Float =
         if (colorOs() && !config.optBoolean(MiniPlayerConfig.COLOROS_FULL_SIZE)) COLOROS_SHORTCUT else 1f
 
@@ -5389,7 +5539,6 @@ private class MiniPlayerController(
         // The pill keeps its own glass (Soft Glass draws its rim from the view's own rounded
         // frame; the shared glass, one wide view cut by a path, came out a plain blur until the
         // pill settled, 2026-10-20). The shared glass only draws what no view covers.
-        view.suppressBackdropBlur(false)
         view.setMorphFrame(f.old, f.old.h / 2f, 1f)
         gooShrink(view, f.old, rest)
         val (oldSharp, _) = ColorOsPill.oldContent(p)
@@ -5489,11 +5638,9 @@ private class MiniPlayerController(
         endRow()
         startGhost(oldKey, oldFrom)
         ghostPill?.let {
-            it.suppressBackdropBlur(false)
             it.setMorphFrame(oldFrom, oldFrom.h / 2f, 1f)
         }
         view.beginMorph(layoutOnly = true)
-        view.suppressBackdropBlur(false)
         goo = GooSwitch(next, oldKey, rest)
         return true
     }
@@ -5582,10 +5729,22 @@ private class MiniPlayerController(
         }
         gooShape.reset()
         val grow = 1f - BRACKET_LIFT_SHRINK * hintsLift
-        ColorOsPill.neighbourPath(rest, right = false, grow = grow, out = gooOut(),
-            stroke = gooStroke(), into = gooShape)
-        ColorOsPill.neighbourPath(rest, right = true, grow = grow, out = gooOut(),
-            stroke = gooStroke(), into = gooShape)
+        if (view?.vertical == true) {
+            // Build the same end markers on a horizontal local frame, then rotate their
+            // geometry onto the rail's long axis. The capsule and its text remain upright.
+            val horizontal = CoverMorphMotion.Box(rest.cx() - rest.h / 2f,
+                rest.cy() - rest.w / 2f, rest.h, rest.w)
+            ColorOsPill.neighbourPath(horizontal, right = false, grow = grow, out = gooOut(),
+                stroke = gooStroke(), into = gooShape)
+            ColorOsPill.neighbourPath(horizontal, right = true, grow = grow, out = gooOut(),
+                stroke = gooStroke(), into = gooShape)
+            gooShape.transform(Matrix().apply { setRotate(90f, rest.cx(), rest.cy()) })
+        } else {
+            ColorOsPill.neighbourPath(rest, right = false, grow = grow, out = gooOut(),
+                stroke = gooStroke(), into = gooShape)
+            ColorOsPill.neighbourPath(rest, right = true, grow = grow, out = gooOut(),
+                stroke = gooStroke(), into = gooShape)
+        }
         showGoo(gooShape, rest)
     }
 
@@ -5613,6 +5772,7 @@ private class MiniPlayerController(
      * the cover, the others stood still and the pill swapped islands in one jump at the end.
      */
     private fun startSceneFlight(native: View, toNative: Boolean): Boolean {
+        if (MiniPlayerRuntime.detachedRail()) return false
         if (noteMorphKey != null || flight != null || exchange != null) return false
         val view = player?.takeIf { it.visibility == View.VISIBLE } ?: return false
         endSwap()
@@ -5663,6 +5823,9 @@ private class MiniPlayerController(
      * would be, and the notifications' islands stopped answering with it (PR #15).
      */
     fun onMediaCardRemoved() {
+        finishRailMediaExit(commit = false)
+        railCollapsedToken = null
+        railReturnedSelection = null
         exchange?.let { x ->
             if (x.expanded == MUSIC_ISLAND) x.expanded = null
             if (x.pending == MUSIC_ISLAND) x.pending = null
@@ -6546,6 +6709,10 @@ private class MiniPlayerController(
 
     /** [up] - the pill's island or the small one - goes out in place of the one out now. */
     private fun startExchange(up: String, toCover: Boolean = false): Boolean { android.os.Trace.beginSection("MC startExchange"); try {
+        if (MiniPlayerRuntime.detachedRail()) {
+            openDetachedIsland(up, toCover)
+            return true
+        }
         val down = expandedKey()
         val busy = exchange != null || morph != null || noteMorphKey != null || flight != null || group != null
         if (down == null || down == up || busy) {
@@ -7069,7 +7236,242 @@ private class MiniPlayerController(
         MiniPlayerRuntime.withMusicPillTap(selectedIsland == MUSIC_ISLAND) { openCoverFromTap() }
     }
 
+    /** One rail island opens upward without donating its frame or artwork to the card. */
+    fun openRailCard() {
+        selectedIsland?.let { openDetachedIsland(it) }
+    }
+
+    private val railDismissOrder = RailDismissOrder()
+    private val railClosing = HashSet<String>()
+    private var lastRailCollapse = "none"
+
+    fun railDismissState(): String = "want=${wantsCardSwipe()} music=${musicCarded(controller?.takeIf(::isUsable))} " +
+        "mediaExit=${railMediaExiting()} pendingNotes=${railClosing.count { it != MUSIC_ISLAND }} " +
+        "last=$lastRailCollapse scroll=[$lastScrollRead]"
+
+    private fun railNotificationsOpen(): Boolean {
+        if (!Main.keyguardLocked() || !Main.onKeyguardNow() || MiniPlayerScene.aodActive) return false
+        if (NumState.inNumber == true || NumState.state() == "NUMBER") return false
+        return LockIslands.membersOf(STACK_ISLAND).any { member ->
+            val row = findRow(member)?.first
+            row != null && row.isShown && row.height > 0 && row.alpha > .05f && row.transitionAlpha > .05f
+        }
+    }
+
+    fun collapseRailOne(): Boolean {
+        if (!MiniPlayerRuntime.detachedRail() || !Main.keyguardLocked() ||
+            !Main.onKeyguardNow() || MiniPlayerScene.aodActive || MiniPlayerScene.keyguardGoingAway) return false
+        val available = LockIslands.releasedKeys().filter { it != MUSIC_ISLAND }.toMutableList()
+        if (railNotificationsOpen() && STACK_ISLAND !in available) available += STACK_ISLAND
+        if (musicCarded(controller?.takeIf(::isUsable))) available += MUSIC_ISLAND
+        railClosing.retainAll(available.toSet())
+        val key = railDismissOrder.next(available, MUSIC_ISLAND, railClosing, railMediaExiting())
+        if (key == null) {
+            lastRailCollapse = if (railMediaExiting()) "music-animation-running" else "no-expanded-card"
+            // A second gesture during the same exit must not start opening the shade.
+            return railMediaExiting()
+        }
+        when (key) {
+            STACK_ISLAND -> {
+                if (!NumState.goTo("NUMBER", why = "rail single collapse").startsWith("scrollY")) return false
+            }
+            MUSIC_ISLAND -> {
+                if (!beginRailMediaExit()) {
+                    railReturnedSelection = MUSIC_ISLAND
+                    if (Main.coverModeOn()) Main.miniPlayerLeaveCover()
+                    controller?.sessionToken?.let(MiniPlayerRuntime::selectMini)
+                }
+            }
+            else -> LockIslands.recapture(key)
+        }
+        railDismissOrder.closed(key)
+        // The music may reopen through startup, artwork or lyrics controls without going
+        // through openDetachedIsland. Only its active exit animation blocks another close.
+        if (key != MUSIC_ISLAND) railClosing += key
+        lastRailCollapse = if (key == MUSIC_ISLAND) "music" else "notification"
+        MiniPlayerRuntime.noteTouch("rail collapsed one: ${if (key == MUSIC_ISLAND) "music" else "notification"}")
+        refresh()
+        schedulePosition()
+        return true
+    }
+
+    private var railMediaExit: android.animation.ValueAnimator? = null
+    private var railMediaExitView: View? = null
+    private var railMediaExitToken: Any? = null
+    private var railCollapsedToken: Any? = null
+    private var railExitPillWasVisible = false
+    private var lastRailExitHiddenBeforeRestore = false
+    private var railReturnedSelection: String? = null
+    private var railExitFraction = 0f
+    private var railExitRevision = -1L
+    private var railExitDistance = 0f
+    private var railExitSlotX = 0f
+    private var railExitSlotY = 0f
+    private var railExitAlpha = 1f
+    private var railExitWrittenAlpha = 1f
+    private var railExitFrames = 0
+    private var lastRailExitFrames = 0
+    private var lastRailExit = "none"
+    private val railExitBase = Matrix()
+    private val railExitMatrix = Matrix()
+    private val railExitInverse = Matrix()
+    private var railExitSavedMatrix: Matrix? = null
+    private val railExitLocation = IntArray(2)
+
+    fun railMediaExiting(): Boolean = railMediaExitView != null
+
+    /** The clock's slower cover exit may not reclaim a player already returned to its pill. */
+    private fun railReturnOwnsPresentation(): Boolean {
+        val token = railCollapsedToken ?: return false
+        if (token != controller?.sessionToken || !Main.keyguardLocked() ||
+            Main.coverModeOn() || MiniPlayerRuntime.nativeRequested(token)) {
+            railCollapsedToken = null
+            return false
+        }
+        return true
+    }
+
+    private fun beginRailMediaExit(): Boolean {
+        val token = controller?.sessionToken ?: return false.also { lastRailExit = "no-session" }
+        val card = listOfNotNull(Main.miniPlayerMediaHeader(), transitionHeader(),
+            Main.findLockScreenView("mi_media_controls"))
+            .firstOrNull { it.isAttachedToWindow && it.isShown && it.height > 0 }
+            ?: return false.also { lastRailExit = "no-visible-header" }
+        if (railMediaExit != null) return false
+        val parent = card.parent as? View ?: return false
+        unpinCard()
+        railMediaExitView = card
+        railMediaExitToken = token
+        railCollapsedToken = null
+        railExitPillWasVisible = player?.let { it.visibility == View.VISIBLE && it.alpha * it.transitionAlpha > .01f } == true
+        if (railExitPillWasVisible && appearing) {
+            appear.target = 1f
+            endAppear()
+        }
+        railExitFraction = 0f
+        railExitRevision = Main.screenGeometry().revision
+        railExitFrames = 0
+        lastRailExit = "sliding"
+        railExitAlpha = card.transitionAlpha
+        railExitWrittenAlpha = railExitAlpha
+        railExitBase.set(card.matrix)
+        railExitSavedMatrix = card.animationMatrix?.let(::Matrix)
+        parent.getLocationOnScreen(railExitLocation)
+        railExitSlotX = railExitLocation[0] - parent.scrollX + card.left.toFloat()
+        railExitSlotY = railExitLocation[1] - parent.scrollY + card.top.toFloat()
+        val location = IntArray(2).also(card::getLocationOnScreen)
+        val hostLocation = IntArray(2).also(host::getLocationOnScreen)
+        railExitDistance = RailCardExitMotion.distance((hostLocation[1] + host.height).toFloat(),
+            location[1].toFloat(), dp(16f).toFloat())
+        // Selection remains expanded until the independent card animation has finished.
+        MiniPlayerRuntime.chooseNative(token)
+        if (Main.coverModeOn()) Main.miniPlayerLeaveCover()
+        val animation = android.animation.ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = 320L
+            interpolator = android.view.animation.LinearInterpolator()
+            addUpdateListener {
+                if (controller?.sessionToken != token) finishRailMediaExit(commit = false)
+                else if (!Main.keyguardLocked() || MiniPlayerScene.keyguardGoingAway || !card.isAttachedToWindow ||
+                    MiniPlayerScene.aodActive || !Main.screenOnCached() || railExitRevision != Main.screenGeometry().revision)
+                    finishRailMediaExit(commit = true)
+                else {
+                    railExitFraction = it.animatedValue as Float
+                    applyRailMediaExitFrame()
+                }
+            }
+            addListener(object : android.animation.AnimatorListenerAdapter() {
+                override fun onAnimationEnd(animation: android.animation.Animator) {
+                    if (railMediaExit === animation) finishRailMediaExit(commit = true)
+                }
+            })
+        }
+        railMediaExit = animation
+        animation.start()
+        return true
+    }
+
+    /** Counter the stack's transform on every draw, using the same matrix contract as card morphs. */
+    private fun applyRailMediaExitFrame() {
+        val card = railMediaExitView ?: return
+        val parent = card.parent as? View ?: return
+        parent.getLocationOnScreen(railExitLocation)
+        val slotX = railExitLocation[0] - parent.scrollX + card.left.toFloat()
+        val slotY = railExitLocation[1] - parent.scrollY + card.top.toFloat()
+        railExitMatrix.set(railExitBase)
+        railExitMatrix.postTranslate(railExitSlotX - slotX,
+            railExitSlotY - slotY + railExitDistance * RailCardExitMotion.progress(railExitFraction))
+        if (!card.matrix.isIdentity && card.matrix.invert(railExitInverse)) railExitMatrix.preConcat(railExitInverse)
+        card.setAnimationMatrix(railExitMatrix)
+        railExitWrittenAlpha = railExitAlpha * RailCardExitMotion.alpha(railExitFraction)
+        card.transitionAlpha = railExitWrittenAlpha
+        railExitFrames++
+    }
+
+    private fun finishRailMediaExit(commit: Boolean) {
+        val card = railMediaExitView ?: return
+        val animation = railMediaExit
+        val token = railMediaExitToken
+        val returnToMini = commit && token != null && token == controller?.sessionToken
+        railMediaExit = null
+        animation?.removeAllUpdateListeners()
+        animation?.removeAllListeners()
+        animation?.cancel()
+        lastRailExitHiddenBeforeRestore = false
+        // The invisible lease is established while the animated card is still below the
+        // display. Restoring its matrix or transitionAlpha first exposes its native slot.
+        RailExitHandoff.complete(returnToMini, object : RailExitHandoff.Target {
+            override fun hideNative() {
+                nativeSuppressionRequested = true
+                suppressHeaderView(card)
+                updateHeader()
+                lastRailExitHiddenBeforeRestore = card.visibility == View.INVISIBLE && card.alpha == 0f
+            }
+            override fun selectMini() {
+                railCollapsedToken = token
+                railReturnedSelection = MUSIC_ISLAND
+                MiniPlayerRuntime.chooseMini(token!!)
+            }
+            override fun restorePose() {
+                card.setAnimationMatrix(railExitSavedMatrix)
+                railExitSavedMatrix = null
+                if (card.transitionAlpha == railExitWrittenAlpha) card.transitionAlpha = railExitAlpha
+            }
+        })
+        railMediaExitView = null
+        railMediaExitToken = null
+        railClosing.remove(MUSIC_ISLAND)
+        lastRailExitFrames = railExitFrames
+        lastRailExit = if (returnToMini) "returned" else "cancelled"
+        if (commit) {
+            refresh()
+            schedulePosition()
+        }
+    }
+
+    private fun openDetachedIsland(key: String, cover: Boolean = false) {
+        if (key == MUSIC_ISLAND) finishRailMediaExit(commit = false)
+        railClosing.remove(key)
+        railDismissOrder.opened(key)
+        if (key == MUSIC_ISLAND) {
+            if (cover) Main.miniPlayerEnterCover()
+            else controller?.sessionToken?.let(MiniPlayerRuntime::selectNative)
+        } else {
+            if (Main.coverModeOn()) {
+                Main.miniPlayerLeaveCover()
+                controller?.sessionToken?.let(MiniPlayerRuntime::selectNative)
+            }
+            LockIslands.release(key)
+        }
+        refresh()
+        schedulePosition()
+    }
+
     private fun openCoverFromTap() {
+        if (MiniPlayerRuntime.detachedRail()) {
+            MiniPlayerRuntime.forgetRestoreScene()
+            openDetachedIsland(MUSIC_ISLAND, cover = true)
+            return
+        }
         if (CanvasHostBridge.hasBackgroundScene() && !MiniPlayerRuntime.restoreScenePending()) {
             // Use the island flight so notifications reseat while music leaves the pill.
             if (othersBesideMusic()) expandNote(MUSIC_ISLAND)
@@ -7402,6 +7804,10 @@ private class MiniPlayerController(
      * a card out, a switch, a flight - only the stack opens, as it did before (openStack).
      */
     private fun openSpread(why: String, finger: SpreadFinger? = null) { android.os.Trace.beginSection("MC openSpread"); try {
+        if (MiniPlayerRuntime.detachedRail()) {
+            LockIslands.openStack(why)
+            return
+        }
         if (spread != null) return
         val busy = morph != null || exchange != null || noteMorphKey != null || group != null ||
             flight != null
@@ -9245,6 +9651,10 @@ private class MiniPlayerController(
      * small island into the pill and opened it from there - two motions where one was asked for.
      */
     fun expandNote(key: String) { android.os.Trace.beginSection("MC expandNote"); try {
+        if (MiniPlayerRuntime.detachedRail()) {
+            openDetachedIsland(key)
+            return
+        }
         // Folded natively (LockIslands.nativeStack), the stack island opens as the stack's own
         // list, ColorOS's way: the island leaves the row and the rows come out of the fold where
         // they are. No flight: the rows were never out of the stack for one to land on.
@@ -9345,6 +9755,7 @@ private class MiniPlayerController(
      * pill jumps while the row is still on its way.
      */
     fun collapseRow(key: String, startY: Float): Boolean { android.os.Trace.beginSection("MC collapseRow"); try {
+        if (MiniPlayerRuntime.detachedRail()) return false
         // Out as the list, a pull down is the stack's own, which takes the whole row home.
         if (spread != null) return false
         if (noteMorphKey != null || morph != null || exchange != null) {
@@ -9476,6 +9887,7 @@ private class MiniPlayerController(
     }
 
     private fun prepareFlight(key: String): MiniPlayerView? { android.os.Trace.beginSection("MC prepareFlight"); try {
+        if (MiniPlayerRuntime.detachedRail()) return null
         val music = if (key == MUSIC_ISLAND) controller?.takeIf(::isUsable) ?: return null else null
         val note = if (music == null) LockIslands.noteFor(key) ?: return null else null
         val pill = player ?: return null
@@ -9816,6 +10228,7 @@ private class MiniPlayerController(
     }
 
     fun beginNoteDrag(key: String, fromSmall: Boolean, startY: Float): Boolean {
+        if (MiniPlayerRuntime.detachedRail()) return false
         // Folded natively, a pull past the threshold opens the stack's list as a tap does; the
         // pull is taken (true) so nothing else runs under it, and the island springs back as it
         // goes.
@@ -9973,6 +10386,17 @@ private class MiniPlayerController(
     /** A released notification's row under a point on screen, by key. */
     fun releasedRowAt(x: Float, y: Float): String? {
         val xy = IntArray(2)
+        if (MiniPlayerRuntime.detachedRail() && railNotificationsOpen()) {
+            val stack = notificationStack()
+            if (stack != null) for (i in 0 until stack.childCount) {
+                val row = stack.getChildAt(i)
+                if (!row.isShown || row.alpha <= 0f || row.transitionAlpha <= 0f ||
+                    !row.javaClass.name.endsWith("ExpandableNotificationRow")) continue
+                row.getLocationOnScreen(xy)
+                if (x >= xy[0] && x < xy[0] + row.width && y >= xy[1] && y < xy[1] + row.height)
+                    return STACK_ISLAND
+            }
+        }
         for (key in LockIslands.releasedKeys()) {
             // The stack island's rows are all its: the one under the finger leads it home.
             for (member in LockIslands.membersOf(key)) {
@@ -10007,7 +10431,13 @@ private class MiniPlayerController(
      * stack island opened out as the list, where the lock screen scrolls it down under the clock.
      */
     fun nativeStackAtTop(readRest: Boolean): Boolean {
-        if (readRest) restScrollY = if (LockIslands.isReleased(STACK_ISLAND)) listRestScroll() else 0f
+        if (readRest) restScrollY = if (MiniPlayerRuntime.detachedRail()) {
+            // Native NUMBER/LIST can have a positive resting scroll. The native stack is
+            // deliberately never marked released, so the legacy release check reads zero
+            // and mistakes a resting player/list for one the user has scrolled away from.
+            if (!railNotificationsOpen() && LockIslands.releasedKeys().isEmpty()) nativeScrollY()?.toFloat()
+            else NumState.state()?.let { NumState.scrollTo(it)?.toFloat() } ?: listRestScroll()
+        } else if (LockIslands.isReleased(STACK_ISLAND)) listRestScroll() else 0f
         val scrollY = nativeScrollY()
         lastScrollRead = "own=$scrollY/rest=$restScrollY"
         return MiniPlayerCollapseGesture.atListTop(scrollY, restScrollY)
@@ -10423,7 +10853,8 @@ private class MiniPlayerController(
     private fun button(side: Int) = if (side == 0) left else right
 
     /** A disc is a circle as tall as the pill. */
-    private fun discDiameter(): Int = dp(MiniPlayerConfig.visibleHeightDp(config.toString()))
+    private fun discDiameter(): Int = dp(if (LockScreenRailRuntime.active()) 48f
+        else MiniPlayerConfig.visibleHeightDp(config.toString()))
 
     /** The disc's frame: room for its widest swelling and squeeze around the circle. */
     private fun discFrame(d: Int): Int = (d * DISC_FRAME).toInt()
@@ -10477,7 +10908,7 @@ private class MiniPlayerController(
             val button = button(side)
             val shown = placed && discsWanted && button.isShown && button.width > 0 && button.height > 0
             var disc = discs[side]
-            if (!shown) {
+            if (!shown || !LockscreenSurfacePolicy.visible(Main.keyguardLocked(), MiniPlayerScene.keyguardGoingAway)) {
                 if (disc != null && disc.visibility != View.GONE) disc.visibility = View.GONE
                 clearButtonSqueeze(side)
                 continue
@@ -10554,6 +10985,14 @@ private class MiniPlayerController(
     private fun holdButtonsThroughDoze() {
         val root = followRoot?.get()
         val now = android.os.SystemClock.uptimeMillis()
+        // Never overwrite the native unlock fade with the AOD's alpha hold.
+        if (!LockscreenSurfacePolicy.holdButtons(Main.keyguardLocked(),
+                MiniPlayerScene.keyguardGoingAway, Main.bouncerShown(), MiniPlayerScene.customAodActive)) {
+            holdButtons = false
+            rowHeldOff = false
+            backSince = 0L
+            return
+        }
         if (MiniPlayerScene.fullScreenAodActive && rowWanted && root != null) {
             holdButtons = true
             holdSince = now
@@ -10627,6 +11066,11 @@ private class MiniPlayerController(
      * (or a morph's container as drawn) and each showing disc on its button's laid-out centre.
      */
     private fun squeezeScene(d: Float) {
+        if (LockScreenRailRuntime.active()) {
+            // A vertical rail has independent presses; horizontal neighbour pressure is unrelated.
+            squeeze.setScene(null, false, null, null, null, emptyList())
+            return
+        }
         fun disc(side: Int): CoverMorphMotion.Box? {
             if (discs[side]?.visibility != View.VISIBLE) return null
             restCentre(button(side), discRest)
@@ -10794,7 +11238,34 @@ private class MiniPlayerController(
         scheduleRefresh()
     }
 
+    private var exitSurfacesHidden = false
+
+    fun surfaceState(): String = "exitHidden=$exitSurfacesHidden hold=$holdButtons rowHold=$rowHeldOff " +
+        "mediaExit=${railMediaExit != null} lastExit=$lastRailExit frames=$lastRailExitFrames " +
+        "musicSelected=${selectedIsland == MUSIC_ISLAND} discs=${discs.count { it?.visibility == View.VISIBLE }} " +
+        "exitPillHeld=$railExitPillWasVisible exitHiddenBeforeRestore=$lastRailExitHiddenBeforeRestore returnOwned=${railCollapsedToken != null}"
+
+    fun onKeyguardExit() {
+        railClosing.clear()
+        exitSurfacesHidden = true
+        holdButtons = false
+        rowHeldOff = false
+        backSince = 0L
+        discsWanted = false
+        rowWanted = false
+        finishRailMediaExit(commit = true)
+        player?.let { it.setInteractionsEnabled(false); it.visibility = View.INVISIBLE }
+        smallIsland?.visibility = View.INVISIBLE
+        discs.forEach { it?.visibility = View.GONE }
+        for (side in 0..1) clearButtonSqueeze(side)
+        restoreRailAodInset()
+        CoverBackdrop.refreshVisibility()
+    }
+
     fun destroy() {
+        finishRailMediaExit(commit = false)
+        railCollapsedToken = null
+        restoreRailAodInset()
         compactAnimator?.cancel()
         compactAnimator = null
         destroyed = true
@@ -11027,6 +11498,7 @@ private class MiniPlayerController(
      * now points; a scene route needs the mini player to be the selected presentation.
      */
     fun beginTransition(toNative: Boolean, scene: Boolean): Boolean {
+        if (MiniPlayerRuntime.detachedRail()) return false
         morph?.let { running ->
             running.aim(toNative)
             morphScene = scene
@@ -11191,8 +11663,9 @@ private class MiniPlayerController(
     }
 
     private fun transitionHeader(): View? {
-        val current = header?.get()?.takeIf { it.isAttachedToWindow }
-            ?: Main.miniPlayerMediaHeader()
+        // A fold/display handoff can retain the old attached header while replacing the visible card.
+        val current = Main.miniPlayerMediaHeader()?.takeIf { it.isAttachedToWindow }
+            ?: header?.get()?.takeIf { it.isAttachedToWindow }
         if (current != null) header = WeakReference(current)
         return current
     }
@@ -11271,9 +11744,13 @@ private class MiniPlayerController(
         }
     }
 
-    fun takesRows(): Boolean = config.getBoolean(MiniPlayerConfig.ENABLED) && LockIslands.notes.isNotEmpty()
+    fun takesRows(): Boolean = !MiniPlayerRuntime.detachedRail() &&
+        config.getBoolean(MiniPlayerConfig.ENABLED) && LockIslands.notes.isNotEmpty()
 
     fun wantsCardSwipe(): Boolean {
+        if (MiniPlayerRuntime.detachedRail()) return config.getBoolean(MiniPlayerConfig.ENABLED) &&
+            Main.keyguardLocked() && Main.onKeyguardNow() && !MiniPlayerScene.aodActive &&
+            musicCarded(controller?.takeIf(::isUsable))
         if (!config.getBoolean(MiniPlayerConfig.ENABLED)) return false
         // Out as the stack's list, a pull down on the media card is the list's to fold, the
         // whole row coming home with it; taken as the card's, it was cancelled out from under
@@ -11306,9 +11783,11 @@ private class MiniPlayerController(
         val rx = buttonEdge(right, inner = false) ?: (xy[0] + view.width + 8f * d)
         // Down to the bottom of the screen, but not from on the fingerprint sensor, which the
         // row is lifted off where it lies under it (#66): a finger put there is unlocking.
-        val inside = x >= minOf(lx, xy[0].toFloat()) && x < maxOf(rx, xy[0] + view.width.toFloat())
+        val inBounds = if (view.vertical) x >= xy[0] - 8f * d && x < xy[0] + view.width + 8f * d
+            && y >= xy[1] - 12f * d && y < xy[1] + view.height + 12f * d
+        else x >= minOf(lx, xy[0].toFloat()) && x < maxOf(rx, xy[0] + view.width.toFloat())
             && y >= xy[1] - 36f * d && y < host.height
-            && fingerprintInHost()?.contains(x.toInt(), y.toInt()) != true
+        val inside = inBounds && fingerprintInHost()?.contains(x.toInt(), y.toInt()) != true
         // The small island first: the camera's button (its shortcut_view_right_layout above
         // all) reaches well past its disc, over the small island's right half. Asked second, a
         // tap there was the camera's - and opened it (filmed 2026-09-25). Taken here, the whole
@@ -11433,6 +11912,46 @@ private class MiniPlayerController(
         handler.post { refreshPosted = false; refresh() }
     }
 
+    private fun applyLockscreenDefaults(music: MediaController?, hasNotes: Boolean): Boolean {
+        if (MiniPlayerRuntime.applyingEntryDefaults || !config.optBoolean(MiniPlayerConfig.ENABLED) ||
+            !Main.keyguardLocked() || !Main.onKeyguardNow() || Main.bouncerShown() ||
+            MiniPlayerScene.keyguardGoingAway) return false
+        val landscape = FoldArtworkLayout.innerLandscape(host.width.toFloat(), host.height.toFloat(),
+            context.resources.displayMetrics.density)
+        val mode = MiniPlayerConfig.startupMode(config, landscape)
+        val notifications = MiniPlayerRuntime.entryDefaults.takeNotifications(
+            NumState.model() != null && (mode != MiniPlayerConfig.START_EXPANDED || hasNotes), landscape)
+        val openMusic = MiniPlayerRuntime.entryDefaults.takeMusic(music != null &&
+            Main.miniPlayerMediaCardPresent() && (transitionHeader()?.height ?: 0) > 0, landscape)
+        if (!notifications && !openMusic) return false
+        MiniPlayerRuntime.applyingEntryDefaults = true
+        try {
+            if (notifications) {
+                if (mode == MiniPlayerConfig.START_EXPANDED) {
+                    LockIslands.notes.map { it.key }.forEach(LockIslands::release)
+                    NumState.goTo("LIST", anim = false, why = "lock entry expanded")
+                } else {
+                    LockIslands.releasedKeys().filter { it != MUSIC_ISLAND }.forEach(LockIslands::recapture)
+                    NumState.goTo("NUMBER", anim = false, why = "lock entry collapsed")
+                }
+            }
+            if (openMusic && music != null) {
+                if (mode == MiniPlayerConfig.START_COLLAPSED) {
+                    railReturnedSelection = MUSIC_ISLAND
+                    MiniPlayerRuntime.chooseMini(music.sessionToken)
+                    Main.selectLockscreenStartupView(-1)
+                } else {
+                    MiniPlayerRuntime.chooseNative(music.sessionToken)
+                    val view = if (mode == MiniPlayerConfig.START_EXPANDED && !landscape) MiniPlayerConfig.VIEW_PLAYER
+                        else MiniPlayerConfig.startupMusicView(config, landscape)
+                    Main.selectLockscreenStartupView(view)
+                }
+            }
+        } finally { MiniPlayerRuntime.applyingEntryDefaults = false }
+        scheduleRefresh()
+        return true
+    }
+
     private fun refreshUnsafe() { android.os.Trace.beginSection("MC refresh"); try {
         lottiesFollowDoze()
         if (configStale) {
@@ -11481,6 +12000,7 @@ private class MiniPlayerController(
             controller?.takeIf(::isUsable)?.takeIf { Main.miniPlayerMediaCardPresent() || musicMoving }
         }
         val notes = traced("MC r.notes") { LockIslands.notes }
+        if (applyLockscreenDefaults(music, notes.isNotEmpty())) return
         // One island out as its card, the rest in the row (the super island's expanded state):
         // the music out as the media card leaves the row to the notifications. Alone, it keeps
         // the row as it always has - the card or the pill, one or the other. Moving between
@@ -11546,10 +12066,12 @@ private class MiniPlayerController(
             (!frameTaken() || updating())
         val arrived = if (colorOsUpdate) islandKeys.firstOrNull { it !in keysBefore && it !in orderBefore } else null
         val previous = selectedIsland
-        val selected = arrived ?: selectedIsland?.takeIf { it in islandKeys } ?: islandKeys.first()
+        val returned = railReturnedSelection?.takeIf { it in islandKeys }
+        val selected = RailSelectionPolicy.select(returned, arrived, selectedIsland, islandKeys) ?: return
+        if (returned != null) railReturnedSelection = null
         selectedIsland = selected
         // From where a running update has the capsule, else its rest.
-        val updateFrom = if (colorOsUpdate && (lost || arrived != null) && selected != previous)
+        val updateFrom = if (colorOsUpdate && (lost || arrived != null || returned != null) && selected != previous)
             swap?.takeIf { it.kind == SWAP_UPDATE }?.drawn ?: shown?.restBoxOnScreen() else null
         // Recorded before the new island is bound over it.
         val updateContent = updateFrom?.let { shown?.recordContent() }
@@ -12467,13 +12989,18 @@ private class MiniPlayerController(
         val config = this.config
         val enabled = config.getBoolean(MiniPlayerConfig.ENABLED)
         val current = controller
-        // Any island at all: the music, or a notification.
-        val sessionUsable = islandKeys.isNotEmpty()
+        val independentExit = railMediaExiting()
+        val keepExitPill = independentExit && railExitPillWasVisible
+        val railReturned = railReturnOwnsPresentation()
+        // A notification can leave the candidate list for a pipeline frame while the cover
+        // exits. Keep its already drawn shell until the returning music is bound to it.
+        val sessionUsable = islandKeys.isNotEmpty() || keepExitPill && current?.let(::isUsable) == true
         // Unlocking, the keyguard says it is going away on the first frame of its fade-out.
         // Handing the card back then showed the whole OEM card through that fade - the
         // artwork flashing on every unlock. Until the lock screen is actually off the screen,
         // it keeps what it had; the pill fades with it (followShortcuts).
         if (enabled && sessionUsable && MiniPlayerScene.keyguardGoingAway && Main.onKeyguardNow()) {
+            if (!exitSurfacesHidden) onKeyguardExit()
             player?.setInteractionsEnabled(false)
             return
         }
@@ -12492,7 +13019,7 @@ private class MiniPlayerController(
         // back within 2ms, a whole list rebuild each way, on every exit (probed 2026-09-25).
         val presentable = if (islandKeys.firstOrNull() == MUSIC_ISLAND && noteMorphKey != MUSIC_ISLAND)
             Main.miniPlayerPresentable() else Main.miniPlayerIslandsPresentable()
-        val sceneVisible = keyguardOwned && presentable && !MiniPlayerScene.blocksMiniPlayer
+        val sceneVisible = keyguardOwned && (presentable || keepExitPill || railReturned) && !MiniPlayerScene.blocksMiniPlayer
         // Unlocking or a session ending mid-morph: straight to where it was going.
         if (!keyguardOwned) morph?.cancel()
         // The discs are the lock screen's, not the row's: with no island at all - no music, no
@@ -12527,6 +13054,9 @@ private class MiniPlayerController(
                 nativeSceneOverride = keyguardOwned && Main.coverSceneActive(),
                 transitionActive = transition,
                 controlCenterOpen = controlCenterOpen,
+                independentMediaExit = independentExit,
+                retainMiniDuringExit = keepExitPill,
+                mediaExitCommitted = railReturned,
             ),
         )
         // An exchange keeps the row up - out of the cover, the row went for its frames and every
@@ -12657,7 +13187,7 @@ private class MiniPlayerController(
             }
         }
         updateNativeSuppression(suppressCard && musicSettled)
-        if (morph == null && keyguardOwned &&
+        if (morph == null && keyguardOwned && !railReturned &&
             (nativeRequested || Main.coverSceneActive())) ensureNativeHeaderVisible()
         val log = "nativeRequested=$nativeRequested " +
             "showMini=${presentation.showMini} suppressNative=${presentation.suppressNative} " +
@@ -12684,13 +13214,14 @@ private class MiniPlayerController(
         // A dismissed card is the OEM's to take away, not ours to bring back.
         if (!Main.miniPlayerMediaCardPresent()) return
         val current = transitionHeader() ?: return
+        if (current === railMediaExitView) return
         if (current.visibility != View.VISIBLE) current.visibility = View.VISIBLE
         if (current.alpha < 0.99f) current.alpha = 1f
     }
 
     private fun updateHeader() {
-        val current = header?.get()?.takeIf { it.isAttachedToWindow && !forceHeaderRefresh }
-            ?: Main.miniPlayerMediaHeader()
+        val current = Main.miniPlayerMediaHeader()?.takeIf { it.isAttachedToWindow }
+            ?: header?.get()?.takeIf { it.isAttachedToWindow && !forceHeaderRefresh }
         forceHeaderRefresh = false
         val previous = header?.get()
         if (previous !== current) {
@@ -12700,6 +13231,10 @@ private class MiniPlayerController(
             }
         }
         if (current == null) return
+        suppressHeaderView(current)
+    }
+
+    private fun suppressHeaderView(current: View) {
         // INVISIBLE keeps the OEM layout measured but prevents its renderer/property animator
         // from winning a frame over an alpha-only suppression during metadata replacement.
         suppressedHeaders.suppress(current,
@@ -12737,6 +13272,10 @@ private class MiniPlayerController(
      */
     private fun pillRest(small: Boolean): PillRest? {
         if (host.width <= 0 || host.height <= 0) return null
+        val rail = android.graphics.RectF()
+        if (LockScreenRailRuntime.pill(host, rail)) {
+            return PillRest(rail.width().roundToInt(), rail.height().roundToInt(), rail.centerX(), rail.centerY())
+        }
         // Where the buttons are laid out, not where they are drawn: whatever moves them on top
         // of their layout (the swipe, the doze) reaches the pill through followShortcuts.
         // Taking their drawn place here as well moved the pill twice as far as they went.
@@ -12924,16 +13463,30 @@ private class MiniPlayerController(
         if (view.visibility != View.VISIBLE || spread != null) return
         val small = smallKey != null
         val rest = pillRest(small) ?: return
+        val vertical = LockScreenRailRuntime.active()
+        if ((vertical || view.vertical) &&
+            (view.layoutParams.width != rest.width || view.layoutParams.height != rest.height)) {
+            view.layoutParams = view.layoutParams.apply { width = rest.width; height = rest.height }
+            schedulePosition()
+        }
+        // Appearance/row animations run below: their axis must already be the new one.
+        view.setVertical(vertical)
         stylePillFace(view)
         val pillWidth = rest.width
         val height = rest.height
         val centerY = rest.centerY
         val gap = dp(MiniPlayerGeometry.DISC_GAP_DP)
-        val group = pillWidth + if (small) gap + height else 0
+        val group = pillWidth + if (small && !vertical) gap + height else 0
         val groupLeft = rest.centerX - group / 2f
         if (small) {
-            smallRest[0] = groupLeft + pillWidth + gap + height / 2f
-            smallRest[1] = centerY
+            val companion = android.graphics.RectF()
+            if (vertical && LockScreenRailRuntime.companion(host, companion)) {
+                smallRest[0] = companion.centerX()
+                smallRest[1] = companion.centerY()
+            } else {
+                smallRest[0] = groupLeft + pillWidth + gap + height / 2f
+                smallRest[1] = centerY
+            }
         }
         // The asked-for size, not view.width: a morph resizes the frame while this still runs.
         // The spring first, then the new size: set the other way round, the pill was drawn at
@@ -13154,7 +13707,7 @@ private const val GOO_RESPONSE = 0.42f
 private const val GOO_DAMPING = 0.95f
 
 /** ColorOS's torch and camera against the capsule's height. */
-private const val COLOROS_SHORTCUT = 0.8f
+private const val COLOROS_SHORTCUT = 0.85f
 
 /** Room between ColorOS's capsule and its torch and camera, for the brackets, on top of the gap. */
 private const val COLOROS_BRACKET_ROOM_DP = 10f

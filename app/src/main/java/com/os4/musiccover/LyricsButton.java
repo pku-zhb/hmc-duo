@@ -39,6 +39,7 @@ final class LyricsButton {
     private static float[] restAt, heldAt;
     private static final float JUMP_DP = 6f;
     private static int tint;
+    private static int creations, releases;
     private static final float SIZE_DP = 40f;
     private static final float GAP_DP = 6f;
     private static final float APPEAR_SCALE = 0.6f;
@@ -51,9 +52,19 @@ final class LyricsButton {
         if (!(card instanceof ViewGroup)) return 0f;
         if (host != card) release();
         canvasControls = controls;
+        boolean animate = LyricsButtonPolicy.animate(MiniPlayerRuntime.detachedRail());
+        if (!animate) {
+            if (animator != null) animator.cancel();
+            if (swap != null) swap.cancel();
+            animator = swap = null;
+            besideControls = shownBeside = false;
+            swapLook = titleShare = 1f;
+            holdLeft = false;
+            restAt = heldAt = null;
+        }
         // Leaving (the next track has no lyrics), it stays in its slot: swapping back to the title
         // on the way out pushed the title right for a moment as the button went.
-        if (show) besideControls = controls || beside;
+        if (show) besideControls = LyricsButtonPolicy.beside(MiniPlayerRuntime.detachedRail(), controls, beside);
         if (button == null || progress <= 0f) {
             // Nothing on screen to swap: it appears where it belongs.
             if (swap != null) swap.cancel();
@@ -61,7 +72,7 @@ final class LyricsButton {
             shownBeside = besideControls;
             swapLook = gone() ? 0f : 1f;
             titleShare = besideControls ? 0f : 1f;
-        } else if (shownBeside != besideControls && swap == null) {
+        } else if (animate && shownBeside != besideControls && swap == null) {
             // Between the title and the controls it does not travel: it shrinks, fades and blurs
             // away where it was and grows back the same way where it now belongs, quickly.
             startSwap();
@@ -69,6 +80,7 @@ final class LyricsButton {
         if (button == null && show) {
             host = (ViewGroup) card;
             button = new ImageView(card.getContext());
+            creations++;
             button.setId(View.generateViewId());
             notesDrawable = new LyricsSheetDrawable();
             button.setImageDrawable(notesDrawable);
@@ -89,7 +101,19 @@ final class LyricsButton {
         if (button == null) return 0f;
         // Filled only while lyrics are on screen; over the companion it is an outline.
         notesDrawable.setFilled(LockLyrics.lyricsShowing());
-        if (requested != show) {
+        if (!animate) {
+            float target = show ? 1f : 0f;
+            int visibility = show ? View.VISIBLE : View.GONE;
+            boolean changed = progress != target || requested != show || button.getVisibility() != visibility
+                    || button.getAlpha() != target || show && (button.getScaleX() != 1f || button.getScaleY() != 1f);
+            requested = show;
+            progress = target;
+            button.setClickable(show);
+            button.setFocusable(show);
+            button.setImportantForAccessibility(show ? View.IMPORTANT_FOR_ACCESSIBILITY_YES
+                    : View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
+            if (changed) applyLook();
+        } else if (requested != show) {
             requested = show;
             button.setClickable(show);
             button.setFocusable(show);
@@ -250,7 +274,16 @@ final class LyricsButton {
         return view == card ? value : Float.NaN;
     }
 
+    static String describe() {
+        return "requested=" + requested + " beside=" + besideControls + " progress=" + progress
+                + " created=" + creations + " released=" + releases
+                + " host=" + (host == null ? "none" : Integer.toHexString(System.identityHashCode(host)))
+                + " visibility=" + (button == null ? -1 : button.getVisibility())
+                + (button == null ? "" : " alpha=" + button.getAlpha() + " size=" + button.getWidth() + "x" + button.getHeight());
+    }
+
     static void release() {
+        if (button != null) releases++;
         if (animator != null) animator.cancel();
         animator = null;
         if (host != null && button != null) host.removeView(button);

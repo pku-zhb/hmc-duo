@@ -58,7 +58,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.os4.musiccover.BuildConfig
-import com.os4.musiccover.DonateActivity
 import com.os4.musiccover.LsposedService
 import com.os4.musiccover.ModuleBridge
 import com.os4.musiccover.R
@@ -66,7 +65,6 @@ import com.os4.musiccover.ui.component.DropdownItem
 import com.os4.musiccover.ui.screen.about.UpdateController
 import com.os4.musiccover.ui.screen.about.UpdateNotesDialog
 import com.os4.musiccover.ui.screen.about.UpdateStatusDialog
-import com.os4.musiccover.ui.screen.about.rememberUpdateController
 import com.os4.musiccover.ui.component.MenuPopupDefaults
 import com.os4.musiccover.ui.util.PageScaffold
 import com.os4.musiccover.ui.util.isInDarkTheme
@@ -172,7 +170,6 @@ fun HomePageView(
     // Processes still on the build before this one: installing does not reload a module, and
     // the old one goes on running until its process restarts. Asked with the status, and again
     // once LSPosed's service binds, which can be after the page is up.
-    val update = rememberUpdateController(isCurrent)
     val service by LsposedService.service.collectAsState()
     var stale by remember { mutableStateOf(0) }
     // The row is a whole card wide and sits right under the status card, where a scroll starts;
@@ -188,10 +185,6 @@ fun HomePageView(
         extraBottomPadding = extraBottomPadding,
         actions = { RestartMenu() },
     ) {
-        if (update.update != null) {
-            item { UpdateCard(update, moduleVersion) }
-        }
-
         item {
             Box(
                 modifier = Modifier
@@ -381,42 +374,7 @@ fun HomePageView(
             }
         }
 
-        // Last on the page, under the device list. Asking comes after everything the page was
-        // opened for, never before it. It is a row rather than a button because everything else
-        // the user can tap in this app is a row, and a lone button here would read as a demand.
-        //
-        // No top padding of its own: the device card above already carries 12dp underneath it.
-        item {
-            Card(
-                modifier = Modifier
-                    .padding(horizontal = 12.dp)
-                    .padding(bottom = 12.dp)
-            ) {
-                ArrowPreference(
-                    title = stringResource(R.string.donate_title),
-                    summary = stringResource(R.string.donate_home_summary),
-                    startAction = {
-                        Icon(
-                            modifier = Modifier
-                                .padding(end = 12.dp)
-                                .size(28.dp),
-                            imageVector = Icons.Rounded.Favorite,
-                            // Fixed rather than themed: the heart is the whole signal here, and
-                            // in the dynamic-colour scheme it would otherwise take whatever
-                            // colour the wallpaper happened to give it.
-                            tint = Color(0xFFF2545B),
-                            contentDescription = null,
-                        )
-                    },
-                    onClick = {
-                        context.startActivity(Intent(context, DonateActivity::class.java))
-                    },
-                )
-            }
-        }
     }
-
-    UpdateStatusDialog(update.status) { update.states.status = null }
 
     WindowDialog(
         show = confirmRestart,

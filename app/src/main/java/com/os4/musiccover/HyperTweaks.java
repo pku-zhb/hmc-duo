@@ -138,7 +138,8 @@ final class HyperTweaks {
         if (!sPluginHooked) watchForPlugin();
         clockColon(cl, "systemui", () -> sForceColon);
         mediaBarGlow(cl, () -> sBarGlow);
-        coverUnlockFade(cl, Main::coverModeOn);
+        coverUnlockFade(cl, () -> WallpaperHandoffPolicy.fadeCoverWallpaper(
+                Main.coverModeOn(), CoverBackdrop.hidden()));
     }
 
     /**
@@ -176,7 +177,10 @@ final class HyperTweaks {
                 boolean show = (Boolean) args[0];
                 boolean anim = (Boolean) args[1];
                 int mode = (Integer) args[2];
-                if (!show && !anim && cover.getAsBoolean()) {
+                boolean forceFade = !show && !anim && cover.getAsBoolean();
+                WallpaperHandoffDiagnostics.note("wallpaper-state", "show=" + show + " anim=" + anim
+                        + " mode=" + mode + " forceFade=" + forceFade);
+                if (forceFade) {
                     args[1] = Boolean.TRUE;
                     args[2] = 1;
                     Xp.log(TAG + "lock wallpaper hide faded for the cover (was mode " + mode + ")");

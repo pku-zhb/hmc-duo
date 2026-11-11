@@ -47,9 +47,14 @@ object MediaCardConfig {
         else -> value.coerceIn(0, 1)
     }
 
-    fun limitKey(key: String, value: Int): Int =
-        if (key == "island.theme") (if (value == ISLAND_THEME_OLED) value else ISLAND_THEME_DEFAULT)
-        else limit(key.substringAfter('.'), value)
+    private val hiddenWaveKeys = setOf("visualizer", "outputWave", "lockOutputWave", "hideWaveDevice", "btSync")
+
+    fun limitKey(key: String, value: Int): Int {
+        val name = key.substringAfter('.')
+        if (name in hiddenWaveKeys) return 0
+        if (key.startsWith("island.")) return defaults.getValue(name)
+        return limit(name, value)
+    }
 
     fun parse(json: String?): Map<String, Int> {
         val obj = runCatching { JSONObject(json ?: "{}") }.getOrNull()

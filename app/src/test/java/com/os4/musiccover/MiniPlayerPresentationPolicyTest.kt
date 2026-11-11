@@ -24,6 +24,9 @@ class MiniPlayerPresentationPolicyTest {
         nativeSceneOverride: Boolean = false,
         transitionActive: Boolean = false,
         controlCenterOpen: Boolean = false,
+        independentMediaExit: Boolean = false,
+        retainMiniDuringExit: Boolean = false,
+        mediaExitCommitted: Boolean = false,
     ) = MiniPlayerPresentationPolicy.evaluate(
         MiniPlayerPresentationInput(
             enabled,
@@ -34,6 +37,9 @@ class MiniPlayerPresentationPolicyTest {
             nativeSceneOverride,
             transitionActive,
             controlCenterOpen,
+            independentMediaExit,
+            retainMiniDuringExit,
+            mediaExitCommitted,
         ),
     )
 
@@ -136,4 +142,32 @@ class MiniPlayerPresentationPolicyTest {
         assertEquals(0, second.visibility)
         assertEquals(0.6f, second.alpha, 0f)
     }
+    @Test fun independentCardExitRetainsAnExistingCapsuleWithoutHidingTheMovingCard() {
+        assertEquals(MiniPlayerPresentation(true, false), presentation(
+            nativeRequested = true, nativeSceneOverride = true,
+            independentMediaExit = true, retainMiniDuringExit = true))
+        assertEquals(MiniPlayerPresentation(false, false), presentation(
+            nativeRequested = true, nativeSceneOverride = true,
+            independentMediaExit = true, retainMiniDuringExit = false))
+    }
+
+    @Test fun completedExitKeepsNativeHiddenWhileTheSlowerCoverClockFinishes() {
+        assertEquals(MiniPlayerPresentation(true, true), presentation(
+            nativeSceneOverride = true, mediaExitCommitted = true))
+        // Explicit reopening remains the native player's choice, even before the token lease clears.
+        assertEquals(MiniPlayerPresentation(false, false), presentation(
+            nativeRequested = true, nativeSceneOverride = true, mediaExitCommitted = true))
+    }
+
+    @Test fun exitRetentionNeverOverridesUnlockOrAnOccludingEditor() {
+        assertEquals(MiniPlayerPresentation(false, false), presentation(
+            nativeRequested = true, keyguardOwned = false, sceneVisible = false,
+            independentMediaExit = true, retainMiniDuringExit = true))
+        assertEquals(MiniPlayerPresentation(false, false), presentation(
+            nativeRequested = true, sceneVisible = false,
+            independentMediaExit = true, retainMiniDuringExit = true))
+        assertEquals(MiniPlayerPresentation(false, false), presentation(
+            keyguardOwned = false, sceneVisible = false, mediaExitCommitted = true))
+    }
+
 }

@@ -215,6 +215,7 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
         geometryObserver = layer.getViewTreeObserver();
         geometryListener = new ViewTreeObserver.OnPreDrawListener() {
             @Override public boolean onPreDraw() { android.os.Trace.beginSection("MC coverGeom"); try {
+                CoverBackdrop.refreshVisibility();
                 // This parent is also drawn behind the unlocked notification shade. The card's
                 // animation stops when it settles, and ACTION_USER_PRESENT is not guaranteed to
                 // arrive before the shade uses this layer. Enforce the lock-screen condition on
@@ -393,7 +394,9 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
     }
 
     private static boolean layerVisible() {
-        return Main.coverCardVisible() || Main.coverCardBackdropInAod();
+        return LockscreenSurfacePolicy.visible(Main.keyguardLocked(),
+                MiniPlayerScene.INSTANCE.getKeyguardGoingAway())
+                && (Main.coverCardVisible() || Main.coverCardBackdropInAod());
     }
 
     static void clear() {
@@ -412,6 +415,20 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
             v.start();
             v.invalidate();
         }
+    }
+
+    /** Resting/AOD poses belong to one window shape and must not survive a display handoff. */
+    static void geometryChanged() {
+        CoverCardLayer v = sView;
+        if (v == null) return;
+        v.lockPlace = v.bigCoverPlace = v.restPlace = v.lastGoal = v.aodUnshrunkGoal = null;
+        v.railScreenPlace = null;
+        v.railAodHolding = false;
+        v.aodShrinkMedia = Float.NaN;
+        v.aodShrinkSeconds = 0f;
+        v.drawX = v.goalX = Float.NaN;
+        v.lastWidth = v.lastHeight = -1;
+        v.start();
     }
 
     static boolean hiddenUnlocked() {
@@ -444,6 +461,10 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
         // A sleep straight from an app must not hold them through its doze.
         lockPlace = null;
         bigCoverPlace = null;
+        restPlace = null;
+        lastGoal = null;
+        railScreenPlace = null;
+        railAodHolding = false;
         // A sleep from an app takes its new place, not the last lock screen's drawn size.
         drawX = goalX = Float.NaN;
         hiddenUnlocked = true;
@@ -745,6 +766,8 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
     }
 
     @Override protected void onDetachedFromWindow() {
+        railScreenPlace = null;
+        railAodHolding = false;
         stop();
         unwatchGeometry();
         super.onDetachedFromWindow();
@@ -773,6 +796,10 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
      * keep. Not lockPlace: that one is only written on the lit, locked lock screen.
      */
     private CoverCardStyle.Rect restPlace;
+    /** Screen-space rail artwork, unaffected by the OEM's AOD parent zoom and translation. */
+    private FoldMusicLayout.Box railScreenPlace;
+    private long railScreenRevision = -1;
+    private boolean railAodHolding;
 
     /**
      * 0..1, how much of the square's place the big clock has left on its way up: 0 while the
@@ -800,12 +827,13 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
      * not this layer, so a place taken from their layout sat still while they came in round it.
      */
     private CoverCardStyle.Rect placeNow() {
+        if (FoldMusicRuntime.sideBySide()) return FoldMusicRuntime.artwork(this, shownAspect());
         float clock = ClockCollapse.contentBottomFor(this);
         float media = ClockCollapse.unzoomY(this, Main.coverCardMediaTop());
         int[] loc = tmpLoc;
         getLocationOnScreen(loc);
-        return style.place(getWidth(), getHeight(), getResources().getDisplayMetrics().density,
-                clock - loc[1], media - loc[1], shownAspect());
+        return FoldMusicRuntime.capPortraitArtwork(this, LockScreenRailRuntime.artwork(this, style,
+                clock - loc[1], media - loc[1], shownAspect()));
     }
 
     /**
@@ -877,11 +905,38 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
             goalX = Float.NaN;
             return false;
         }
+        if (!LockScreenRailRuntime.reflowing() || railScreenRevision != Main.screenGeometry().revision) {
+            railScreenPlace = null;
+            railAodHolding = false;
+        }
+        if (MiniPlayerScene.INSTANCE.getKeyguardGoingAway()) railAodHolding = false;
+        else if (MiniPlayerScene.INSTANCE.getAodActive() || !Main.screenOnCached()
+                || phase == ClockCollapse.Phase.AOD) railAodHolding = true;
+        else if (!LockScreenRailRuntime.holdGeometry()) railAodHolding = false;
+        if (railAodHolding && LockScreenRailRuntime.reflowing()) {
+            FoldMusicLayout.Box fallback = railScreenPlace != null ? railScreenPlace
+                    : LockScreenRailRuntime.artworkOnScreen(this, goal);
+            FoldMusicLayout.Box fitted = LockScreenRailRuntime.aodArtwork(fallback,
+                    ClockCollapse.contentBottomDrawn(), Main.liveMediaTop(), shownAspect());
+            CoverCardStyle.Rect fixed = LockScreenRailRuntime.artworkFromScreen(this, fitted);
+            fixed = FoldMusicRuntime.capPortraitArtwork(this, fixed);
+            if (fixed != null) {
+                // Compensate on the same frame as the parent animation. Easing this inverse
+                // transform would recreate the drift while the AOD's zoom is running.
+                drawX = fixed.x; drawY = fixed.y; drawSide = fixed.side;
+                goalX = fixed.x; goalY = fixed.y; goalSide = fixed.side;
+                aodPlaceNote = "rail screen frame fitted to actual AOD room";
+                return false;
+            }
+        }
+        goal = FoldMusicRuntime.capPortraitArtwork(this, goal);
+        if (goal == null) return false;
         carry(goal, carries(phase));
         if (Float.isNaN(drawX) || opacity <= 0f) {
             drawX = goal.x;
             drawY = goal.y;
             drawSide = goal.side;
+            rememberRailScreenPlace();
             return false;
         }
         float k = Math.min(1f, dt * 3f / response);
@@ -895,7 +950,15 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
             drawY = goal.y;
             drawSide = goal.side;
         }
+        rememberRailScreenPlace();
         return moving;
+    }
+
+    private void rememberRailScreenPlace() {
+        if (!Main.screenOnCached() || !Main.keyguardLocked() || LockScreenRailRuntime.holdGeometry()) return;
+        railScreenPlace = LockScreenRailRuntime.artworkOnScreen(this,
+                new CoverCardStyle.Rect(drawX, drawY, drawSide));
+        railScreenRevision = Main.screenGeometry().revision;
     }
 
     /**

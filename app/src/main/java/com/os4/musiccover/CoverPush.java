@@ -21,6 +21,7 @@ import android.view.ViewTreeObserver;
  * decides WHETHER the cover should be on; Main does that and calls in.
  */
 final class CoverPush {
+    private static final SquareCardWallpaperPolicy squareWallpaper = new SquareCardWallpaperPolicy();
     /** A cover has reached its place in this process; a restart of SystemUI forgets it. */
     private static volatile boolean sArtDelivered;
 
@@ -222,7 +223,10 @@ final class CoverPush {
                 // held for never comes: it sat out its whole 1.8s timeout on every tap out.
                 if (Main.sVideoWallpaper) Main.main().post(
                         () -> releaseCoverFadeWait("the cover stays on the wallpaper window"));
-            } else ProbeGuard.send(ctx, out);
+            } else if (squareWallpaper.releaseNeeded(FoldSettingsPolicy.nativeBackdrop(Main.sRightRail),
+                    Main.effectiveCoverStyle().mode == CoverCardStyle.CARD)) {
+                ProbeGuard.send(ctx, out);
+            }
             if (!CanvasHostBridge.keepPaletteBackdrop()) Main.sTrackKey = "";
             // Nothing behind the clock any more, so nothing to take a colour from. The repaint
             // that hands the OEM's own colours back happens with the rest of cover mode.
@@ -239,7 +243,28 @@ final class CoverPush {
             CoverCardLayer.publish(art, temporaryThumbnail, gen, key);
         }
         if (!currentPush(gen, key)) return;
-        int w = Main.sScreenW, h = Main.sScreenH;
+        SquareCardWallpaperPolicy.Route route = squareWallpaper.route(FoldSettingsPolicy.nativeBackdrop(Main.sRightRail),
+                Main.effectiveCoverStyle().mode == CoverCardStyle.CARD);
+        if (route != SquareCardWallpaperPolicy.Route.WALLPAPER) {
+            // Undo any texture left by the old path exactly once. A metadata/track update
+            // must not keep reloading the user's wallpaper or hand new art to its engine.
+            if (route == SquareCardWallpaperPolicy.Route.RESTORE_NATIVE) {
+                out.putExtra("off", true);
+                out.putExtra("fade", false);
+                ProbeGuard.send(ctx, out);
+            }
+            sArtDelivered = true;
+            Main.sCoverTint = 0;
+            Main.main().post(() -> {
+                CoverBackdrop.sync(false);
+                CoverCardLayer.releaseHeld();
+                Main.recolorClock();
+            });
+            Xp.log(Main.TAG + "square card uses native wallpaper; route=" + route);
+            return;
+        }
+        ScreenGeometry geometry = Main.screenGeometry();
+        int w = geometry.width, h = geometry.height;
         if (!Main.sVideoWallpaper && Main.sWpComposes) {
             // The source goes over instead of the composed picture, and the wallpaper process
             // composes it for itself. Measured before this, on the path below: composing took
@@ -1882,6 +1907,9 @@ final class CoverPush {
 
     @SuppressLint("MissingPermission")
     static boolean ensureLockWallpaper(Context ctx, boolean force) {
+        // A square artwork card is a SystemUI layer. Automatic repair must never replace
+        // the wallpaper selected by the user just to create an engine for that card.
+        if (!force && Main.effectiveCoverStyle().mode == CoverCardStyle.CARD) return false;
         long now = android.os.SystemClock.uptimeMillis();
         if (!force && sWpCheckedAt != 0L && now - sWpCheckedAt < WP_CHECK_TTL_MS) {
             return sWpCheckedAnswer;
@@ -2022,6 +2050,7 @@ final class CoverPush {
     // READ_WALLPAPER_INTERNAL. This APK neither has nor needs them.
     @SuppressLint("MissingPermission")
     private static void fitLockWallpaperToScreen(android.app.WallpaperManager wm) {
+        if (Main.effectiveCoverStyle().mode == CoverCardStyle.CARD) return;
         // Not while the wallpaper process sizes its texture to the screen (sTexFit, on by
         // default): that solves the same problem - a 2121x4712 wallpaper making every swap upload
         // 38MB and putting the crossfade over its own threshold - without writing anything. The

@@ -28,7 +28,10 @@ android {
         // The fork has its own installation and LSPosed identity. Enable this package's scope
         // and disable the old module when migrating. Internal classes and probe actions keep
         // their namespace so callers and documented diagnostics remain compatible.
-        applicationId = "com.yzc26623.HyperMusicCoverEnhanced"
+        applicationId = (findProperty("mcApplicationId") as String?)
+            ?: "com.yzc26623.HyperMusicCoverEnhanced"
+        manifestPlaceholders["mcAppLabel"] = (findProperty("mcAppLabel") as String?)
+            ?: "@string/app_name"
         minSdk = 35
         targetSdk = 37
         // Build properties can override the release version for local test builds.

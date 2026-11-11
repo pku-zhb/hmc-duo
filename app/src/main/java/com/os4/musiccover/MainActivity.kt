@@ -40,9 +40,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.os4.musiccover.ui.component.PagerNavigationSpringSpec
 import com.os4.musiccover.ui.component.liquid.IosLiquidGlassNavigationBar
-import com.os4.musiccover.ui.screen.experiments.ExperimentsPageView
-import com.os4.musiccover.ui.screen.experiments.ExperimentsUnlock
-import androidx.compose.runtime.collectAsState
 import com.os4.musiccover.ui.screen.about.AboutPageContent
 import com.os4.musiccover.ui.screen.features.FeaturesPageView
 import com.os4.musiccover.ui.screen.home.HomePageView
@@ -66,13 +63,10 @@ import top.yukonga.miuix.kmp.blur.layerBackdrop
 import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
 import top.yukonga.miuix.kmp.blur.textureBlur
 import top.yukonga.miuix.kmp.icon.MiuixIcons
-import top.yukonga.miuix.kmp.icon.extended.GridView
-import com.os4.musiccover.ui.screen.extensions.ExtensionsPageView
 import top.yukonga.miuix.kmp.icon.extended.Home
 import top.yukonga.miuix.kmp.icon.extended.Info
 import top.yukonga.miuix.kmp.icon.extended.Settings
 import top.yukonga.miuix.kmp.icon.extended.Tune
-import top.yukonga.miuix.kmp.icon.extended.VerticalSplit
 import top.yukonga.miuix.kmp.theme.ColorSchemeMode
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
@@ -238,9 +232,7 @@ private fun MainScreen(
     onBlurEnabledChange: (Boolean) -> Unit,
 ) {
     val context = LocalContext.current
-    // The A/B tab only exists once unlocked from About (ExperimentsUnlock).
-    val abUnlocked by remember { ExperimentsUnlock.state(context) }.collectAsState()
-    val pageCount = if (abUnlocked == true) 6 else 5
+    val pageCount = 4
     val pagerState = rememberPagerState(pageCount = { pageCount })
     var selectedIndex by remember { mutableIntStateOf(0) }
     var isNavigating by remember { mutableStateOf(false) }
@@ -249,13 +241,11 @@ private fun MainScreen(
     val items = listOf(
         stringResource(R.string.tab_home),
         stringResource(R.string.tab_features),
-        stringResource(R.string.tab_extensions),
         stringResource(R.string.tab_settings),
         stringResource(R.string.tab_about),
-        stringResource(R.string.tab_experiments),
-    ).take(pageCount)
-    val icons = listOf(MiuixIcons.Home, MiuixIcons.Tune, MiuixIcons.GridView, MiuixIcons.Settings,
-        MiuixIcons.Info, MiuixIcons.VerticalSplit).take(pageCount)
+    )
+    val icons = listOf(MiuixIcons.Home, MiuixIcons.Tune, MiuixIcons.Settings,
+        MiuixIcons.Info)
 
     /**
      * One flag per page rather than one counter shared by all pages.
@@ -272,7 +262,7 @@ private fun MainScreen(
      * otherwise every page is unskippable and the split buys nothing.
      */
     val onHomePage = remember { derivedStateOf { pagerState.currentPage == 0 } }
-    val onAboutPage = remember { derivedStateOf { pagerState.currentPage == 4 } }
+    val onAboutPage = remember { derivedStateOf { pagerState.currentPage == 3 } }
     val isHomeCurrent: () -> Boolean = remember(onHomePage) { { onHomePage.value } }
     val isAboutCurrent: () -> Boolean = remember(onAboutPage) { { onAboutPage.value } }
 
@@ -374,18 +364,12 @@ private fun MainScreen(
                         extraBottomPadding = navBarHeight,
                     )
 
-                    2 -> ExtensionsPageView(
-                        isBlurEnabled = isBlurEnabled,
-                        isCurrent = pagerState.currentPage == 2,
-                        extraBottomPadding = navBarHeight,
-                    )
-
-                    3 -> SettingsPageView(
+                    2 -> SettingsPageView(
                         isBlurEnabled = isBlurEnabled,
                         extraBottomPadding = navBarHeight,
                     )
 
-                    4 -> AboutPageContent(
+                    3 -> AboutPageContent(
                         openLicensePage = {
                             context.startActivity(Intent(context, LicenseActivity::class.java))
                         },
@@ -394,12 +378,6 @@ private fun MainScreen(
                         },
                         isBlurEnabled = isBlurEnabled,
                         isCurrent = isAboutCurrent,
-                        extraBottomPadding = navBarHeight,
-                    )
-                    5 -> ExperimentsPageView(
-                        isBlurEnabled = isBlurEnabled,
-                        isCurrent = pagerState.currentPage == 5,
-                        resumeKey = resumeKey,
                         extraBottomPadding = navBarHeight,
                     )
                 }

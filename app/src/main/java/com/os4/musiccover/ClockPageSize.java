@@ -59,8 +59,8 @@ final class ClockPageSize {
                 && art != null && !art.isRecycled();
         float aspect = coverVisible ? CoverCardStyle.aspect(art.getWidth(), art.getHeight()) : 1f;
         float scale = CoverCardStyle.clockScale(aspect);
-        boolean nativeSize = compact || coverVisible && CoverCardStyle.usesNativeClock(aspect)
-                && landscapeFits.test(aspect);
+        boolean nativeSize = compact || coverVisible && (FoldMusicRuntime.innerPortrait()
+                || CoverCardStyle.usesNativeClock(aspect) && landscapeFits.test(aspect));
         if (!active) {
             if (sAnimator != null) sAnimator.cancel();
             sAnimator = null;

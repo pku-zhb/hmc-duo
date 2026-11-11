@@ -8,8 +8,6 @@
 package com.os4.musiccover.ui.screen.about
 
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -24,7 +22,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.lazy.LazyColumn
@@ -38,9 +35,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import com.os4.musiccover.ui.screen.experiments.ExperimentsUnlock
-import androidx.compose.runtime.mutableLongStateOf
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -48,7 +42,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.painterResource
@@ -66,7 +59,6 @@ import com.os4.musiccover.ui.component.effect.BgEffectBackground
 import com.os4.musiccover.ui.util.BlurredBar
 import com.os4.musiccover.ui.util.ColorBlendToken
 import com.os4.musiccover.ui.util.isInDarkTheme
-import com.os4.musiccover.ui.util.openTelegramGroup
 import com.os4.musiccover.ui.util.pageContentPadding
 import com.os4.musiccover.ui.util.pageScrollModifiers
 import com.os4.musiccover.ui.util.rememberBlurBackdrop
@@ -96,37 +88,6 @@ fun AboutPageContent(
     isCurrent: () -> Boolean = { true },
     extraBottomPadding: Dp = 0.dp,
 ) {
-    // Owns the check, the install and the four dialogs; see UpdateUi.kt. It has to sit above the
-    // Scaffold because the dialogs open their own windows and cannot be nested in the page body.
-    val update = rememberUpdateController(isCurrent)
-    val context = LocalContext.current
-    // Seven quick taps on the app icon reveal the internal A/B tab; from the third tap a single
-    // toast counts down, replaced rather than stacked.
-    var iconTaps by remember { mutableIntStateOf(0) }
-    var lastIconTap by remember { mutableLongStateOf(0L) }
-    val resources = LocalResources.current
-    val tapToast = remember { arrayOfNulls<android.widget.Toast>(1) }
-    val onIconTap: () -> Unit = {
-        val now = android.os.SystemClock.uptimeMillis()
-        iconTaps = if (now - lastIconTap <= ExperimentsUnlock.TAP_WINDOW_MS) iconTaps + 1 else 1
-        lastIconTap = now
-        if (iconTaps >= ExperimentsUnlock.SHOW_FROM) {
-            val already = ExperimentsUnlock.state(context).value == true
-            val left = ExperimentsUnlock.TAPS - iconTaps
-            val text = when {
-                already -> resources.getString(R.string.ab_tab_already)
-                left > 0 -> resources.getQuantityString(R.plurals.ab_tab_taps_left, left, left)
-                else -> {
-                    ExperimentsUnlock.unlock(context)
-                    resources.getString(R.string.ab_tab_unlocked)
-                }
-            }
-            if (already || left <= 0) iconTaps = 0
-            tapToast[0]?.cancel()
-            tapToast[0] = android.widget.Toast.makeText(context, text, android.widget.Toast.LENGTH_SHORT)
-                .also { it.show() }
-        }
-    }
     val topAppBarScrollBehavior = MiuixScrollBehavior()
     val lazyListState = rememberLazyListState()
 
@@ -186,13 +147,10 @@ fun AboutPageContent(
                 openCreditsPage = openCreditsPage,
                 isBlurEnabled = isBlurEnabled,
                 isCurrent = isCurrent,
-                update = update,
-                onIconTap = onIconTap,
             )
         }
     }
 
-    UpdateDialogs(update)
 }
 
 @Composable
@@ -205,8 +163,6 @@ private fun AboutContent(
     openCreditsPage: () -> Unit,
     isBlurEnabled: Boolean,
     isCurrent: () -> Boolean,
-    update: UpdateController,
-    onIconTap: () -> Unit,
 ) {
     val uriHandler = LocalUriHandler.current
     // `rememberBlurBackdrop` answers "can this device blur", not "did the user ask for it": on
@@ -336,83 +292,6 @@ private fun AboutContent(
                             Color.Transparent,
                         ),
                     ) {
-                        UpdateRows(onGetUpdate = update.showLinks)
-                    }
-                    Card(
-                        modifier = Modifier
-                            .padding(horizontal = 12.dp)
-                            .padding(top = 12.dp)
-                            .then(
-                                if (contentBackdrop != null) {
-                                    Modifier.textureBlur(
-                                        backdrop = contentBackdrop,
-                                        shape = RoundedCornerShape(16.dp),
-                                        blurRadius = blurRadius,
-                                        noiseCoefficient = noiseCoefficient,
-                                        colors = BlurDefaults.blurColors(
-                                            blendColors = cardBlend,
-                                            brightness = brightness,
-                                            contrast = contrast,
-                                            saturation = saturation,
-                                        ),
-                                    )
-                                } else {
-                                    Modifier
-                                },
-                            ),
-                        colors = CardDefaults.defaultColors(
-                            if (contentBackdrop != null) Color.Transparent else colorScheme.surfaceContainer,
-                            Color.Transparent,
-                        ),
-                    ) {
-                        ArrowPreference(
-                            title = stringResource(R.string.about_source_code),
-                            summary = stringResource(R.string.about_source_code_summary),
-                            onClick = { uriHandler.openUri("https://github.com/Lewewe/HyperMusicCover-Enhanced") },
-                        )
-                        ArrowPreference(
-                            title = stringResource(R.string.about_telegram),
-                            summary = stringResource(R.string.about_telegram_summary),
-                            onClick = {
-                                // Falls back to the browser only when no Telegram client answered.
-                                if (!ctx.openTelegramGroup("https://t.me/HyperMusicCoverEnhanced")) {
-                                    uriHandler.openUri("https://t.me/HyperMusicCoverEnhanced")
-                                }
-                            },
-                        )
-                        ArrowPreference(
-                            title = stringResource(R.string.about_feedback),
-                            summary = stringResource(R.string.about_feedback_summary),
-                            onClick = { uriHandler.openUri("https://github.com/Lewewe/HyperMusicCover-Enhanced/issues") },
-                        )
-                    }
-                    Card(
-                        modifier = Modifier
-                            .padding(horizontal = 12.dp)
-                            .padding(top = 12.dp)
-                            .then(
-                                if (contentBackdrop != null) {
-                                    Modifier.textureBlur(
-                                        backdrop = contentBackdrop,
-                                        shape = RoundedCornerShape(16.dp),
-                                        blurRadius = blurRadius,
-                                        noiseCoefficient = noiseCoefficient,
-                                        colors = BlurDefaults.blurColors(
-                                            blendColors = cardBlend,
-                                            brightness = brightness,
-                                            contrast = contrast,
-                                            saturation = saturation,
-                                        ),
-                                    )
-                                } else {
-                                    Modifier
-                                },
-                            ),
-                        colors = CardDefaults.defaultColors(
-                            if (contentBackdrop != null) Color.Transparent else colorScheme.surfaceContainer,
-                            Color.Transparent,
-                        ),
-                    ) {
                         ArrowPreference(
                             title = stringResource(R.string.license_agpl),
                             onClick = { uriHandler.openUri("https://www.gnu.org/licenses/agpl-3.0.txt") },
@@ -465,22 +344,11 @@ private fun AboutContent(
                         scaleX = 1 - (iconProgress * 0.05f)
                         scaleY = 1 - (iconProgress * 0.05f)
                     }
-                    .squircleClip(cornerRadius = 28.dp)
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        onClick = onIconTap,
-                    ),
+                    .squircleClip(cornerRadius = 28.dp),
             ) {
-                // The launcher icon's layers: 108 dp wide, of which the middle 72 show.
                 Image(
-                    modifier = Modifier.requiredSize(150.dp),
-                    painter = painterResource(R.drawable.ic_launcher_background),
-                    contentDescription = null,
-                )
-                Image(
-                    modifier = Modifier.requiredSize(150.dp),
-                    painter = painterResource(R.drawable.ic_launcher_foreground),
+                    modifier = Modifier.size(100.dp),
+                    painter = painterResource(R.drawable.fold_launcher_artwork),
                     contentDescription = null,
                 )
             }
@@ -533,26 +401,11 @@ private fun AboutContent(
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 MiuixText(
-                    // The version is tappable for the same reason the "update available" line
-                    // below it is: the changelog is the one thing a person wants after seeing a
-                    // version number, and here it is one tap away. Indication stays off so the
-                    // press does not paint a band of shadow across the whole centred text.
-                    modifier = Modifier
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null,
-                            onClick = { update.showVersionNotes() },
-                        )
-                        .padding(vertical = 4.dp),
+                    modifier = Modifier.padding(vertical = 4.dp),
                     color = colorScheme.onSurfaceVariantSummary,
                     text = versionName,
                     fontSize = 14.sp,
                     textAlign = TextAlign.Center,
-                )
-                UpdateHint(
-                    modifier = Modifier.fillMaxWidth(),
-                    update = update.update,
-                    onShowNotes = update.showNotes,
                 )
             }
         }

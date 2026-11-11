@@ -16,22 +16,22 @@ class NotificationPillConfigTest {
         assertFalse(NotificationPillPolicy.active(true, true, collapsed, true, false))
     }
 
-    @Test fun oldFingerprintSettingIsDroppedWithoutLosingBlurPreferences() {
+    @Test fun legacyBlurIsDisabledWhileKeepingPendingParameters() {
         val old = JSONObject().put("fodLift", true)
             .put(MiniPlayerConfig.BACKGROUND_BLUR, true)
             .put(MiniPlayerConfig.BACKGROUND_BLUR_RADIUS, 42)
         val result = JSONObject(MiniPlayerConfig.normalizedJson(old.toString()))
         assertFalse(result.has("fodLift"))
         assertFalse(result.getBoolean(MiniPlayerConfig.COMPACT_NOTIFICATIONS))
-        assertTrue(result.getBoolean(MiniPlayerConfig.BACKGROUND_BLUR))
+        assertFalse(result.getBoolean(MiniPlayerConfig.BACKGROUND_BLUR))
         assertEquals(42.0, result.getDouble(MiniPlayerConfig.BACKGROUND_BLUR_RADIUS), 0.0)
     }
-    @Test fun compactSettingsAreBoundedAndSurviveNormalization() {
+    @Test fun retiredCompactingIsDisabledWhileLegacyNumbersRemainBounded() {
         val input = JSONObject().put(MiniPlayerConfig.COMPACT_NOTIFICATIONS, true)
             .put(MiniPlayerConfig.NOTIFICATION_SIZE, 10)
             .put(MiniPlayerConfig.NOTIFICATION_DROP, 90)
         val result = JSONObject(MiniPlayerConfig.normalizedJson(input.toString()))
-        assertTrue(result.getBoolean(MiniPlayerConfig.COMPACT_NOTIFICATIONS))
+        assertFalse(result.getBoolean(MiniPlayerConfig.COMPACT_NOTIFICATIONS))
         assertEquals(70.0, result.getDouble(MiniPlayerConfig.NOTIFICATION_SIZE), 0.0)
         assertEquals(32.0, result.getDouble(MiniPlayerConfig.NOTIFICATION_DROP), 0.0)
         assertEquals(80f, MiniPlayerConfig.notificationSize(Double.NaN), 0f)

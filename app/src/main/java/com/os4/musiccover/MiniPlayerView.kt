@@ -96,6 +96,38 @@ internal class MiniPlayerView(context: Context) : FrameLayout(context) {
     private var onOpenCover: (() -> Unit)? = null
     private var tracking = false
     private var toggleShown = true
+    var vertical = false
+        private set
+    private var verticalGeometryWidth = 0
+    private var verticalGeometryHeight = 0
+    private var verticalRows = 1
+    private var rawTitle: CharSequence = ""
+    private var rawArtist: CharSequence = ""
+
+    fun setVertical(on: Boolean) {
+        val changed = vertical != on
+        if (!changed && (!on || verticalGeometryWidth == restWidth() && verticalGeometryHeight == restHeight())) return
+        if (!on && vertical) finishRailContentTransition(false)
+        vertical = on
+        if (!on && lastHeightRadiusDp > 0) toggle.scaleType = ImageView.ScaleType.CENTER
+        textColumn.orientation = if (on) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL
+        textColumn.layoutDirection = if (on) View.LAYOUT_DIRECTION_RTL else View.LAYOUT_DIRECTION_LTR
+        textColumn.gravity = if (on) Gravity.TOP or Gravity.CENTER_HORIZONTAL else Gravity.CENTER_VERTICAL
+        val room = dp(3)
+        for (line in listOf(title, artist)) {
+            line.isSingleLine = !on
+            line.maxLines = if (on) verticalRows else 1
+            line.gravity = if (on) Gravity.TOP or Gravity.CENTER_HORIZONTAL else Gravity.CENTER_VERTICAL
+            line.setPadding(0, if (on) 0 else room, 0, if (on) 0 else room)
+            line.layoutParams = if (on) LinearLayout.LayoutParams(0, -1, 1f)
+                else LinearLayout.LayoutParams(-1, -2).apply { topMargin = -room; bottomMargin = -room }
+            line.ellipsize = if (on) TextUtils.TruncateAt.END else TextUtils.TruncateAt.MARQUEE
+        }
+        artist.translationY = if (on) 0f else -dp(2).toFloat()
+        updateWrittenText()
+        updateGeometry(lastHeightRadiusDp)
+        invalidateOutline()
+    }
     private var lastHeightRadiusDp = 27f
 
     init {
@@ -107,7 +139,7 @@ internal class MiniPlayerView(context: Context) : FrameLayout(context) {
         outlineProvider = object : ViewOutlineProvider() {
             override fun getOutline(view: View, outline: Outline) {
                 outline.setRoundRect(0, 0, view.width, view.height,
-                    if (morphing) morphRadius else view.height / 2f)
+                    if (morphing) morphRadius else min(view.width, view.height) / 2f)
             }
         }
         materialLayer.scaleType = ImageView.ScaleType.FIT_XY
@@ -218,8 +250,9 @@ internal class MiniPlayerView(context: Context) : FrameLayout(context) {
             updateGeometry(config.getDouble(MiniPlayerConfig.HEIGHT_RADIUS).toFloat())
         }
         // Equal by their words, so a line the row rewrote as a span is not set again every frame.
-        if (!TextUtils.equals(title.text, trackTitle)) title.text = trackTitle
-        if (!TextUtils.equals(artist.text, trackArtist)) artist.text = trackArtist
+        rawTitle = trackTitle
+        rawArtist = trackArtist
+        updateWrittenText()
         // A line with no words in it takes no room, and the column centres what is left: an island
         // whose template gives it only a timer (the recorder's, its param_v2 an animTextInfo and
         // nothing else) drew that one line on the upper one and read off centre (the user,
@@ -466,6 +499,7 @@ internal class MiniPlayerView(context: Context) : FrameLayout(context) {
         val k = 0.6f + 0.4f * v
         toggle2.scaleX = k
         toggle2.scaleY = k
+        if (vertical) { updateGeometry(lastHeightRadiusDp); return }
         val lp = textColumn.layoutParams as? LayoutParams ?: return
         val margin = textRightBase + ((toggleSizePx + toggleGapPx) * v).toInt()
         if (lp.rightMargin != margin) {
@@ -507,7 +541,7 @@ internal class MiniPlayerView(context: Context) : FrameLayout(context) {
 
     /** Whether a line too long for the pill scrolls (marquee) or is cut with an ellipsis. */
     fun setTextScrolls(scroll: Boolean) {
-        val mode = if (scroll) TextUtils.TruncateAt.MARQUEE else TextUtils.TruncateAt.END
+        val mode = if (scroll && !vertical) TextUtils.TruncateAt.MARQUEE else TextUtils.TruncateAt.END
         for (line in listOf(title, artist)) if (line.ellipsize != mode) line.ellipsize = mode
     }
 
@@ -598,7 +632,83 @@ internal class MiniPlayerView(context: Context) : FrameLayout(context) {
         tracking = false
     }
 
+    private var railContentAnimator: android.animation.ValueAnimator? = null
+    private var railContentPending: (() -> Unit)? = null
+    private var railContentSwitching = false
+
+    fun railContentSwitching(): Boolean = railContentSwitching
+
+    /** Interrupted swipes commit once before a new gesture starts; detach drops the pending one. */
+    fun finishRailContentTransition(commit: Boolean = true) {
+        val action = if (commit) railContentPending else null
+        railContentPending = null
+        val previous = railContentAnimator
+        railContentAnimator = null
+        railContentSwitching = false
+        previous?.cancel()
+        content.translationY = 0f
+        content.alpha = 1f
+        action?.invoke()
+    }
+
+    fun pullRailContent(dy: Float) {
+        if (vertical && !railContentSwitching) content.translationY = RailContentMotion.pull(dy, density)
+    }
+
+    fun releaseRailContent() {
+        if (railContentSwitching || content.translationY == 0f) return
+        val start = content.translationY
+        finishRailContentTransition(false)
+        content.translationY = start
+        val animator = android.animation.ValueAnimator.ofFloat(start, 0f)
+        railContentAnimator = animator
+        animator.apply {
+            duration = 120L
+            addUpdateListener { if (railContentAnimator === this) content.translationY = it.animatedValue as Float }
+            addListener(object : android.animation.AnimatorListenerAdapter() {
+                override fun onAnimationEnd(animation: android.animation.Animator) {
+                    if (railContentAnimator === animation) finishRailContentTransition(false)
+                }
+            })
+            start()
+        }
+    }
+
+    fun switchRailContent(next: Boolean, replace: () -> Unit) {
+        val startY = content.translationY
+        finishRailContentTransition()
+        if (!vertical || !isShown) { replace(); return }
+        railContentSwitching = true
+        railContentPending = replace
+        content.translationY = startY
+        val animator = android.animation.ValueAnimator.ofFloat(0f, 1f)
+        railContentAnimator = animator
+        animator.apply {
+            duration = 200L
+            interpolator = android.view.animation.LinearInterpolator()
+            addUpdateListener {
+                if (railContentAnimator !== this) return@addUpdateListener
+                val f = RailContentMotion.frame(it.animatedValue as Float, next, density, startY)
+                if (f.incoming) {
+                    val action = railContentPending
+                    railContentPending = null
+                    action?.invoke()
+                    if (railContentAnimator !== this) return@addUpdateListener
+                }
+                content.translationY = f.y
+                content.alpha = f.alpha
+            }
+            addListener(object : android.animation.AnimatorListenerAdapter() {
+                override fun onAnimationEnd(animation: android.animation.Animator) {
+                    if (railContentAnimator === animation) finishRailContentTransition()
+                }
+            })
+            start()
+        }
+    }
+
     override fun onDetachedFromWindow() {
+        finishRailContentTransition(false)
         finish()
         super.onDetachedFromWindow()
     }
@@ -643,7 +753,8 @@ internal class MiniPlayerView(context: Context) : FrameLayout(context) {
         val w = lp?.width?.takeIf { it > 0 } ?: slot.width
         val h = lp?.height?.takeIf { it > 0 } ?: slot.height
         val x = lp?.leftMargin?.toFloat() ?: slot.left.toFloat()
-        return CoverMorphMotion.Box(rest.x + x, rest.y + (restHeight() - h) / 2f, w.toFloat(), h.toFloat())
+        val y = if (vertical) lp?.topMargin?.toFloat() ?: slot.top.toFloat() else (restHeight() - h) / 2f
+        return CoverMorphMotion.Box(rest.x + x, rest.y + y, w.toFloat(), h.toFloat())
     }
 
     /** The pieces at their new places now, not on the next pass: a shape change mid-flight jumped. */
@@ -720,18 +831,7 @@ internal class MiniPlayerView(context: Context) : FrameLayout(context) {
      */
     private var layoutOnly = false
 
-    private var backdropBlurSuppressed = false
     private var materialFadeOverlap: Pair<Boolean, Boolean>? = null
-
-    fun setMorphBackdropAmount(amount: Float) {
-        MiniPlayerRuntime.fadePillBackdrop(materialLayer, amount)
-    }
-
-    fun suppressBackdropBlur(suppress: Boolean) {
-        if (backdropBlurSuppressed == suppress) return
-        backdropBlurSuppressed = suppress
-        MiniPlayerRuntime.suppressPillBackdrop(materialLayer, suppress)
-    }
 
     fun beginMorph(layoutOnly: Boolean = false, backgroundFade: Boolean = false) {
         if (morphing) return
@@ -752,7 +852,7 @@ internal class MiniPlayerView(context: Context) : FrameLayout(context) {
         morphing = true
         morphW = restWidth()
         morphH = restHeight()
-        morphRadius = morphH / 2f
+        morphRadius = min(morphW, morphH) / 2f
         toggle.isEnabled = layoutOnly && interactionsEnabled
         toggle2.isEnabled = toggle.isEnabled
         // A clipping parent clips each child to that child's own bounds: the text column is only
@@ -827,9 +927,7 @@ internal class MiniPlayerView(context: Context) : FrameLayout(context) {
             materialLayer.forceHasOverlappingRendering(material)
         }
         materialFadeOverlap = null
-        setMorphBackdropAmount(1f)
         morphing = false
-        suppressBackdropBlur(false)
         // The play button back in its own place, where a row move had carried it (setMorphFrame).
         if (layoutOnly) {
             toggle.translationX = 0f
@@ -854,7 +952,15 @@ internal class MiniPlayerView(context: Context) : FrameLayout(context) {
         requestLayout()
         invalidateOutline()
         materialLayer.invalidateOutline()
+        // A hidden/dozing host may not perform the requested traversal before wake. Restore
+        // the rail's actual frame now, rather than leaving the last square morph on screen.
+        if (vertical) layoutNow()
     }
+
+    fun frameState(): String = "vertical=$vertical morph=$morphing layoutOnly=$layoutOnly" +
+        " actual=${width}x$height rest=${restWidth()}x${restHeight()} morphFrame=${morphW}x$morphH" +
+        " writing=${if (vertical) "vertical-rtl" else "horizontal"} rows=$verticalRows" +
+        " contentY=${content.translationY} shellNudge=$nudgeY contentSwitch=$railContentSwitching"
 
     override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
         if (!morphing) {
@@ -1069,6 +1175,7 @@ internal class MiniPlayerView(context: Context) : FrameLayout(context) {
 
     private fun updateGeometry(heightRadiusDp: Float) {
         lastHeightRadiusDp = heightRadiusDp
+        if (vertical && updateVerticalGeometry()) return
         val height = (dp(heightRadiusDp * 2f).coerceAtLeast(dp(48)) * compactScale).roundToInt()
         val verticalPadding = max(dp(7f * compactScale), height / 9)
         val artworkSize = (height * ShortcutDisc.ICON_SHARE).toInt().coerceAtLeast(dp(24f * compactScale))
@@ -1109,6 +1216,51 @@ internal class MiniPlayerView(context: Context) : FrameLayout(context) {
         // A new shape for the picture is laid out at once: a morph holds the pass back until it
         // ends, and a cover flight aimed at the old square meanwhile (filmed 2026-10-20).
         if (slot.width != artworkWidth || slot.height != artworkSize) layoutNow()
+    }
+
+    private fun updateVerticalGeometry(): Boolean {
+        val full = RightRailLayout.face(restWidth().toFloat(), restHeight().toFloat(), density,
+            secondShown > .001f)
+        val face = full ?: RightRailLayout.face(restWidth().toFloat(), restHeight().toFloat(), density, false)
+            ?: return false
+        verticalGeometryWidth = restWidth()
+        verticalGeometryHeight = restHeight()
+        fun params(box: FoldMusicLayout.Box) = LayoutParams(box.width().roundToInt(),
+            box.height().roundToInt(), Gravity.TOP or Gravity.LEFT).apply {
+            leftMargin = box.left.roundToInt(); topMargin = box.top.roundToInt()
+        }
+        slot.layoutParams = params(face.artwork)
+        textColumn.layoutParams = params(face.text)
+        val rows = ((face.text.height() - dp(4)) / max(title.lineHeight, artist.lineHeight).coerceAtLeast(1))
+            .toInt().coerceAtLeast(1)
+        if (verticalRows != rows) {
+            verticalRows = rows
+            title.maxLines = rows; artist.maxLines = rows
+            updateWrittenText()
+        }
+        toggle.layoutParams = params(face.action)
+        toggle2.layoutParams = params(face.secondAction)
+        toggle2.visibility = if (full != null && secondShown > .001f) View.VISIBLE else View.GONE
+        toggle.scaleType = ImageView.ScaleType.FIT_CENTER
+        val radius = face.artwork.width() / 2f
+        artworkRadiusPx = radius
+        slot.background = if (artworkBare) null else rounded(Color.rgb(55, 55, 55), radius)
+        slot.outlineProvider = object : ViewOutlineProvider() {
+            override fun getOutline(view: View, outline: Outline) {
+                outline.setRoundRect(0, 0, view.width, view.height,
+                    if (artworkMorphRadius.isNaN()) radius else artworkMorphRadius)
+            }
+        }
+        slot.invalidateOutline()
+        requestLayout()
+        return true
+    }
+
+    private fun updateWrittenText() {
+        val right = if (vertical) VerticalPillText.column(rawTitle, verticalRows) else rawTitle
+        val left = if (vertical) VerticalPillText.column(rawArtist, verticalRows) else rawArtist
+        if (!TextUtils.equals(title.text, right)) title.text = right
+        if (!TextUtils.equals(artist.text, left)) artist.text = left
     }
 
     private fun rounded(color: Int, radius: Float) = GradientDrawable().apply {

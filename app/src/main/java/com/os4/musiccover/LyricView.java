@@ -314,6 +314,25 @@ final class LyricView extends View {
     private int blurPad;
     private int builtDepthBlur = LyricDepthBlur.DEFAULT;
     private float sidePx;
+    private final android.graphics.RectF columnBounds = new android.graphics.RectF();
+    private boolean inColumns;
+    private int columnWidth;
+    private float columnLeft;
+
+    private int textViewportWidth() { return columnWidth > 0 ? columnWidth : getWidth(); }
+
+    /** Keep the view in its native window; reflow text into a mapped column without scaling it. */
+    private boolean refreshColumns() {
+        boolean split = FoldMusicRuntime.lyrics(this, columnBounds);
+        boolean narrowed = !split && LockScreenRailRuntime.content(this, columnBounds);
+        int width = split || narrowed ? Math.max(1, Math.round(columnBounds.width())) : getWidth();
+        float left = split || narrowed ? columnBounds.left : 0f;
+        boolean changed = split != inColumns || width != columnWidth || left != columnLeft;
+        inColumns = split;
+        columnWidth = width;
+        columnLeft = left;
+        return changed;
+    }
     /** The typography and width currently represented by the layouts and blur cache. */
     private LyricStyle layoutStyle;
 
@@ -504,7 +523,7 @@ final class LyricView extends View {
         textPx = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, style.sizeSp,
                 getResources().getDisplayMetrics());
         wordPad = (int) Math.ceil(glowPx * 1.6f + liftPx + textPx * GLOW_SWELL);
-        sidePx = style.sidePx(getWidth(), shortSide(), density, textPx);
+        sidePx = style.sidePx(textViewportWidth(), shortSide(), density, textPx);
         paint.setTextSize(textPx);
         paint.setTypeface(Typeface.create(Typeface.DEFAULT, style.weight, false));
         transPaint.setTextSize(textPx * TRANS_SP / TEXT_SP);
@@ -621,7 +640,8 @@ final class LyricView extends View {
         // Leaving, the lines are frozen like the band below: switching the lyrics off empties
         // them, and laying the empty set out at once cut the lines off in one frame instead of
         // letting them fade.
-        if (getWidth() > 0 && (LockLyrics.version() != version || getWidth() != layoutWidth
+        if (refreshColumns()) changed = true;
+        if (textViewportWidth() > 0 && (LockLyrics.version() != version || textViewportWidth() != layoutWidth
                 // The translation switch changes the layout, not just the drawing: it takes a
                 // row out from under every line, so it is asked for the same way a new lyric set
                 // is. Compared against what the layout in use was built with, not the field, or
@@ -1386,7 +1406,7 @@ final class LyricView extends View {
     /** An arrival from the island: everything put on it, then sprung home. */
     private void popFrom(float[] onScreen) {
         getLocationOnScreen(loc);
-        popX.set(onScreen[0] - loc[0] - getWidth() / 2f);
+        popX.set(onScreen[0] - loc[0] - columnLeft - textViewportWidth() / 2f);
         popY.set(onScreen[1] - loc[1] - homeY());
         popS.set(POP_SCALE_IN);
         popA.set(0f);
@@ -1401,7 +1421,7 @@ final class LyricView extends View {
     /** A departure into the island, from wherever the block is and at whatever speed. */
     private void popInto(long now, float[] onScreen) {
         getLocationOnScreen(loc);
-        popToX = onScreen[0] - loc[0] - getWidth() / 2f;
+        popToX = onScreen[0] - loc[0] - columnLeft - textViewportWidth() / 2f;
         popToY = onScreen[1] - loc[1] - homeY();
         popOutAt = now;
         popMode = POP_OUT;
@@ -1691,7 +1711,7 @@ final class LyricView extends View {
      */
     private boolean layOut() {
         final int v = LockLyrics.version();
-        final int width = getWidth();
+        final int width = textViewportWidth();
         final int transOn = LockLyrics.below();
         final int alignOn = LockLyrics.sAlign;
         final LyricStyle style = LockLyrics.sStyle;
@@ -1744,7 +1764,7 @@ final class LyricView extends View {
                         wantStyle = null;
                         // Stale by the time it landed, or asked for and then frozen by the lyrics
                         // being switched off: the next step asks again when it is due.
-                        if (v != LockLyrics.version() || width != getWidth()
+                        if (v != LockLyrics.version() || width != textViewportWidth()
                                 || transOn != LockLyrics.below()
                                 || alignOn != LockLyrics.sAlign
                                 || !style.sameLayout(LockLyrics.sStyle)
@@ -2031,6 +2051,15 @@ final class LyricView extends View {
 
     /** Where the band between the clock and the card is, in this view's coordinates. */
     private boolean updateBand() {
+        if (inColumns) {
+            float top = columnBounds.top, bottom = columnBounds.bottom;
+            boolean ok = bottom - top >= MIN_BAND_ROWS * textPx;
+            boolean changed = ok != bandOk || Math.abs(top - bandTop) >= 0.5f
+                    || Math.abs(bottom - bandBottom) >= 0.5f;
+            bandOk = ok;
+            if (ok) { bandTop = top; bandBottom = bottom; }
+            return changed;
+        }
         // Two getLocationOnScreen walks a frame are not free, and this runs from the keyguard's
         // pre-draw: nothing to show, nothing to measure.
         // The lyricless BPM companion has no rows to bring the band alive first.  It still uses
@@ -2242,12 +2271,15 @@ final class LyricView extends View {
     protected void onDraw(Canvas canvas) {
         LockLyrics.noteStill("draw");
         long t0 = System.nanoTime();
+        int columnSave = canvas.save();
+        canvas.translate(columnLeft, 0f);
         if (pageFade >= 1f) drawLyrics(canvas);
         else if (pageFade > 0f) {
-            int page = canvas.saveLayerAlpha(0f, 0f, getWidth(), getHeight(), (int) (255 * pageFade));
+            int page = canvas.saveLayerAlpha(0f, 0f, textViewportWidth(), getHeight(), (int) (255 * pageFade));
             drawLyrics(canvas);
             canvas.restoreToCount(page);
         }
+        canvas.restoreToCount(columnSave);
         long took = System.nanoTime() - t0;
         drawNsSum += took;
         if (took > drawNsMax) drawNsMax = took;
@@ -2294,9 +2326,9 @@ final class LyricView extends View {
             // list's view: between the island's centre and home, about the band's centre.
             canvas.translate(popX.x, popY.x);
             float sc = Math.max(0f, popS.x);
-            canvas.scale(sc, sc, getWidth() / 2f, homeY());
+            canvas.scale(sc, sc, textViewportWidth() / 2f, homeY());
         }
-        canvas.clipRect(0f, bandTop, getWidth(), bandBottom);
+        canvas.clipRect(0f, bandTop, textViewportWidth(), bandBottom);
         for (int i = Math.max(0, focus - 12); i < n; i++) {
             if (simultaneousStage && !simultaneousDrawn(i)) continue;
             // The interlude slot above this line, if it has one: its dots move with the line, and
@@ -2384,12 +2416,12 @@ final class LyricView extends View {
             edgeMaskTo = to;
         }
         float top = Math.max(bandTop, Math.min(from, edgeRowY[0]));
-        int layer = canvas.saveLayer(0f, top, getWidth(), Math.min(to, edgeRowsBottom), null);
+        int layer = canvas.saveLayer(0f, top, textViewportWidth(), Math.min(to, edgeRowsBottom), null);
         for (int k = 0; k < edgeCount; k++) {
             drawLine(canvas, edgeRows[k], side, edgeRowY[k], edgeRowA[k]);
         }
-        if (edgeCutTop) canvas.drawRect(0f, top, getWidth(), topTo, edgeTopMask);
-        if (edgeCutBottom) canvas.drawRect(0f, from, getWidth(), to, edgeMask);
+        if (edgeCutTop) canvas.drawRect(0f, top, textViewportWidth(), topTo, edgeTopMask);
+        if (edgeCutBottom) canvas.drawRect(0f, from, textViewportWidth(), to, edgeMask);
         canvas.restoreToCount(layer);
     }
 
@@ -2443,14 +2475,14 @@ final class LyricView extends View {
         float labelBaseline = faceHeight * peak + lineGap - companionMetrics.top;
         float contentHeight = labelBaseline + companionMetrics.bottom;
         float contentWidth = Math.max(Math.max(faceWidth, calmWidth) * peak, p.measureText(label));
-        float fit = CompanionLayout.fitScale(getWidth() - 2f * CoverCardStyle.GAP_DP * density,
+        float fit = CompanionLayout.fitScale(textViewportWidth() - 2f * CoverCardStyle.GAP_DP * density,
                 bandBottom - bandTop, contentWidth, contentHeight);
         if (!(fit > 0f)) return;
-        float cx = getWidth() * .5f;
+        float cx = textViewportWidth() * .5f;
         float top = (bandTop + bandBottom - contentHeight * fit) * .5f;
         int blockSave = canvas.save();
         // Never let fallback glyphs or a moving beat draw over the media player.
-        canvas.clipRect(0f, bandTop, getWidth(), bandBottom);
+        canvas.clipRect(0f, bandTop, textViewportWidth(), bandBottom);
         canvas.translate(cx, top);
         canvas.scale(fit, fit);
         p.setTextSize(textPx * 1.18f);

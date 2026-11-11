@@ -25,8 +25,6 @@ object SettingsBackup {
     /** The size as a fraction of the style's full clock; the same key the trimmed builds dropped. */
     private const val KEY_CLOCK_SIZE = "clockSizeFraction"
     private const val KEY_CARD_TITLE_TAP = "cardTitleTap"
-    private const val KEY_HIDE_FINGERPRINT = "hideFingerprint"
-    private const val KEY_FOD_AFTER_FACE = "fingerprintAfterFace"
     private const val KEY_COVER_FLIP = "coverFlip"
     private const val KEY_GLOW_DRIFT = "glowDrift"
     private const val KEY_MESH_BACKDROP = "meshBackdrop"
@@ -43,10 +41,6 @@ object SettingsBackup {
     private const val KEY_LYRICS_TRANSLATE_TARGET = "lyricsTranslateTarget"
     private const val KEY_LYRICS_ALIVE_FX = "lyricsAliveEffects"
     private const val KEY_LYRICS_DEPTH_BLUR = "lyricsDepthBlur"
-    private const val KEY_ISLAND_IPHONE_GESTURES = "islandIphoneGestures"
-    private const val KEY_ISLAND_IPHONE_TOP = "islandIphoneTop"
-    private const val KEY_ISLAND_IPHONE_RADIUS = "islandIphoneRadius"
-    private const val KEY_ISLAND_IPHONE_FOCUS_BLACK = "islandIphoneFocusBlack"
     private const val KEY_LYRICS_ROMA = "lyricsRomanisation"
     private const val KEY_LYRICS_GROUPS = "lyricsGentleFlow"
     private const val KEY_LYRICS_SEARCH = "lyricsSearchMode"
@@ -77,7 +71,6 @@ object SettingsBackup {
         }
     }
     private const val KEY_LYRICS_ALIGN = "lyricsAlignment"
-    private const val KEY_FP_AVOID = "fingerprintAvoid"
     private const val KEY_MINI = "lockscreenMiniPlayer"
 
     suspend fun export(context: Context): String {
@@ -98,12 +91,15 @@ object SettingsBackup {
             json.put(KEY_FULL_BLUR, module.fullBlur)
             json.put(KEY_COVER_STYLE, module.coverStyle)
             json.put("hidePlayerBackground", module.hidePlayerBackground)
-            json.put("coverOnTap", module.coverOnTap)
+            json.put("foldMusicLayout", module.foldMusicLayout)
+            json.put("rightRail", module.rightRail)
+            json.put("reflowLockContent", module.reflowLockContent)
+            json.put("followNativeMaterial", module.followNativeMaterial)
+            json.put("hideChargingHint", module.hideChargingHint)
+            json.put("forceNotificationFloor", module.forceNotificationFloor)
             json.put("wallpaperDim", module.wallpaperDim)
             if (module.clockSize > 0f) json.put(KEY_CLOCK_SIZE, module.clockSize.toDouble())
             json.put(KEY_CARD_TITLE_TAP, module.mcTitleTap)
-            json.put(KEY_HIDE_FINGERPRINT, module.hideFingerprint)
-            json.put(KEY_FOD_AFTER_FACE, module.fodAfterFace)
             json.put(KEY_COVER_FLIP, module.coverFlip)
             json.put(KEY_GLOW_DRIFT, module.glowDrift)
             json.put(KEY_MESH_BACKDROP, module.meshBackdrop)
@@ -121,16 +117,11 @@ object SettingsBackup {
             json.put(KEY_LYRICS_TRANSLATE_TARGET, module.lyricTranslateTarget)
             json.put(KEY_LYRICS_ALIVE_FX, module.lyricsAliveFx)
             json.put(KEY_LYRICS_DEPTH_BLUR, module.lyricsDepthBlur)
-            json.put(KEY_ISLAND_IPHONE_GESTURES, module.islandIphoneGestures)
-            json.put(KEY_ISLAND_IPHONE_TOP, module.islandIphoneTop)
-            json.put(KEY_ISLAND_IPHONE_RADIUS, module.islandIphoneRadius)
-            json.put(KEY_ISLAND_IPHONE_FOCUS_BLACK, module.islandIphoneFocusBlack)
             json.put(KEY_LYRICS_ROMA, module.lyricsRoma)
             json.put(KEY_LYRICS_GROUPS, module.lyricsGroups)
             json.put(KEY_LYRICS_SEARCH, module.lyricsSearchMode)
             writeLyricProviders(json, module)
             json.put(KEY_LYRICS_ALIGN, module.lyricsAlign)
-            json.put(KEY_FP_AVOID, module.fpAvoid)
             json.put("mediaCardCustomization", JSONObject(module.mediaCardConfig))
             json.put(KEY_MINI, JSONObject(module.miniConfig))
         }
@@ -150,11 +141,14 @@ object SettingsBackup {
             // Only when the file has one: a file without the module's half (exported while the
             // module did not answer, or from before it was included) used to reset it to FULL.
             if (obj.has("wallpaperDim")) ModuleBridge.setWallpaperDim(context, obj.getInt("wallpaperDim"))
-            if (obj.has("coverOnTap")) {
-                ModuleBridge.setCoverOnTap(context, obj.getBoolean("coverOnTap"))
-            }
             if (obj.has("hidePlayerBackground")) {
                 ModuleBridge.setHidePlayerBackground(context, obj.getBoolean("hidePlayerBackground"))
+            }
+            if (obj.has("foldMusicLayout")) {
+                ModuleBridge.setFoldMusicLayout(context, obj.getBoolean("foldMusicLayout"))
+            }
+            for (key in listOf("rightRail", "reflowLockContent", "followNativeMaterial", "hideChargingHint", "forceNotificationFloor")) {
+                if (obj.has(key)) ModuleBridge.setRailSetting(context, key, obj.getBoolean(key))
             }
             if (obj.has(KEY_COVER_STYLE)) {
                 ModuleBridge.setCoverStyle(context, "mode", obj.getInt(KEY_COVER_STYLE).toFloat())
@@ -164,12 +158,6 @@ object SettingsBackup {
             }
             if (obj.has(KEY_CARD_TITLE_TAP)) {
                 ModuleBridge.setCardTitleTap(context, obj.getBoolean(KEY_CARD_TITLE_TAP))
-            }
-            if (obj.has(KEY_HIDE_FINGERPRINT)) {
-                ModuleBridge.setHideFingerprint(context, obj.getBoolean(KEY_HIDE_FINGERPRINT))
-            }
-            if (obj.has(KEY_FOD_AFTER_FACE)) {
-                ModuleBridge.setFodAfterFace(context, obj.getBoolean(KEY_FOD_AFTER_FACE))
             }
             if (obj.has(KEY_COVER_FLIP)) {
                 ModuleBridge.setCoverFlip(context, obj.getBoolean(KEY_COVER_FLIP))
@@ -243,26 +231,11 @@ object SettingsBackup {
             if (obj.has(KEY_LYRICS_ALIGN)) {
                 ModuleBridge.setLyricsAlign(context, obj.getInt(KEY_LYRICS_ALIGN))
             }
-            if (obj.has(KEY_ISLAND_IPHONE_GESTURES)) {
-                ModuleBridge.setIslandIphoneGestures(context, obj.getBoolean(KEY_ISLAND_IPHONE_GESTURES))
-            }
-            if (obj.has(KEY_ISLAND_IPHONE_TOP)) {
-                ModuleBridge.setIslandIphoneTop(context, obj.getBoolean(KEY_ISLAND_IPHONE_TOP))
-            }
-            if (obj.has(KEY_ISLAND_IPHONE_FOCUS_BLACK)) {
-                ModuleBridge.setIslandIphoneFocusBlack(context, obj.getBoolean(KEY_ISLAND_IPHONE_FOCUS_BLACK))
-            }
-            if (obj.has(KEY_ISLAND_IPHONE_RADIUS)) {
-                ModuleBridge.setIslandIphoneRadius(context, obj.getInt(KEY_ISLAND_IPHONE_RADIUS))
-            }
             if (obj.has(KEY_LYRICS_DEPTH_BLUR)) {
                 ModuleBridge.setLyricsDepthBlur(context, obj.getInt(KEY_LYRICS_DEPTH_BLUR))
             }
             if (obj.has(KEY_LYRICS_ALIVE_FX)) {
                 ModuleBridge.setLyricsAliveFx(context, obj.getInt(KEY_LYRICS_ALIVE_FX))
-            }
-            if (obj.has(KEY_FP_AVOID)) {
-                ModuleBridge.setFingerprintAvoid(context, obj.getInt(KEY_FP_AVOID))
             }
             if (obj.has("mediaCardCustomization")) {
                 ModuleBridge.setMediaCardConfig(context, obj.getJSONObject("mediaCardCustomization").toString())

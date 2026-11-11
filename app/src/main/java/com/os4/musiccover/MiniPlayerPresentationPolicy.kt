@@ -13,6 +13,9 @@ internal data class MiniPlayerPresentationInput(
     val nativeSceneOverride: Boolean = false,
     val transitionActive: Boolean = false,
     val controlCenterOpen: Boolean = false,
+    val independentMediaExit: Boolean = false,
+    val retainMiniDuringExit: Boolean = false,
+    val mediaExitCommitted: Boolean = false,
 )
 
 internal data class MiniPlayerPresentation(
@@ -36,9 +39,10 @@ internal object MiniPlayerPresentationPolicy {
         val lockscreenSurfaceVisible = input.sceneVisible || input.controlCenterOpen
         return MiniPlayerPresentation(
             showMini = available &&
-                (input.transitionActive || miniSelected && lockscreenSurfaceVisible),
+                (input.transitionActive || miniSelected && lockscreenSurfaceVisible ||
+                    input.independentMediaExit && input.retainMiniDuringExit && input.keyguardOwned && lockscreenSurfaceVisible),
             suppressNative = available && miniSelected && input.keyguardOwned && lockscreenSurfaceVisible &&
-                !input.nativeSceneOverride && !input.transitionActive,
+                (!input.nativeSceneOverride || input.mediaExitCommitted) && !input.transitionActive && !input.independentMediaExit,
         )
     }
 }

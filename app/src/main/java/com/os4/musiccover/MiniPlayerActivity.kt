@@ -21,8 +21,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import com.os4.musiccover.ui.screen.features.BetaSwitch
-import com.os4.musiccover.ui.screen.features.ValueSlider
 import com.os4.musiccover.ui.theme.AppTheme
 import com.os4.musiccover.ui.util.PageScaffold
 import org.json.JSONObject
@@ -63,7 +61,7 @@ private fun MiniPlayerPage(blur: Boolean, refreshKey: Int, onBack: () -> Unit) {
     val context = LocalContext.current
     var configText by remember { mutableStateOf(MiniPlayerConfig.defaultJson()) }
     var alive by remember { mutableStateOf(false) }
-    var compactAvailable by remember { mutableStateOf(false) }
+    var followNativeMaterial by remember { mutableStateOf(false) }
     val config = remember(configText) { JSONObject(configText) }
     // A setting the module did not take means it went away: grey the page until it answers again.
     val lost by ModuleBridge.lost.collectAsState()
@@ -71,7 +69,7 @@ private fun MiniPlayerPage(blur: Boolean, refreshKey: Int, onBack: () -> Unit) {
     LaunchedEffect(refreshKey, lost) {
         val reply = ModuleBridge.queryAlive(context)
         alive = reply.alive
-        compactAvailable = reply.notificationCompactingAvailable
+        followNativeMaterial = reply.followNativeMaterial
         if (reply.alive) configText = reply.miniConfig
     }
     fun push(key: String, value: Any) {
@@ -88,10 +86,7 @@ private fun MiniPlayerPage(blur: Boolean, refreshKey: Int, onBack: () -> Unit) {
             }
         }
         item {
-            // The pill's width, its height and the roundness of the thumbnail in it were three
-            // sliders and are fixed - see MiniPlayerConfig, which no longer reads them from
-            // anything the app sends. What is left is whether it is on, and whether it widens
-            // into a switched-off shortcut's place.
+            // Only controls supported by the dedicated Fold layout are exposed.
             Column {
                 SmallTitle(text = stringResource(R.string.mini_general_section))
                 Card(Modifier.padding(horizontal = 12.dp).padding(bottom = 12.dp)) {
@@ -112,82 +107,28 @@ private fun MiniPlayerPage(blur: Boolean, refreshKey: Int, onBack: () -> Unit) {
                             MiniPlayerConfig.STYLE_COLOROS).coerceIn(0, 1),
                         enabled = alive && config.optBoolean(MiniPlayerConfig.ENABLED),
                         onSelectedIndexChange = { push(MiniPlayerConfig.PILL_STYLE, it) })
-                    if (MiniPlayerConfig.colorOs(config)) {
-                        BetaSwitch(title = stringResource(R.string.mini_coloros_full_size),
-                            summary = stringResource(R.string.mini_coloros_full_size_summary),
-                            checked = config.optBoolean(MiniPlayerConfig.COLOROS_FULL_SIZE),
-                            enabled = alive && config.optBoolean(MiniPlayerConfig.ENABLED),
-                            onCheckedChange = { push(MiniPlayerConfig.COLOROS_FULL_SIZE, it) })
-                    }
-                    SwitchPreference(title = stringResource(R.string.mini_list_without_player),
-                        summary = stringResource(R.string.mini_list_without_player_summary),
-                        checked = config.optBoolean(MiniPlayerConfig.LIST_WITHOUT_PLAYER),
-                        enabled = alive && config.optBoolean(MiniPlayerConfig.ENABLED),
-                        onCheckedChange = { push(MiniPlayerConfig.LIST_WITHOUT_PLAYER, it) })
                     SwitchPreference(title = stringResource(R.string.mini_note_text_scroll),
-                        summary = stringResource(R.string.mini_note_text_scroll_summary),
-                        checked = config.optBoolean(MiniPlayerConfig.NOTE_TEXT_SCROLL, true),
-                        enabled = alive && config.optBoolean(MiniPlayerConfig.ENABLED),
-                        onCheckedChange = { push(MiniPlayerConfig.NOTE_TEXT_SCROLL, it) })
-                    SwitchPreference(title = stringResource(R.string.mini_widen),
-                        summary = stringResource(R.string.mini_widen_summary),
-                        checked = config.optBoolean(MiniPlayerConfig.ADAPTIVE_WIDTH),
-                        enabled = alive && config.optBoolean(MiniPlayerConfig.ENABLED),
-                        onCheckedChange = { push(MiniPlayerConfig.ADAPTIVE_WIDTH, it) })
+                        summary = stringResource(R.string.fold_text_pending),
+                        checked = false, enabled = false,
+                        onCheckedChange = {})
                     SwitchPreference(title = stringResource(R.string.mini_status_at_date),
                         summary = stringResource(R.string.mini_status_at_date_summary),
                         checked = config.optBoolean(MiniPlayerConfig.STATUS_AT_DATE),
                         enabled = alive && config.optBoolean(MiniPlayerConfig.ENABLED),
                         onCheckedChange = { push(MiniPlayerConfig.STATUS_AT_DATE, it) })
                 }
-                SmallTitle(text = stringResource(R.string.mini_notifications_section))
+                SmallTitle(text = stringResource(R.string.fold_material_section))
                 Card(Modifier.padding(horizontal = 12.dp).padding(bottom = 12.dp)) {
-                    SwitchPreference(title = stringResource(R.string.mini_notification_compact),
-                        summary = stringResource(when {
-                            compactAvailable -> R.string.mini_notification_compact_summary
-                            else -> R.string.mini_notification_compact_unavailable
-                        }),
-                        checked = compactAvailable && config.optBoolean(MiniPlayerConfig.COMPACT_NOTIFICATIONS),
-                        enabled = alive && compactAvailable && config.optBoolean(MiniPlayerConfig.ENABLED),
-                        onCheckedChange = { push(MiniPlayerConfig.COMPACT_NOTIFICATIONS, it) })
-                    if (compactAvailable && config.optBoolean(MiniPlayerConfig.COMPACT_NOTIFICATIONS)) {
-                        ValueSlider(title = stringResource(R.string.mini_notification_size),
-                            value = config.optDouble(MiniPlayerConfig.NOTIFICATION_SIZE, 80.0).toFloat(),
-                            valueRange = 70f..100f, detent = 80f,
-                            enabled = alive && config.optBoolean(MiniPlayerConfig.ENABLED),
-                            label = { "${it.toInt()}%" },
-                            onValueChange = { push(MiniPlayerConfig.NOTIFICATION_SIZE, it) })
-                        ValueSlider(title = stringResource(R.string.mini_notification_drop),
-                            value = config.optDouble(MiniPlayerConfig.NOTIFICATION_DROP, 16.0).toFloat(),
-                            valueRange = 0f..32f, detent = 16f,
-                            enabled = alive && config.optBoolean(MiniPlayerConfig.ENABLED),
-                            label = { "${it.toInt()} dp" },
-                            onValueChange = { push(MiniPlayerConfig.NOTIFICATION_DROP, it) })
-                    }
-                }
-                SmallTitle(text = stringResource(R.string.mini_background_section))
-                Card(Modifier.padding(horizontal = 12.dp).padding(bottom = 12.dp)) {
-                    SwitchPreference(title = stringResource(R.string.islands_background_blur),
-                        summary = stringResource(R.string.islands_background_blur_summary),
-                        checked = config.optBoolean(MiniPlayerConfig.BACKGROUND_BLUR),
-                        enabled = alive && config.optBoolean(MiniPlayerConfig.ENABLED),
-                        onCheckedChange = { push(MiniPlayerConfig.BACKGROUND_BLUR, it) })
-                    if (config.optBoolean(MiniPlayerConfig.BACKGROUND_BLUR)) {
-                        ValueSlider(title = stringResource(R.string.islands_background_blur_radius),
-                            value = config.optDouble(MiniPlayerConfig.BACKGROUND_BLUR_RADIUS, 30.0).toFloat(),
-                            valueRange = 0f..80f,
-                            detent = 30f,
-                            enabled = alive && config.optBoolean(MiniPlayerConfig.ENABLED),
-                            label = { "${it.toInt()} dp" },
-                            onValueChange = { push(MiniPlayerConfig.BACKGROUND_BLUR_RADIUS, it) })
-                        ValueSlider(title = stringResource(R.string.islands_background_blur_brightness),
-                            value = config.optDouble(MiniPlayerConfig.BACKGROUND_BLUR_BRIGHTNESS, 80.0).toFloat(),
-                            valueRange = 0f..100f,
-                            detent = 80f,
-                            enabled = alive && config.optBoolean(MiniPlayerConfig.ENABLED),
-                            label = { "${it.toInt()}%" },
-                            onValueChange = { push(MiniPlayerConfig.BACKGROUND_BLUR_BRIGHTNESS, it) })
-                    }
+                    WindowDropdownPreference(title = stringResource(R.string.fold_material),
+                        summary = stringResource(R.string.fold_material_summary),
+                        items = listOf(stringResource(R.string.fold_material_native),
+                            stringResource(R.string.fold_material_follow)),
+                        selectedIndex = if (followNativeMaterial) 1 else 0,
+                        enabled = alive,
+                        onSelectedIndexChange = {
+                            followNativeMaterial = it == 1
+                            ModuleBridge.setRailSetting(context, "followNativeMaterial", it == 1)
+                        })
                 }
             }
         }

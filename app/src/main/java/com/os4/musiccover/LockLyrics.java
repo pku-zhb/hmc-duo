@@ -817,6 +817,7 @@ final class LockLyrics {
     }
 
     static boolean wantsCompactArtwork() {
+        if (FoldMusicRuntime.sideBySide()) return false;
         return wantsAttached() || compactWithoutLyrics();
     }
 
@@ -1931,6 +1932,17 @@ final class LockLyrics {
         }
     }
 
+    static void selectStartupPage(boolean lyrics, String key, MediaController controller) {
+        sPlayerChosen = false;
+        sTapHidden = !lyrics;
+        if (lyrics) {
+            sEnabled = true;
+            sArtworkPage.preferCompact();
+            if (key != null && !key.isEmpty()) onTrack(key, controller);
+        } else sArtworkPage.preferCover();
+        refresh();
+    }
+
     /** The app's switch. The setting: it is written to the state file and the app reads it back. */
     static void setEnabled(boolean on, String key, MediaController c) {
         sEnabled = on;
@@ -2092,6 +2104,8 @@ final class LockLyrics {
         View c = Main.sContainer;
         View card = card();
         return "enabled=" + sEnabled + " tap=" + (sTapHidden ? "hidden" : "shown")
+                + " playerChosen=" + sPlayerChosen + " notificationCompact=" + sNotificationCompact
+                + " lyricButton={" + LyricsButton.describe() + "}"
                 + " demo=" + sDemo + " key=" + sKey + " lines=" + sLines.size()
                 + " has=" + hasLyrics() + " loading=" + sLoading
                 + " bpmEnabled=" + sBpmEnabled + " bpmAllowed=" + Main.bpmPlayerAllowed(sController)

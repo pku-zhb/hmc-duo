@@ -168,8 +168,9 @@ object UpdateApi {
      * update at all, which is exactly the build an update is being tested on. The signature
      * question moved to [isOurs], where the file it is about actually exists.
      */
-    fun enabled(context: Context): Boolean =
-        context.packageName == BuildConfig.APPLICATION_ID
+    private const val UPDATES_ENABLED = false
+
+    fun enabled(context: Context): Boolean = UPDATES_ENABLED && context.packageName == BuildConfig.APPLICATION_ID
 
     /**
      * The certificate the project publishes releases under.
@@ -231,6 +232,7 @@ object UpdateApi {
 
     /** The newest stable release, or null when there is nothing newer or nothing was answered. */
     suspend fun latest(): UpdateInfo? = withContext(Dispatchers.IO) {
+        if (!UPDATES_ENABLED) return@withContext null
         try {
             val connection = HttpCall(RELEASES_LIST, 15_000).open("application/vnd.github+json")
             try {

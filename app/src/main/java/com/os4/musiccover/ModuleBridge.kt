@@ -44,8 +44,13 @@ object ModuleBridge {
         val bias: Float = 0.34f,
         val fullBlur: Int = 50,
         val coverStyle: Int = 0,
+        val foldMusicLayout: Boolean = false,
+        val rightRail: Boolean = false,
+        val reflowLockContent: Boolean = false,
+        val followNativeMaterial: Boolean = false,
+        val hideChargingHint: Boolean = true,
+        val forceNotificationFloor: Boolean = true,
         val hidePlayerBackground: Boolean = false,
-        val coverOnTap: Boolean = false,
         val wallpaperDim: Int = 35,
         /**
          * The square's side as a share of the room between the clock and the media card, and
@@ -111,9 +116,7 @@ object ModuleBridge {
         /** With [mcHideArt] on, show the thumbnail anyway while the lyrics are up. Also fixed on. */
         val mcArtInLyrics: Boolean = true,
         val mcTitleTap: Boolean = false,
-        val hideFingerprint: Boolean = false,
         /** Take the fingerprint away (touch area included) after a face unlock. See Main.sFodFace. */
-        val fodAfterFace: Boolean = false,
         /** The big cover art turns over on a track change while shrunk. See Main.sCoverFlip. */
         val coverFlip: Boolean = false,
         /** The colour regions over the big cover's backdrop drift. See Main.sGlowDrift. */
@@ -163,10 +166,6 @@ object ModuleBridge {
         /** Alive lyric effects: 0 off, 1 subtle, 2 dramatic, 3 eye-candy. */
         val lyricsAliveFx: Int = 0,
         val lyricsDepthBlur: Int = 100,
-        val islandIphoneGestures: Boolean = false,
-        val islandIphoneTop: Boolean = false,
-        val islandIphoneRadius: Int = IslandGesturePolicy.DEFAULT_RADIUS_DP,
-        val islandIphoneFocusBlack: Boolean = true,
         val spicyLyricsEnabled: Boolean = true,
         val providerQq: Boolean = true,
         val providerNetease: Boolean = true,
@@ -230,7 +229,6 @@ object ModuleBridge {
          */
         val lyriconInstalled: Boolean = false,
         /** 0 system default, 1 never avoid the fingerprint icon, 2 always avoid it. */
-        val fpAvoid: Int = 0,
         val mediaCardConfig: String = MediaCardConfig.normalized(null),
         val miniConfig: String = MiniPlayerConfig.defaultJson(),
         val notificationCompactingAvailable: Boolean = false,
@@ -436,6 +434,7 @@ object ModuleBridge {
     fun setAuto(context: Context, on: Boolean) = send(context, "auto") { putExtra("on", on) }
 
     suspend fun applyHidePlayerBackground(context: Context, on: Boolean): Boolean {
+        if (!FoldSettingsPolicy.BACKGROUND_SWITCH_AVAILABLE) return false
         val command = intent("hideplayerbackground").putExtra("on", on)
         if (!deliver(context.applicationContext, command)) return false
         HyperCanvasBridge.synchronizeBlock(context, on)
@@ -448,8 +447,11 @@ object ModuleBridge {
     fun setHidePlayerBackground(context: Context, on: Boolean) =
         send(context, "hideplayerbackground") { putExtra("on", on) }
 
-    fun setCoverOnTap(context: Context, on: Boolean) =
-        send(context, "coverontap") { putExtra("on", on) }
+    fun setFoldMusicLayout(context: Context, on: Boolean) =
+        send(context, "foldlayout") { putExtra("on", on) }
+
+    fun setRailSetting(context: Context, key: String, on: Boolean) =
+        send(context, "railsetting") { putExtra("key", key); putExtra("on", on) }
 
     fun setCover(context: Context, on: Boolean) = send(context, "pushart") { putExtra("on", on) }
 
@@ -500,12 +502,6 @@ object ModuleBridge {
     // Its own op rather than a third extra on "mediacard": the switch sits under the card
     // options on screen, but it has nothing to do with the card, and grouping it there on the
     // wire would make moving it later a protocol change.
-    fun setHideFingerprint(context: Context, on: Boolean) =
-        send(context, "hidefp") { putExtra("on", on) }
-
-    fun setFodAfterFace(context: Context, on: Boolean) =
-        send(context, "fodface") { putExtra("on", on) }
-
     fun setCoverFlip(context: Context, on: Boolean) =
         send(context, "coverflip") { putExtra("on", on) }
 
@@ -596,18 +592,6 @@ object ModuleBridge {
     fun setLyricsAlign(context: Context, mode: Int) =
         send(context, "lyricalign") { putExtra("v", mode) }
 
-    fun setIslandIphoneGestures(context: Context, on: Boolean) =
-        send(context, "islandiphonegestures") { putExtra("on", on) }
-
-    fun setIslandIphoneTop(context: Context, on: Boolean) =
-        send(context, "islandiphonetop") { putExtra("on", on) }
-
-    fun setIslandIphoneFocusBlack(context: Context, on: Boolean) =
-        send(context, "islandiphonefocusblack") { putExtra("on", on) }
-
-    fun setIslandIphoneRadius(context: Context, dp: Int) =
-        send(context, "islandiphoneradius") { putExtra("v", IslandGesturePolicy.radius(dp)) }
-
     fun setLyricsDepthBlur(context: Context, percent: Int) =
         send(context, "lyricdepthblur") { putExtra("v", percent.coerceIn(0, 200)) }
 
@@ -649,9 +633,6 @@ object ModuleBridge {
             putExtra("key", key)
             putExtra("v", value)
         }
-
-    fun setFingerprintAvoid(context: Context, mode: Int) =
-        send(context, "fpavoid") { putExtra("mode", mode) }
 
     fun setMiniConfig(context: Context, json: String) =
         send(context, "minicfg") { putExtra("json", MiniPlayerConfig.normalizedJson(json)) }
@@ -910,8 +891,13 @@ object ModuleBridge {
             bias = b.getFloat("bias", 0.34f),
             fullBlur = b.getInt("fullBlur", 50),
             coverStyle = b.getInt("coverstyle", 0),
+            foldMusicLayout = b.getBoolean("foldmusiclayout", false),
+            rightRail = b.getBoolean("rightRail", false),
+            reflowLockContent = b.getBoolean("reflowLockContent", false),
+            followNativeMaterial = b.getBoolean("followNativeMaterial", false),
+            hideChargingHint = b.getBoolean("hideChargingHint", true),
+            forceNotificationFloor = b.getBoolean("forceNotificationFloor", true),
             hidePlayerBackground = b.getBoolean("hideplayerbackground", false),
-            coverOnTap = b.getBoolean("coverontap", false),
             wallpaperDim = b.getInt("wallpaperdim", 35),
             coverCardFill = b.getFloat("covercardfill", 1f),
             coverCardPos = b.getFloat("covercardpos", 0.5f),
@@ -931,8 +917,6 @@ object ModuleBridge {
             mcHideArt = b.getBoolean("mcart", true),
             mcArtInLyrics = b.getBoolean("mclyricart", true),
             mcTitleTap = b.getBoolean("mctap", false),
-            hideFingerprint = b.getBoolean("hidefp", false),
-            fodAfterFace = b.getBoolean("fodface", false),
             coverFlip = b.getBoolean("coverflip", false),
             glowDrift = b.getBoolean("glowdrift", true),
             meshBackdrop = b.getBoolean("meshbackdrop", false),
@@ -964,11 +948,6 @@ object ModuleBridge {
             lyricTranslateTarget = b.getString("lyrictrtarget") ?: "en",
             lyricsAliveFx = b.getInt("lyricalive", 0),
             lyricsDepthBlur = b.getInt("lyricdepthblur", 100).coerceIn(0, 200),
-            islandIphoneGestures = b.getBoolean("islandiphonegestures", false),
-            islandIphoneTop = b.getBoolean("islandiphonetop", false),
-            islandIphoneRadius = IslandGesturePolicy.radius(
-                b.getInt("islandiphoneradius", IslandGesturePolicy.DEFAULT_RADIUS_DP)),
-            islandIphoneFocusBlack = b.getBoolean("islandiphonefocusblack", true),
             spicyLyricsEnabled = b.getBoolean("spicylyrics", true),
             providerQq = b.getBoolean("providerqq", true),
             providerNetease = b.getBoolean("providernetease", true),
@@ -1001,7 +980,6 @@ object ModuleBridge {
             sessionLyric = b.getBoolean("sessionlyric", false),
             lyricSource = b.getString("lyricsrc") ?: "none",
             lyriconInstalled = b.getBoolean("lyricon", false),
-            fpAvoid = b.getInt("fpavoid", 0),
             mediaCardConfig = MediaCardConfig.normalized(b.getString("mediastyle")),
             miniConfig = MiniPlayerConfig.normalizedJson(b.getString("minicfg")),
             notificationCompactingAvailable = b.getBoolean("notificationcompactavailable", false),

@@ -38,6 +38,63 @@ internal object NumState {
 
     private var modelRef: WeakReference<Any>? = null
     private var countRef: WeakReference<View>? = null
+    private var railFooterHook = false
+    private var nativeRailFooter = 0
+    private var effectiveRailFooter = 0
+
+    private var nativeRailFooterRevision = -1L
+    private var footerFlow: WeakReference<Any>? = null
+    private var footerRevision = -1L
+    private var footerOriginal = 0
+    private var footerWritten = 0
+    private var footerPublishError = false
+
+    /** Re-publish once after display handoff or late rail activation; native consumers keep a cache. */
+    fun refreshRailFooter(bottom: Int, revision: Long) {
+        if (bottom <= 0) return
+        if (footerRevision == revision && footerWritten == bottom && footerFlow?.get() != null) return
+        // Resolve the current display's container again instead of keeping an attached old model.
+        if (footerRevision != revision) modelRef = null
+        runCatching {
+            val owner = model() ?: return
+            val repository = Xp.callMethod(Xp.getObjectField(owner, "keyguardRepository"), "get")
+            val readonly = Xp.callMethod(repository, "getNotificationBottomOnKeyguard")
+            val flow = if (readonly.javaClass.name == "com.miui.coroutines.syncflow.SynchronousStateFlowImpl") readonly
+                else Xp.getObjectField(readonly, "flow")
+            val current = (Xp.callMethod(flow, "getValue") as Number).toInt()
+            val changed = footerFlow?.get() !== flow || footerRevision != revision
+            val target = RailNotificationFloor.handoff(current, bottom, changed)
+            if (changed || current != footerWritten) {
+                footerOriginal = if (nativeRailFooterRevision == revision && nativeRailFooter > 0)
+                    nativeRailFooter else current
+            }
+            footerFlow = WeakReference(flow)
+            footerRevision = revision
+            footerWritten = target
+            effectiveRailFooter = target
+            if (current != target) {
+                // This is the exact mutable source inside ReadonlySynchronousStateFlow in this build.
+                Xp.callMethod(flow, "setValue", target)
+                trace("rail footer published $current -> $target revision=$revision")
+            }
+        }.onFailure {
+            if (!footerPublishError) Xp.w("MCNum: rail footer refresh unavailable: $it")
+            footerPublishError = true
+        }
+    }
+
+    fun restoreRailFooter() {
+        val flow = footerFlow?.get()
+        footerFlow = null
+        if (flow != null && footerRevision == Main.screenGeometry().revision &&
+            footerOriginal > 0 && footerOriginal <= Main.screenHeight()) runCatching {
+            if ((Xp.callMethod(flow, "getValue") as Number).toInt() == footerWritten && footerOriginal != footerWritten)
+                Xp.callMethod(flow, "setValue", footerOriginal)
+        }
+        footerRevision = -1L
+    }
+
+    fun railFooterState(): String = "hook=$railFooterHook native=$nativeRailFooter effective=$effectiveRailFooter revision=$footerRevision publishError=$footerPublishError"
 
     /** For `op mini` / `op numstate`: the last few things done here. */
     private val log = ArrayDeque<String>()
@@ -57,6 +114,26 @@ internal object NumState {
         " || frames=" + framesText()
 
     fun install(classLoader: ClassLoader) {
+        // In the inspected stock SystemUI build, the repository subtracts the number-state footer's
+        // height and padding before publishing this value to every native layout consumer.
+        // Change that one source, rather than translating visible rows after layout.
+        runCatching {
+            val transform = Xp.findClass("com.miui.systemui.keyguard.data.repository." +
+                "MiuiKeyguardRepositoryImpl\$notificationBottomOnKeyguard\$2\$1", classLoader)
+            Xp.hookAll(transform, "invokeSuspend") { chain ->
+                val value = chain.proceed()
+                if (value !is Int) value else {
+                    nativeRailFooter = value
+                    nativeRailFooterRevision = Main.screenGeometry().revision
+                    if (footerRevision == nativeRailFooterRevision && value > 0) footerOriginal = value
+                    val next = LockScreenRailRuntime.notificationBottom(value)
+                    if (next != effectiveRailFooter) trace("rail footer $value -> $next")
+                    effectiveRailFooter = next
+                    next
+                }
+            }
+            railFooterHook = true
+        }.onFailure { Xp.log("MCNum: rail footer source unavailable; native layout retained: $it") }
         val vmClass = runCatching {
             Xp.findClass("com.miui.systemui.notification.view.viewmodel.NotificationContainerViewModel", classLoader)
         }.getOrElse {

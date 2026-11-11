@@ -772,6 +772,8 @@ final class ClockCollapse {
     }
 
     private static boolean nativeLandscapeFits(float aspect) {
+        if (FoldMusicRuntime.wideCandidate() && LockLyrics.wantsAttached()
+                && LockLyrics.hasLyrics()) return false;
         // AOD keeps the lit-screen decision; its own layout must not restart this animation.
         if (!Main.screenOnCached()) return ClockPageSize.nativeTarget();
         Live m = LIVE;
@@ -788,6 +790,25 @@ final class ClockCollapse {
                 Main.density(), nativeBottom, media, ClockPageSize.nativeTarget());
     }
 
+    /** Give inner portrait's capped artwork the remaining room instead of shrinking time to 36dp. */
+    private static float fitPortraitCoverClock(Live m, float unit, float nativeUnit) {
+        if (!FoldMusicRuntime.innerPortrait() || LockLyrics.wantsCompactArtwork()
+                || !(m.unit > 0f) || m.box == null) return unit;
+        View g = firstTarget();
+        if (g == null || !(g.getParent() instanceof View)) return unit;
+        View parent = (View) g.getParent();
+        float zoom = chainScaleY(parent);
+        if (!(zoom > 0f)) return unit;
+        float media = parentTop(g) + (Main.liveMediaTop() - drawnY(parent, 0f, 0f)) / zoom;
+        float side = FoldMusicRuntime.portraitPlayerWidth(null) / zoom;
+        float top = artworkClockTop(m, nativeUnit);
+        float tail = artworkContentBottom(m, nativeUnit) - top - nativeUnit * m.box.height() / m.unit;
+        float room = media - top - side - 2f * CoverCardStyle.GAP_DP * Main.density() - tail;
+        return FoldArtworkLayout.clockUnit(unit, nativeUnit, m.unit, m.box.width(), m.box.height(),
+                (LockScreenRailRuntime.contentWidth() - 2f * CoverCardStyle.GAP_DP * Main.density()) / zoom,
+                room, Main.sClockHeightDp * Main.density() * m.unit / m.box.height());
+    }
+
     /**
      * A long native clock may leave no initial morph endpoint until its collapse starts. Sized as
      * ClockPageSize will size it for this artwork: a landscape cover that fits keeps the native
@@ -800,10 +821,12 @@ final class ClockCollapse {
         float reference = sizeBase(m, full);
         float requested = Float.isNaN(Main.sClockSize) ? Main.sClockHeightDp * Main.density()
                 : Main.sClockSize * reference;
-        boolean nativeSize = CoverCardStyle.usesNativeClock(aspect) && nativeLandscapeFits(aspect);
+        boolean nativeSize = FoldMusicRuntime.innerPortrait()
+                || CoverCardStyle.usesNativeClock(aspect) && nativeLandscapeFits(aspect);
         float unit = ClockSizePolicy.coverUnit(requested, reference, full,
                 CoverCardStyle.clockScale(aspect), Main.MIN_CLOCK_K, nativeSize ? 1f : 0f);
         if (unit > full) unit = full;
+        unit = fitPortraitCoverClock(m, unit, full);
         float bottom = artworkContentBottom(m, unit);
         View g = firstTarget();
         if (g != null && g.getParent() instanceof View) {
@@ -1249,7 +1272,7 @@ final class ClockCollapse {
      * cut-out and the status bar. The keyguard's layouts put the date anywhere from 233 to 455 on
      * this phone, and cover mode wants it up top in all of them.
      */
-    private static final float DATE_LINE_DP = 76f;
+    private static final float DATE_LINE_DP = 64f;
     /** Air between the top inset and the date, when the inset is what decides the line. */
     private static final float DATE_SAFE_GAP_DP = 8f;
     /**
@@ -2071,6 +2094,7 @@ final class ClockCollapse {
     }
 
     private static float screenMidX() {
+        if (LockScreenRailRuntime.reflowing()) return LockScreenRailRuntime.contentCenterX();
         View c = Main.sContainer;
         return c == null ? Float.NaN : c.getResources().getDisplayMetrics().widthPixels / 2f;
     }
@@ -2643,6 +2667,7 @@ final class ClockCollapse {
                 Main.MIN_CLOCK_K, phase == Phase.ON);
         // Read against a fixed unit, the small clock is never larger than the face's own.
         if (coverUnit > nativeUnit) coverUnit = nativeUnit;
+        coverUnit = fitPortraitCoverClock(m, coverUnit, nativeUnit);
         // A face that is short but wide would not shrink at all by height: held to the width an
         // all_in_one clock of the asked-for size takes. Not with the clock's own size chosen.
         if (!m.anchored && coverUnit >= nativeUnit && !(ClockPageSize.nativeProgress() > 0f)) {
@@ -2852,8 +2877,11 @@ final class ClockCollapse {
             glassFollowsScale(g, scale);
             float ty = top - (parentTop(g) + g.getTop() + m.box.top);
             if (Math.abs(g.getTranslationY() - ty) >= 0.25f) g.setTranslationY(ty);
-            // Never touched on the anchored styles: their x is the OEM's and DateStatus's.
-            if (m.anchored) continue;
+            // The OEM owns anchored X unless the rail has reserved a narrower content area.
+            if (m.anchored) {
+                LockScreenRailRuntime.centerClock(g, m.box);
+                continue;
+            }
             // Remembered for the release: a style that swaps faces under us (oriental A) leaves
             // the old target hidden with our transform on it, and it would come back scaled.
             sCompTouched.put(g, Boolean.TRUE);

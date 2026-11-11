@@ -19,6 +19,10 @@ internal object MiniPlayerScene {
     @Volatile var aodActive = false
         private set
     @Volatile private var fullScreenAod = false
+    private val exitEvents = java.util.ArrayDeque<String>()
+
+    fun exitTrace(): String = synchronized(exitEvents) { exitEvents.joinToString(" ; ") }
+
 
     /**
      * The doze is the full-screen AOD, the one that keeps the row (holdButtonsThroughDoze).
@@ -51,7 +55,7 @@ internal object MiniPlayerScene {
             setKeyguardGoingAway(true)
         }
         hook("com.android.systemui.statusbar.policy.KeyguardStateControllerImpl", "notifyKeyguardState") {
-            if (it.firstOrNull() == true) setKeyguardGoingAway(false)
+            setKeyguardGoingAway(it.firstOrNull() != true)
         }
         hook("com.android.systemui.statusbar.StatusBarStateControllerImpl", "setIsDozing") {
             setAodActive(it.firstOrNull() == true)
@@ -104,8 +108,25 @@ internal object MiniPlayerScene {
     private fun setKeyguardGoingAway(goingAway: Boolean) {
         if (keyguardGoingAway == goingAway) return
         keyguardGoingAway = goingAway
+        synchronized(exitEvents) {
+            exitEvents.addLast("${android.os.SystemClock.uptimeMillis()} away=$goingAway " +
+                "aod=$aodActive screen=${Main.screenOnCached()}")
+            while (exitEvents.size > 16) exitEvents.removeFirst()
+        }
         StatusBarArtwork.refresh()
-        if (goingAway) MiniPlayerRuntime.forgetRestoreScene()
+        if (goingAway) {
+            MiniPlayerRuntime.forgetRestoreScene()
+            val release = Runnable {
+                CoverBackdrop.refreshVisibility()
+                CoverMorphLayer.cancel()
+                CoverCardLayer.hideNow()
+                MiniPlayerRuntime.keyguardExiting()
+            }
+            if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) release.run()
+            else Main.main().post(release)
+        } else {
+            Main.main().post { CoverBackdrop.sync(false) }
+        }
         MiniPlayerRuntime.refresh()
     }
 }

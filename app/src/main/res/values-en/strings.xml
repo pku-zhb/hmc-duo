@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">HyperMusicCover-Enhanced</string>
+    <string name="app_name">hypermusiccover</string>
     <string name="about_source_code_summary">https://github.com/Lewewe/HyperMusicCover-Enhanced</string>
     <string name="about_telegram">Telegram Group</string>
     <string name="about_telegram_summary">https://t.me/HyperMusicCoverEnhanced</string>
@@ -219,8 +219,8 @@
     <string name="mini_style_hyperos">HyperOS · big island with a small one beside it</string>
     <string name="mini_widen">Widen when a shortcut is off</string>
     <string name="mini_widen_summary">Fills the space left by a disabled flashlight or camera shortcut</string>
-    <string name="mini_status_at_date">Status beside the date</string>
-    <string name="mini_status_at_date_summary">Shows Do Not Disturb and charging status next to the date, away from the pill</string>
+    <string name="mini_status_at_date">Show status text beside the date</string>
+    <string name="mini_status_at_date_summary">Move lasting status text, such as Do Not Disturb and trusted-device status, beside the date.</string>
     <string name="extras_lyric_effects">Lyric Effects</string>
     <string name="extras_lyric_providers">Lyric Providers</string>
     <string name="extras_online_translation">Online translation</string>
@@ -458,22 +458,6 @@
     <string name="mini_media_collapsed_summary">With the lock screen island enabled, music starts as a pill. Tap or swipe up to open it. Your selected cover or lyrics view stays the same.</string>
     <string name="lyrics_depth_blur">Inactive lyrics blur</string>
     <string name="lyrics_depth_blur_summary">Adjust blur on past and upcoming lyrics. 100% keeps the original effect, 0% removes blur. Singing lines stay clear.</string>
-    <string name="tab_experiments">A/B</string>
-    <string name="experiments_iphone">iPhone-ify</string>
-    <string name="island_iphone_gestures">iPhone-style island gestures</string>
-    <string name="island_iphone_gestures_summary">Hold to expand Super Island, tap to open its app. Turn off to restore HyperOS gestures.</string>
-    <string name="island_iphone_top">Expanded island at the camera</string>
-    <string name="island_iphone_top_summary">Open the expanded Super Island from the camera, over the status bar, as on iPhone. Portrait phones only.</string>
-    <string name="island_iphone_focus_black">Black background for other islands</string>
-    <string name="island_iphone_focus_black_summary">Cards at the camera other than music, which is always black. Turn off for HyperOS\'s own background.</string>
-    <string name="island_iphone_radius">Expanded island corners</string>
-    <string name="island_iphone_radius_summary">Rounder corners follow the screen edge. Text under the camera moves down and text in the corners moves inward. The marker matches the Xiaomi 17 Pro\'s screen corners, as on iPhone.</string>
-    <string name="ab_tab_unlocked">A/B tab enabled</string>
-    <string name="ab_tab_already">A/B tab is already enabled</string>
-    <plurals name="ab_tab_taps_left">
-        <item quantity="one">%d more tap to enable the A/B tab</item>
-        <item quantity="other">%d more taps to enable the A/B tab</item>
-    </plurals>
     <string name="hyperimmersive_list_summary">StandBy: a full-screen clock, music and widgets while the phone charges on its side</string>
     <string name="hyperimmersive_title">StandBy</string>
     <string name="hyperimmersive_summary">Turn the phone on its side while it charges to show StandBy</string>
@@ -511,4 +495,8 @@
     <string name="mini_general_section">General</string>
     <string name="mini_notifications_section">Notifications</string>
     <string name="mini_background_section">Background</string>
+    <string name="fold_landscape_startup_mode">Inner landscape initial state</string>
+    <string name="fold_landscape_startup_summary">Applied on first entering inner landscape; AOD wake retains current choices.</string>
+    <string name="fold_landscape_music_view">Inner landscape music view</string>
+    <string name="fold_music_artwork_and_lyrics">Artwork and lyrics</string>
 </resources>

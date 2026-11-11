@@ -41,6 +41,11 @@ fun CreditsPageContent(
 ) {
     val uriHandler = LocalUriHandler.current
 
+    val upstreamCredits = listOf(
+        Credit("HyperMusicCover Enhanced · Lewewe", stringResource(R.string.credits_fold_upstream),
+            "https://github.com/Lewewe/HyperMusicCover-Enhanced"),
+    )
+
     val uiCredits = listOf(
         Credit(
             "HyperNavBar",
@@ -65,11 +70,6 @@ fun CreditsPageContent(
     )
 
     val lyricCredits = listOf(
-        Credit(
-            "@Lewewe",
-            stringResource(R.string.credits_lewewe),
-            "https://github.com/Lewewe/HyperMusicCover-Enhanced",
-        ),
         Credit(
             "@puhboo",
             stringResource(R.string.credits_puhboo),
@@ -146,9 +146,9 @@ fun CreditsPageContent(
         ),
     )
 
-    // This group leads, so the first name on the page is InstallerX Revived.
-    val groups = remember(uiCredits, lyricCredits, toolCredits) {
+    val groups = remember(upstreamCredits, uiCredits, lyricCredits, toolCredits) {
         listOf(
+            R.string.credits_group_upstream to upstreamCredits,
             R.string.credits_group_tools to toolCredits,
             R.string.credits_group_ui to uiCredits,
             R.string.credits_group_lyrics to lyricCredits,

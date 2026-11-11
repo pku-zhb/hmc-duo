@@ -10,6 +10,34 @@ import kotlin.math.roundToInt
 object MiniPlayerConfig {
     const val ENABLED = "enabled"
     const val MEDIA_COLLAPSED_DEFAULT = "mediaCollapsedDefault"
+    const val STARTUP_MODE = "startupMode"
+    const val STARTUP_MUSIC_VIEW = "startupMusicView"
+    const val LANDSCAPE_STARTUP_MODE = "landscapeStartupMode"
+    const val LANDSCAPE_MUSIC_VIEW = "landscapeMusicView"
+    const val START_COLLAPSED = 0
+    const val START_EXPANDED = 1
+    const val START_MUSIC_ONLY = 2
+    const val VIEW_PLAYER = 0
+    const val VIEW_ARTWORK = 1
+    const val VIEW_LYRICS = 2
+
+    @JvmStatic fun startupMode(config: JSONObject): Int = config.optInt(STARTUP_MODE, START_MUSIC_ONLY)
+        .coerceIn(START_COLLAPSED, START_MUSIC_ONLY)
+    @JvmStatic fun startupMusicView(config: JSONObject): Int = config.optInt(STARTUP_MUSIC_VIEW, VIEW_LYRICS)
+        .coerceIn(VIEW_PLAYER, VIEW_LYRICS)
+    @JvmStatic fun startupMode(config: JSONObject, innerLandscape: Boolean): Int =
+        if (innerLandscape) config.optInt(LANDSCAPE_STARTUP_MODE, START_EXPANDED).coerceIn(START_COLLAPSED, START_MUSIC_ONLY)
+        else startupMode(config)
+    @JvmStatic fun startupMusicView(config: JSONObject, innerLandscape: Boolean): Int =
+        if (innerLandscape) config.optInt(LANDSCAPE_MUSIC_VIEW, VIEW_LYRICS).coerceIn(VIEW_PLAYER, VIEW_LYRICS)
+        else startupMusicView(config)
+    @JvmStatic fun automaticCoverAllowed(raw: String?): Boolean = automaticCoverAllowed(raw, false)
+    @JvmStatic fun automaticCoverAllowed(raw: String?, innerLandscape: Boolean): Boolean {
+        val config = JSONObject(normalizedJson(raw))
+        val mode = startupMode(config, innerLandscape)
+        return !config.getBoolean(ENABLED) || mode != START_COLLAPSED &&
+            (innerLandscape || mode == START_MUSIC_ONLY) && startupMusicView(config, innerLandscape) != VIEW_PLAYER
+    }
     const val WIDTH = "widthDp"
     const val HEIGHT_RADIUS = "heightRadiusDp"
     const val ART_RADIUS = "artRadiusDp"
@@ -74,6 +102,10 @@ object MiniPlayerConfig {
     private val defaults = linkedMapOf<String, Any>(
         ENABLED to false,
         MEDIA_COLLAPSED_DEFAULT to false,
+        STARTUP_MODE to START_MUSIC_ONLY,
+        STARTUP_MUSIC_VIEW to VIEW_LYRICS,
+        LANDSCAPE_STARTUP_MODE to START_EXPANDED,
+        LANDSCAPE_MUSIC_VIEW to VIEW_LYRICS,
         WIDTH to 221f,
         HEIGHT_RADIUS to 27f,
         ART_RADIUS to 12f,
@@ -81,7 +113,7 @@ object MiniPlayerConfig {
         STATUS_AT_DATE to true,
         PILL_STYLE to STYLE_COLOROS,
         LIST_WITHOUT_PLAYER to false,
-        NOTE_TEXT_SCROLL to true,
+        NOTE_TEXT_SCROLL to false,
         COLOROS_FULL_SIZE to false,
         COMPACT_NOTIFICATIONS to false,
         NOTIFICATION_SIZE to 80f,
@@ -99,31 +131,29 @@ object MiniPlayerConfig {
 
     @JvmStatic fun defaultJson(): String = normalizedJson(null)
 
-    /**
-     * Preserve feature switches and bounded background blur controls. The three size keys
-     * always use the fixed values above.
-     *
-     * The sizes were sliders and are not settings any more - the app has no rows for them - so a
-     * config that still carries one is not obeyed, whoever wrote it. They stay in the JSON all
-     * the same: the module's runtime, `MiniPlayerGeometry` and the state file all read this map
-     * by key, and a missing key would be read as zero rather than as the default wherever a
-     * caller used `getDouble` directly.
-     *
-     * The values themselves were never arbitrary: 221dp is what fits between the two shortcut
-     * discs on this screen, and both of the others are held to the pill's own height. See
-     * MiniPlayerRuntime, which clamps them again against the room it actually has.
-     *
-     * [ART_RADIUS] is not read at all: the picture is the small island's circle now, its share of
-     * the height, and a corner setting has nothing left to say (2026-09-28). The key stays in the
-     * JSON for the reason above.
-     */
+    // Keep retired keys readable by legacy internals, but never restore their active state.
+    private val retiredSwitches = setOf(ADAPTIVE_WIDTH, LIST_WITHOUT_PLAYER,
+        COMPACT_NOTIFICATIONS, BACKGROUND_BLUR, NOTE_TEXT_SCROLL, COLOROS_FULL_SIZE)
+
+    /** Normalize current settings and make old imports safe for the dedicated Fold layout. */
     @JvmStatic fun normalizedJson(raw: String?): String {
         val input = runCatching { JSONObject(raw.orEmpty()) }.getOrDefault(JSONObject())
         val out = JSONObject()
         defaults.forEach { (key, fallback) ->
-            out.put(key, if (key == ENABLED || key == MEDIA_COLLAPSED_DEFAULT || key == ADAPTIVE_WIDTH || key == BACKGROUND_BLUR || key == STATUS_AT_DATE || key == COMPACT_NOTIFICATIONS ||
-                key == LIST_WITHOUT_PLAYER || key == NOTE_TEXT_SCROLL || key == COLOROS_FULL_SIZE) {
+            out.put(key, if (key in retiredSwitches) {
+                false
+            } else if (key == ENABLED || key == MEDIA_COLLAPSED_DEFAULT ||
+                key == STATUS_AT_DATE || key == COLOROS_FULL_SIZE) {
                 runCatching { input.getBoolean(key) }.getOrDefault(fallback)
+            } else if (key == STARTUP_MODE) {
+                if (input.has(STARTUP_MODE)) input.optInt(STARTUP_MODE, START_MUSIC_ONLY).coerceIn(START_COLLAPSED, START_MUSIC_ONLY)
+                else if (input.optBoolean(MEDIA_COLLAPSED_DEFAULT, false)) START_COLLAPSED else START_MUSIC_ONLY
+            } else if (key == LANDSCAPE_STARTUP_MODE) {
+                input.optInt(key, START_EXPANDED).coerceIn(START_COLLAPSED, START_MUSIC_ONLY)
+            } else if (key == LANDSCAPE_MUSIC_VIEW) {
+                input.optInt(key, VIEW_LYRICS).coerceIn(VIEW_PLAYER, VIEW_LYRICS)
+            } else if (key == STARTUP_MUSIC_VIEW) {
+                input.optInt(STARTUP_MUSIC_VIEW, VIEW_LYRICS).coerceIn(VIEW_PLAYER, VIEW_LYRICS)
             } else if (key == PILL_STYLE) {
                 input.optInt(key, STYLE_COLOROS).coerceIn(STYLE_COLOROS, STYLE_HYPEROS)
             } else if (key == NOTIFICATION_SIZE) {
@@ -138,6 +168,8 @@ object MiniPlayerConfig {
                 fallback
             })
         }
+        // The old key remains a migration stub; it cannot contradict the new entry selector.
+        out.put(MEDIA_COLLAPSED_DEFAULT, startupMode(out) == START_COLLAPSED)
         return out.toString()
     }
 

@@ -87,22 +87,12 @@ object MediaCardRuntime {
         refresh()
     }
 
-    private fun overrides(): Boolean = IslandIphoneGestures.topEnabled() ||
-        values.any { (key, value) -> !waveKey(key) && value != MediaCardConfig.defaults[key.substringAfter('.')] }
-
-    /** The expanded island at the camera is always black, so its switch changes the theme too. */
-    @JvmStatic fun islandThemeForced() {
-        revision++
-        hasOverrides = overrides()
-        refresh()
-    }
+    private fun overrides(): Boolean = values.any { (key, value) -> !waveKey(key) && value != MediaCardConfig.defaults[key.substringAfter('.')] }
 
     private fun setting(scope: String, name: String) = values.getValue("$scope.$name")
 
     /** The forced theme as the notification's numbers have it: 0 native, 1 light, 2 dark. */
-    private fun forcedTheme(scope: String): Int =
-        if (scope == "island" && IslandIphoneGestures.topEnabled()) MediaCardConfig.ISLAND_THEME_OLED
-        else setting(scope, "theme")
+    private fun forcedTheme(scope: String): Int = setting(scope, "theme")
 
     /** The visualizer's own settings: none of them is a card appearance override. */
     private fun waveKey(key: String): Boolean = key.endsWith(".visualizer") || key.endsWith("outputWave") ||

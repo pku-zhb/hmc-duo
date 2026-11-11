@@ -184,9 +184,6 @@ internal fun TweaksPageView(
     var restartPending by rememberSaveable { mutableStateOf(false) }
     var restarting by remember { mutableStateOf(false) }
     var restartFailed by remember { mutableStateOf(false) }
-    var sinkRestartPending by rememberSaveable { mutableStateOf(false) }
-    var sinkRestarting by remember { mutableStateOf(false) }
-    var sinkRestartFailed by remember { mutableStateOf(false) }
     PageScaffold(
         title = stringResource(R.string.features_tweaks_title),
         isBlurEnabled = isBlurEnabled,
@@ -241,91 +238,14 @@ internal fun TweaksPageView(
                         }
                     }
                 }
-                SmallTitle(text = stringResource(R.string.fingerprint_section))
+                SmallTitle(text = stringResource(R.string.fold_layout_section))
                 Card(Modifier.padding(horizontal = 12.dp).padding(bottom = 12.dp)) {
-                    // These controls apply independently of cover mode. No onCardRestyled(): the
-                    // preview draws no fingerprint.
-                    SwitchPreference(
-                        title = stringResource(R.string.hide_fingerprint),
-                        checked = module.hideFingerprint,
-                        enabled = module.alive,
+                    SwitchPreference(title = stringResource(R.string.fold_force_notification_floor),
+                        checked = module.forceNotificationFloor, enabled = module.alive,
                         onCheckedChange = {
-                            module = module.copy(hideFingerprint = it)
-                            ModuleBridge.setHideFingerprint(context, it)
-                        },
-                    )
-                    SwitchPreference(
-                        title = stringResource(R.string.fod_after_face),
-                        summary = stringResource(R.string.fod_after_face_summary),
-                        checked = module.fodAfterFace,
-                        enabled = module.alive,
-                        onCheckedChange = {
-                            module = module.copy(fodAfterFace = it)
-                            ModuleBridge.setFodAfterFace(context, it)
-                        },
-                    )
-                    // Three states rather than a switch: "off" would have to mean both "stop reserving the
-                    // space" and "reserve it even with no print enrolled", which are opposite requests.
-                    //
-                    // The two directions are named differently on the two sides of the wire: the module and
-                    // the OEM call it avoidance, because that is what the fingerprint icon makes the
-                    // notification do - move up - and the hook's own job is to override it. The rows say
-                    // what the notification does instead, so "sinks" is avoidance switched off: item 1 is
-                    // the module's fpavoid=1 and item 2 its fpavoid=2. Change the order here and the
-                    // setting silently means the opposite of what it says.
-                    val avoidModes = listOf(
-                        stringResource(R.string.fp_sink_system),
-                        stringResource(R.string.fp_sink_always),
-                        stringResource(R.string.fp_sink_never),
-                    )
-                    val avoidIndex = module.fpAvoid.coerceIn(0, avoidModes.lastIndex)
-                    WindowDropdownPreference(
-                        title = stringResource(R.string.fp_sink),
-                        summary = stringResource(R.string.fp_sink_summary),
-                        items = avoidModes,
-                        selectedIndex = avoidIndex,
-                        enabled = module.alive,
-                        onSelectedIndexChange = {
-                            if (it != avoidIndex) {
-                                module = module.copy(fpAvoid = it)
-                                ModuleBridge.setFingerprintAvoid(context, it)
-                                sinkRestartPending = true
-                                sinkRestartFailed = false
-                            }
-                        },
-                    )
-                    if (sinkRestartPending) {
-                        Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 16.dp)) {
-                            MiuixText(
-                                text = stringResource(
-                                    if (sinkRestartFailed) R.string.fp_sink_restart_failed
-                                    else R.string.fp_sink_restart_hint,
-                                ),
-                                fontSize = 13.sp,
-                                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                                modifier = Modifier.padding(bottom = 12.dp),
-                            )
-                            TextButton(
-                                text = stringResource(R.string.restart_systemui),
-                                enabled = module.alive && !sinkRestarting,
-                                modifier = Modifier.fillMaxWidth(),
-                                onClick = {
-                                    sinkRestarting = true
-                                    scope.launch {
-                                        try {
-                                            val restarted = withContext(Dispatchers.IO) {
-                                                ModuleBridge.restartSystemUi()
-                                            }
-                                            sinkRestartFailed = !restarted
-                                            if (restarted) sinkRestartPending = false
-                                        } finally {
-                                            sinkRestarting = false
-                                        }
-                                    }
-                                },
-                            )
-                        }
-                    }
+                            module = module.copy(forceNotificationFloor = it)
+                            ModuleBridge.setRailSetting(context, "forceNotificationFloor", it)
+                        })
                 }
             }
         }
@@ -457,7 +377,7 @@ internal fun ExtrasPageView(
     ) {
         item {
             Column {
-                LyricSearchControls(module.alive, module) { module = it }
+                LyricSearchControls(module.alive, module, onBack) { module = it }
                 SmallTitle(text = stringResource(R.string.lyrics_display_section))
                 Card(
                     modifier = Modifier.padding(horizontal = 12.dp).padding(bottom = 12.dp)
@@ -493,152 +413,108 @@ private fun CoverGroup(
     onChange: (ModuleBridge.State) -> Unit,
 ) {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    var changingBackdrop by remember { mutableStateOf(false) }
     Column {
         WindowDropdownPreference(
             title = stringResource(R.string.cover_style),
             items = listOf(stringResource(R.string.cover_style_full),
                 stringResource(R.string.cover_style_card)),
-            selectedIndex = if (module.hidePlayerBackground) 1 else module.coverStyle.coerceIn(0, 1),
-            enabled = enabled && !module.hidePlayerBackground,
-            onSelectedIndexChange = {
-                onChange(module.copy(coverStyle = it))
-                ModuleBridge.setCoverStyle(context, "mode", it.toFloat())
+            summary = stringResource(R.string.fold_full_cover_pending),
+            selectedIndex = 1,
+            enabled = false,
+            onSelectedIndexChange = {},
+        )
+        SwitchPreference(
+            title = stringResource(R.string.cover_fold_columns),
+            summary = stringResource(R.string.cover_fold_columns_summary),
+            checked = module.foldMusicLayout,
+            enabled = enabled,
+            onCheckedChange = {
+                onChange(module.copy(foldMusicLayout = it))
+                ModuleBridge.setFoldMusicLayout(context, it)
             },
         )
-        if (!module.hidePlayerBackground) {
-            ValueSlider(title = stringResource(R.string.cover_full_blur),
-                summary = stringResource(R.string.cover_full_blur_summary),
-                value = module.fullBlur.toFloat(), valueRange = 0f..100f,
-                enabled = enabled, detent = 50f,
-                label = { "${it.toInt()}%" }, onValueChange = {
-                    onChange(module.copy(fullBlur = it.toInt()))
-                    ModuleBridge.setFullBlur(context, it.toInt())
-                })
-        }
-        // The square's size, place and corners were sliders here and are fixed - it fills the room
-        // it has, sits in the middle of it, and takes the media card's own corner radius, all of
-        // which are the same answer on every device. See CoverCardStyle.
-        //
-        // The one slider left belongs to the full-screen cover alone, and it is the one that has
-        // to stay a slider: where the cover sits vertically is a share of the screen, and the
-        // screen is not the same on every phone.
-        if (module.coverStyle == 0 && !module.hidePlayerBackground) {
-            ValueSlider(
-                title = stringResource(R.string.cover_bias),
-                value = module.bias,
-                valueRange = 0f..1f,
-                detent = 0.34f,
-                enabled = enabled,
-                onValueChange = {
-                    onChange(module.copy(bias = it))
-                    ModuleBridge.setBias(context, it)
-                },
-            )
-        }
         SwitchPreference(
-            title = stringResource(R.string.cover_hide_player_background),
-            summary = stringResource(R.string.cover_hide_player_background_summary),
-            checked = module.hidePlayerBackground,
-            // Cover on tap already puts the player alone on the wallpaper; the open cover keeps its blur.
-            enabled = enabled && !changingBackdrop && !module.coverOnTap,
-            onCheckedChange = { hide ->
-                changingBackdrop = true
-                scope.launch {
-                    try {
-                        if (ModuleBridge.applyHidePlayerBackground(context, hide)) {
-                            onChange(module.copy(hidePlayerBackground = hide))
-                        }
-                    } finally {
-                        changingBackdrop = false
-                    }
-                }
+            title = stringResource(R.string.lock_right_rail),
+            summary = stringResource(R.string.lock_right_rail_summary),
+            checked = module.rightRail, enabled = enabled,
+            onCheckedChange = {
+                onChange(module.copy(rightRail = it))
+                ModuleBridge.setRailSetting(context, "rightRail", it)
+            },
+        )
+        SwitchPreference(
+            title = stringResource(R.string.lock_reflow_content),
+            summary = stringResource(R.string.lock_reflow_content_summary),
+            checked = module.reflowLockContent, enabled = enabled && module.rightRail,
+            onCheckedChange = {
+                onChange(module.copy(reflowLockContent = it))
+                ModuleBridge.setRailSetting(context, "reflowLockContent", it)
+            },
+        )
+        SwitchPreference(
+            title = stringResource(R.string.lock_hide_charging_hint),
+            summary = stringResource(R.string.lock_hide_charging_hint_summary),
+            checked = module.hideChargingHint, enabled = module.alive,
+            onCheckedChange = {
+                onChange(module.copy(hideChargingHint = it))
+                ModuleBridge.setRailSetting(context, "hideChargingHint", it)
             },
         )
         SwitchPreference(
-            title = stringResource(R.string.cover_on_tap),
-            summary = stringResource(R.string.cover_on_tap_summary),
-            checked = module.coverOnTap,
-            enabled = enabled && !changingBackdrop,
-            onCheckedChange = { on ->
-                if (on && module.hidePlayerBackground) {
-                    // The wallpaper background is blocked while this is on, so it is turned off first.
-                    changingBackdrop = true
-                    scope.launch {
-                        try {
-                            if (ModuleBridge.applyHidePlayerBackground(context, false)) {
-                                onChange(module.copy(hidePlayerBackground = false, coverOnTap = true))
-                                ModuleBridge.setCoverOnTap(context, true)
-                            }
-                        } finally {
-                            changingBackdrop = false
-                        }
-                    }
-                } else {
-                    onChange(module.copy(coverOnTap = on))
-                    ModuleBridge.setCoverOnTap(context, on)
-                }
-            },
+            title = stringResource(R.string.cover_hide_player_background),
+            summary = stringResource(R.string.fold_background_pending),
+            checked = true,
+            enabled = false,
+            onCheckedChange = {},
         )
-        if (module.hidePlayerBackground) {
-            ValueSlider(title = stringResource(R.string.cover_wallpaper_dim),
-                summary = stringResource(R.string.cover_wallpaper_dim_summary),
-                value = module.wallpaperDim.toFloat(), valueRange = 0f..80f,
-                enabled = enabled && !changingBackdrop, detent = 35f,
-                label = { "${it.toInt()}%" }, onValueChange = {
-                    onChange(module.copy(wallpaperDim = it.toInt()))
-                    ModuleBridge.setWallpaperDim(context, it.toInt())
-                })
-        }
         SwitchPreference(
             title = stringResource(R.string.cover_flip),
             summary = stringResource(R.string.cover_flip_summary),
             checked = module.coverFlip,
-            // The wallpaper background forces the card, whatever style is saved.
-            enabled = enabled && (module.coverStyle == 1 || module.hidePlayerBackground),
+            enabled = enabled,
             onCheckedChange = {
                 onChange(module.copy(coverFlip = it))
                 ModuleBridge.setCoverFlip(context, it)
             },
         )
-        SwitchPreference(
-            title = stringResource(R.string.cover_glow_drift),
-            summary = stringResource(R.string.cover_glow_drift_summary),
-            checked = module.glowDrift,
-            enabled = enabled && module.coverStyle == 1 && !module.hidePlayerBackground,
-            onCheckedChange = {
-                onChange(module.copy(glowDrift = it))
-                ModuleBridge.setGlowDrift(context, it)
-            },
-        )
-        if (module.glowDrift) {
-            WindowDropdownPreference(
-                title = stringResource(R.string.cover_glow_style),
-                items = listOf(stringResource(R.string.cover_glow_style_gradient),
-                    stringResource(R.string.cover_glow_style_mesh)),
-                selectedIndex = if (module.meshBackdrop) 1 else 0,
-                enabled = enabled && module.coverStyle == 1 && !module.hidePlayerBackground,
-                onSelectedIndexChange = {
-                    onChange(module.copy(meshBackdrop = it == 1))
-                    ModuleBridge.setMeshBackdrop(context, it == 1)
-                },
-            )
-        }
         val miniConfig = JSONObject(module.miniConfig)
-        SwitchPreference(
-            title = stringResource(R.string.mini_media_collapsed),
-            summary = stringResource(R.string.mini_media_collapsed_summary),
-            checked = miniConfig.optBoolean(MiniPlayerConfig.MEDIA_COLLAPSED_DEFAULT),
+        fun entrySetting(key: String, value: Int) {
+            val next = MiniPlayerConfig.normalizedJson(JSONObject(module.miniConfig).put(key, value).toString())
+            onChange(module.copy(miniConfig = next))
+            ModuleBridge.setMiniConfig(context, next)
+        }
+        WindowDropdownPreference(title = stringResource(R.string.fold_startup_mode),
+            summary = stringResource(R.string.fold_startup_mode_summary),
+            items = listOf(stringResource(R.string.fold_start_collapsed), stringResource(R.string.fold_start_expanded),
+                stringResource(R.string.fold_start_music_only)),
+            selectedIndex = MiniPlayerConfig.startupMode(miniConfig),
             enabled = enabled && miniConfig.optBoolean(MiniPlayerConfig.ENABLED),
-            onCheckedChange = { collapsed ->
-                val next = MiniPlayerConfig.normalizedJson(
-                    JSONObject(module.miniConfig)
-                        .put(MiniPlayerConfig.MEDIA_COLLAPSED_DEFAULT, collapsed).toString())
-                onChange(module.copy(miniConfig = next))
-                ModuleBridge.setMiniConfig(context, next)
-            },
-        )
+            onSelectedIndexChange = { entrySetting(MiniPlayerConfig.STARTUP_MODE, it) })
+        if (MiniPlayerConfig.startupMode(miniConfig) == MiniPlayerConfig.START_MUSIC_ONLY) {
+            WindowDropdownPreference(title = stringResource(R.string.fold_startup_music_view),
+                items = listOf(stringResource(R.string.fold_music_player), stringResource(R.string.fold_music_artwork),
+                    stringResource(R.string.fold_music_lyrics)),
+                selectedIndex = MiniPlayerConfig.startupMusicView(miniConfig),
+                enabled = enabled && miniConfig.optBoolean(MiniPlayerConfig.ENABLED),
+                onSelectedIndexChange = { entrySetting(MiniPlayerConfig.STARTUP_MUSIC_VIEW, it) })
+        }
+        WindowDropdownPreference(title = stringResource(R.string.fold_landscape_startup_mode),
+            summary = stringResource(R.string.fold_landscape_startup_summary),
+            items = listOf(stringResource(R.string.fold_start_collapsed), stringResource(R.string.fold_start_expanded),
+                stringResource(R.string.fold_start_music_only)),
+            selectedIndex = MiniPlayerConfig.startupMode(miniConfig, true),
+            enabled = enabled && miniConfig.optBoolean(MiniPlayerConfig.ENABLED),
+            onSelectedIndexChange = { entrySetting(MiniPlayerConfig.LANDSCAPE_STARTUP_MODE, it) })
+        if (MiniPlayerConfig.startupMode(miniConfig, true) != MiniPlayerConfig.START_COLLAPSED) {
+            WindowDropdownPreference(title = stringResource(R.string.fold_landscape_music_view),
+                items = listOf(stringResource(R.string.fold_music_player), stringResource(R.string.fold_music_artwork),
+                    stringResource(R.string.fold_music_artwork_and_lyrics)),
+                selectedIndex = MiniPlayerConfig.startupMusicView(miniConfig, true),
+                enabled = enabled && miniConfig.optBoolean(MiniPlayerConfig.ENABLED),
+                onSelectedIndexChange = { entrySetting(MiniPlayerConfig.LANDSCAPE_MUSIC_VIEW, it) })
+        }
+
+
     }
 }
 
@@ -695,7 +571,7 @@ private fun ClockGroup(
 }
 
 @Composable
-private fun LyricSourceStatus(module: ModuleBridge.State) {
+private fun LyricSourceStatus(module: ModuleBridge.State, onBack: () -> Unit) {
     val context = LocalContext.current
     // Whether a provider module is installed is a fact about the package list and does not
     // change while the page is open; whether one is working comes from the module.
@@ -758,15 +634,12 @@ private fun LyricSourceStatus(module: ModuleBridge.State) {
         show = showNotice,
         title = title,
         summary = stringResource(summary),
-        // Held for fifteen seconds, and held means held: an outside tap and the back gesture
-        // both come through here, so there is no way out of it before the button unlocks. A
-        // notice asking for a module to be installed is read by nobody if it can be flicked
-        // away, and on most phones this one has already been flicked away once.
+        // Acknowledge after reading; returning to the previous page is always available.
         onDismissRequest = {
             if (countdown == 0) {
                 showNotice = false
                 LyricsNotice.markSeen(context)
-            }
+            } else onBack()
         },
     ) {
         val dismiss = LocalDismissState.current
@@ -780,6 +653,7 @@ private fun LyricSourceStatus(module: ModuleBridge.State) {
             enabled = countdown == 0,
             onClick = { dismiss?.invoke() },
         )
+        TextButton(modifier = Modifier.fillMaxWidth(), text = stringResource(R.string.fold_notice_back), onClick = onBack)
     }
         // The standing half of the same statement. It never goes away and it never asks to be
         // dismissed, which is what makes it useful on the visit after the notice was flicked
@@ -1033,6 +907,7 @@ private fun TranslationCredentialsDialog(
 private fun LyricSearchControls(
     enabled: Boolean,
     module: ModuleBridge.State,
+    onBack: () -> Unit,
     onChange: (ModuleBridge.State) -> Unit,
 ) {
     val context = LocalContext.current
@@ -1040,7 +915,7 @@ private fun LyricSearchControls(
     Column {
         SmallTitle(text = stringResource(R.string.lyrics_search_section))
         Card(Modifier.padding(horizontal = 12.dp).padding(bottom = 12.dp)) {
-            LyricSourceStatus(module)
+            LyricSourceStatus(module, onBack)
             WindowDropdownPreference(
                 title = stringResource(R.string.lyrics_search_mode),
                 summary = stringResource(if (module.lyricsSearchMode == 1)

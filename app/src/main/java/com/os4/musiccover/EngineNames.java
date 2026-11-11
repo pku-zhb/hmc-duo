@@ -59,6 +59,8 @@ final class EngineNames {
      * 8.0.8-flip. Only ever set when it really is a boolean; see the class comment for what
      * writing it blind would cost on a build where that name belongs to an int.
      */
+    // Legacy architecture-based candidate. WallpaperFrameProfile owns verified build-specific
+    // semantics; in 8.2.7-flip w is readiness, while MultiDisplayEngineService.j arms re-upload.
     static volatile String pendingFlag;
     /** True when the engine sits on MultiDisplayEngineService, i.e. the foldable's multi-screen build. */
     static volatile boolean multiDisplay;
