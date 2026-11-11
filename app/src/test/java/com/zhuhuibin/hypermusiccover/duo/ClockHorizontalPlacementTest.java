@@ -28,6 +28,30 @@ public class ClockHorizontalPlacementTest {
         assertEquals(0, ClockHorizontalPlacement.translation(0, 400, 200, 1, 0, 200), 0);
     }
 
+    @Test public void coverScaleAndNativeHandoffShareTheBiasedCenterUnderAncestorZoom() {
+        float railCenter = 953.75f / 2 + ClockHorizontalPlacement.opticalOffset(1168, 2520, 3);
+        float parentLeft = 21, ancestorScale = .95f, viewLeft = 12, pivot = 584;
+        float centerInParent = (railCenter - parentLeft) / ancestorScale;
+        float inkCenter = (138.59f + 1029.3958f) / 2;
+        for (float scale : new float[]{.18f, .45f, .9f, 1f}) {
+            float tx = ClockHorizontalPlacement.translation(138.59f, 1029.3958f, pivot,
+                    scale, viewLeft, centerInParent);
+            float drawnCenter = parentLeft + ancestorScale *
+                    (viewLeft + pivot + (inkCenter - pivot) * scale + tx);
+            assertEquals(railCenter, drawnCenter, .001f);
+        }
+    }
+
+    @Test public void opticalOffsetIsEightDpOnlyOnTheOuterPortraitScreen() {
+        assertEquals(8, ClockHorizontalPlacement.opticalOffset(390, 844, 1), 0);
+        assertEquals(24, ClockHorizontalPlacement.opticalOffset(1170, 2532, 3), 0);
+        assertEquals(0, ClockHorizontalPlacement.opticalOffset(1800, 2400, 3), 0);
+        assertEquals(0, ClockHorizontalPlacement.opticalOffset(2520, 1168, 3), 0);
+        assertEquals(0, ClockHorizontalPlacement.opticalOffset(500, 390, 1), 0);
+        assertEquals(0, ClockHorizontalPlacement.opticalOffset(0, 844, 1), 0);
+        assertEquals(0, ClockHorizontalPlacement.opticalOffset(390, 844, Float.NaN), 0);
+    }
+
     @Test public void unavailableGlyphMeasurementsDoNotWriteTransforms() {
         assertTrue(Float.isNaN(ClockHorizontalPlacement.translation(Float.NaN, 3, 0, 1, 0, 4)));
         assertTrue(Float.isNaN(ClockHorizontalPlacement.translation(3, 3, 0, 1, 0, 4)));

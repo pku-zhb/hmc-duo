@@ -2100,7 +2100,7 @@ final class ClockCollapse {
     }
 
     private static float screenMidX() {
-        if (LockScreenRailRuntime.reflowing()) return LockScreenRailRuntime.contentCenterX();
+        if (LockScreenRailRuntime.reflowing()) return LockScreenRailRuntime.clockCenterX();
         View c = Main.sContainer;
         return c == null ? Float.NaN : c.getResources().getDisplayMetrics().widthPixels / 2f;
     }
@@ -2901,6 +2901,10 @@ final class ClockCollapse {
             unclip(g);
             // Where the ink's left edge lands with no x of ours, and where it is wanted.
             float inkL0 = parentLeft(g) + g.getLeft() + px + (m.box.left - px) * scaleX;
+            // The idle rail centers the glyph ink in this parent's actual coordinate space.
+            // Use that same reference through the pose: centering the companion row here or
+            // ignoring an ancestor's scale gives the last frame a different x from the handoff.
+            float railX = LockScreenRailRuntime.clockTranslation(g, m.box);
             float inkL = inkL0;
             if (m.row) {
                 // The row as one piece: the time and what sits beside it, scaled together about
@@ -2916,9 +2920,12 @@ final class ClockCollapse {
                 float row0 = inkL0 - (oemInkL - rl) * scale;
                 float rowX = Float.isNaN(midX) ? row0
                         : row0 + (midX - (rr - rl) * scale / 2f - row0) * k;
+                if (Float.isFinite(railX)) rowX = inkL0 + railX - (oemInkL - rl) * scale;
                 inkL = rowX + (oemInkL - rl) * scale;
                 sRowX = rowX;
                 sRowL = rl;
+            } else if (Float.isFinite(railX)) {
+                inkL = inkL0 + railX;
             } else if (k > 0f && !Float.isNaN(midX)) {
                 inkL = inkL0 + (midX - (inkL0 + m.box.width() * scaleX / 2f)) * k;
             }

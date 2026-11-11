@@ -653,11 +653,11 @@ internal class MiniPlayerView(context: Context) : FrameLayout(context) {
     }
 
     fun pullRailContent(dy: Float) {
-        if (vertical && !railContentSwitching) content.translationY = RailContentMotion.pull(dy, density)
+        if (vertical && !railContentSwitching && !railFusion) content.translationY = RailContentMotion.pull(dy, density)
     }
 
     fun releaseRailContent() {
-        if (railContentSwitching || content.translationY == 0f) return
+        if (railContentSwitching || railFusion || content.translationY == 0f) return
         val start = content.translationY
         finishRailContentTransition(false)
         content.translationY = start
@@ -708,7 +708,76 @@ internal class MiniPlayerView(context: Context) : FrameLayout(context) {
         }
     }
 
+    private var railFusion = false
+
+    /** A vertical switch owns the shell and each content axis independently. */
+    fun beginRailFusion() {
+        finishRailContentTransition(false)
+        layoutNow()
+        beginMorph(layoutOnly = true)
+        railFusion = true
+    }
+
+    fun prepareRailFusionContent() = layoutNow()
+
+    /** The final upright artwork box, measured using the newly bound face. */
+    fun railArtworkBox(box: RailFusionMotion.Box): RailFusionMotion.Box {
+        val lp = slot.layoutParams as LayoutParams
+        return RailFusionMotion.Box(box.x + lp.leftMargin, box.y + lp.topMargin,
+            lp.width.toFloat(), lp.height.toFloat())
+    }
+
+    fun setRailFusionFrame(frame: RailFusionMotion.Frame) {
+        if (!railFusion) return
+        val box = frame.primary
+        val xy = IntArray(2).also { (parent as? View)?.getLocationOnScreen(it) }
+        setMorphFrame(CoverMorphMotion.Box(box.x + xy[0], box.y + xy[1], box.w, box.h), box.w / 2f, 1f)
+        content.translationY = 0f
+        content.alpha = 1f
+        content.scaleX = 1f
+        content.scaleY = 1f
+        // The icon has a continuous screen-space path even when the two shells exchange roles.
+        val art = frame.icon
+        slot.translationX = art.cx - box.x - slot.left - slot.width / 2f
+        slot.translationY = art.cy - box.y - slot.top - slot.height / 2f
+        slot.pivotX = slot.width / 2f
+        slot.pivotY = slot.height / 2f
+        slot.scaleX = art.w / slot.width.coerceAtLeast(1)
+        slot.scaleY = art.h / slot.height.coerceAtLeast(1)
+        slot.alpha = if (artworkHidden) 0f else frame.iconAlpha
+        contentAlpha = frame.detail
+        textColumn.alpha = frame.detail
+        textColumn.translationY = slot.translationY
+        textColumn.pivotY = 0f
+        textColumn.scaleY = frame.detail
+        toggle.translationX = 0f
+        toggle2.translationX = 0f
+        toggle.translationY = box.h - restHeight()
+        toggle2.translationY = toggle.translationY
+        toggle.alpha = frame.detail
+        toggle2.alpha = frame.detail * secondShown
+        // A disappearing action cannot fire while the swipe is exchanging identities.
+        toggle.isEnabled = false
+        toggle2.isEnabled = false
+    }
+
+    fun endRailFusion() {
+        if (!railFusion) return
+        railFusion = false
+        slot.translationX = 0f
+        slot.translationY = 0f
+        slot.scaleX = 1f
+        slot.scaleY = 1f
+        textColumn.scaleY = 1f
+        textColumn.translationY = 0f
+        toggle.translationY = 0f
+        toggle2.translationY = 0f
+        setContentAlpha(1f)
+        endMorph()
+    }
+
     override fun onDetachedFromWindow() {
+        endRailFusion()
         finishRailContentTransition(false)
         finish()
         super.onDetachedFromWindow()
@@ -805,7 +874,7 @@ internal class MiniPlayerView(context: Context) : FrameLayout(context) {
         // spring narrowing it for a small island, a switch) leaves its buttons working. Given
         // back mid-way through one as `!morphing`, the play button stayed off after a message
         // came in beside the music until the next full morph ended (issue #35).
-        toggle.isEnabled = enabled && (!morphing || layoutOnly)
+        toggle.isEnabled = enabled && !railFusion && (!morphing || layoutOnly)
         toggle2.isEnabled = toggle.isEnabled
         if (!enabled) finish()
     }
@@ -897,7 +966,7 @@ internal class MiniPlayerView(context: Context) : FrameLayout(context) {
         // Moving and resizing in the row, the play button keeps to the frame's right end. The
         // layout is already at the new width: laid out there, the button jumped to where the
         // pill was going the moment it set off, and the pill caught up with it (2026-09-25).
-        if (layoutOnly) {
+        if (layoutOnly && !railFusion) {
             val dx = morphW / appearScale - restWidth()
             if (toggle.translationX != dx) toggle.translationX = dx
             if (toggle2.translationX != dx) toggle2.translationX = dx

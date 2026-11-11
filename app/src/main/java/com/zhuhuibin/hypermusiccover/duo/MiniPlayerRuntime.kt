@@ -1381,6 +1381,7 @@ object MiniPlayerRuntime {
         val owner = live().firstOrNull { it.pill() === target }
         val density = target.resources.displayMetrics.density
         if (action == MotionEvent.ACTION_DOWN && !routedSmall) {
+            owner?.finishRailFusion()
             target.finishRailContentTransition()
             target.clearNudge()
         }
@@ -2619,11 +2620,20 @@ private class MiniPlayerController(
     private var railPositionX = Float.NaN
     private var railPositionY = Float.NaN
     private var railOverflow = 0
+    private class RailFusion(val plan: RailFusionMotion.Plan, val keys: List<String>,
+        val revision: Long, val oneOnly: Boolean, val oldArt: RailFusionMotion.Box) {
+        var newArt = oldArt
+        var progress = 0f
+        var rebound = false
+        var animator: android.animation.ValueAnimator? = null
+        var frame = plan.frame(0f, oldArt, newArt, ShortcutDisc.ICON_SHARE)
+    }
+    private var railFusion: RailFusion? = null
 
-    private fun railSlots(): Map<String, android.graphics.RectF> {
+    private fun railSlots(selected: String? = selectedIsland): Map<String, android.graphics.RectF> {
         val bounds = android.graphics.RectF()
         if (!LockScreenRailRuntime.strip(host, bounds)) return emptyMap()
-        val plan = RailIslandStrip.layout(islandKeys, selectedIsland, bounds.width(), bounds.height(),
+        val plan = RailIslandStrip.layout(islandKeys, selected, bounds.width(), bounds.height(),
             density(), colorOs()) ?: return emptyMap()
         railOverflow = plan.hidden
         return plan.slots.associate { it.key to android.graphics.RectF(bounds.left,
@@ -2631,7 +2641,7 @@ private class MiniPlayerController(
     }
 
     private fun updateRailBubbles(music: MediaController?, notes: List<LockIslands.Note>) {
-        val keys = if (colorOs()) emptyList() else islandKeys.filter { it != selectedIsland }
+        val keys = if (colorOs()) emptyList() else islandKeys.filter { it != selectedIsland || railFusion != null }
         for (key in railBubbles.keys.toList()) if (key !in keys) {
             railBubbles.remove(key)?.view?.let { host.removeView(it) }
         }
@@ -2670,21 +2680,34 @@ private class MiniPlayerController(
         }
     }
 
-    private fun placeRailBubble(bubble: RailBubble, box: android.graphics.RectF?) {
+    private fun placeRailBubble(bubble: RailBubble, rest: android.graphics.RectF?) {
         val v = bubble.view
-        val shown = railBubblesShown && box != null
+        val motion = railFusion
+        val key = if (motion != null) railBubbles.entries.firstOrNull { it.value === bubble }?.key else null
+        val moving = key?.let { motion?.frame?.seats?.get(it) }
+        val box = moving?.let { android.graphics.RectF(it.x, it.y, it.x + it.w, it.y + it.h) } ?: rest
+        val shown = railBubblesShown && box != null && (motion == null || key != selectedIsland)
         v.visibility = if (shown) View.VISIBLE else View.GONE
         v.isEnabled = shown && Main.screenOnCached() && !MiniPlayerScene.aodActive && !Main.bouncerShown()
+        v.translationZ = if (motion != null) (player?.translationZ ?: 0f) + 1f else 0f
+        val companion = motion?.let { if (it.frame.incoming) it.plan.from else it.plan.to }
+        v.setMaterialAlpha(if (key == companion && motion != null) motion.frame.companionMaterial else 1f)
         if (box == null) return
-        val size = box.width().roundToInt()
-        if (v.layoutParams.width != size || v.layoutParams.height != size)
-            v.layoutParams = v.layoutParams.apply { width = size; height = size }
-        v.setShape(size, size)
+        val w = box.width().roundToInt().coerceAtLeast(1)
+        val h = if (motion != null) box.height().roundToInt().coerceAtLeast(w) else w
+        if (v.layoutParams.width != w || v.layoutParams.height != h)
+            v.layoutParams = v.layoutParams.apply { width = w; height = h }
+        if (motion != null && (v.width != w || v.height != h)) v.layout(v.left, v.top, v.left + w, v.top + h)
+        v.setShape(w, h)
         v.translationX = box.left - v.left
         v.translationY = box.top - v.top
     }
 
     private fun setRailBubblesShown(shown: Boolean) {
+        if (railFusion != null && (!shown || MiniPlayerScene.aodActive || !Main.screenOnCached() || Main.bouncerShown())) {
+            finishRailFusion(refreshNow = false)
+            scheduleRefresh()
+        }
         railBubblesShown = shown && MiniPlayerRuntime.detachedRail() && !MiniPlayerScene.keyguardGoingAway
         val slots = if (railBubblesShown) railSlots() else emptyMap()
         railBubbles.forEach { (key, bubble) -> placeRailBubble(bubble, slots[key]) }
@@ -2717,16 +2740,98 @@ private class MiniPlayerController(
     }
 
     fun selectRailIsland(key: String) {
+        finishRailFusion()
         if (key !in islandKeys || key == selectedIsland || !MiniPlayerRuntime.detachedRail()) return
-        player?.finishRailContentTransition()
-        val up = islandKeys.indexOf(key) < islandKeys.indexOf(selectedIsland)
-        player?.switchRailContent(up) {
-            if (key in islandKeys) selectedIsland = key
+        switchRailIsland(key)
+    }
+
+    /** Finish exactly once before a new swipe, a direct open, or a scene/layout change. */
+    fun finishRailFusion(commit: Boolean = true, refreshNow: Boolean = true) {
+        val motion = railFusion ?: return
+        railFusion = null
+        motion.animator?.cancel()
+        if (commit && motion.plan.to in islandKeys) selectedIsland = motion.plan.to
+        player?.endRailFusion()
+        railBubbles.values.forEach { it.view.setMaterialAlpha(1f); it.view.translationZ = 0f }
+        // This coordinated motion already lands in its final seat. Do not run the old 220ms move.
+        railPositionX = Float.NaN
+        railPositionY = Float.NaN
+        if (refreshNow) {
+            refresh()
+            position()
+        }
+    }
+
+    private fun switchRailIsland(key: String) {
+        val view = player ?: return
+        val from = selectedIsland ?: return
+        view.finishRailContentTransition()
+        railPosition?.cancel()
+        railPosition = null
+        fun boxes(selected: String) = railSlots(selected).mapValues { (_, r) ->
+            RailFusionMotion.Box(r.left, r.top, r.width(), r.height())
+        }
+        val plan = RailFusionMotion.plan(from, key, boxes(from), boxes(key))
+        if (plan == null || !view.isShown || !view.isLaidOut || frameTaken() || appearing ||
+            !Main.screenOnCached() || MiniPlayerScene.aodActive || MiniPlayerScene.keyguardGoingAway ||
+            !android.animation.ValueAnimator.areAnimatorsEnabled()) {
+            selectedIsland = key
             preferredSmall = null
             aloneFirst = null
+            railPositionX = Float.NaN; railPositionY = Float.NaN
             refresh()
-            schedulePosition()
+            position()
+            return
         }
+        preferredSmall = null
+        aloneFirst = null
+        view.beginRailFusion()
+        val motion = RailFusion(plan, islandKeys.toList(), Main.screenGeometry().revision, colorOs(),
+            view.railArtworkBox(plan.before.getValue(from)))
+        motion.newArt = view.railArtworkBox(plan.after.getValue(key))
+        railFusion = motion
+        // Warm both bubble surfaces before either identity changes; the selected one stays hidden.
+        refresh()
+        applyRailFusionFrame()
+        val animation = android.animation.ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = RailFusionMotion.DURATION_MS
+            interpolator = android.view.animation.LinearInterpolator()
+            addUpdateListener {
+                if (railFusion !== motion) return@addUpdateListener
+                motion.progress = it.animatedValue as Float
+                applyRailFusionFrame()
+            }
+            addListener(object : android.animation.AnimatorListenerAdapter() {
+                override fun onAnimationEnd(animation: android.animation.Animator) {
+                    if (railFusion === motion) finishRailFusion()
+                }
+            })
+        }
+        motion.animator = animation
+        if (railFusion === motion) animation.start()
+    }
+
+    private fun applyRailFusionFrame() {
+        val motion = railFusion ?: return
+        val view = player ?: return finishRailFusion(refreshNow = false)
+        if (motion.keys != islandKeys || motion.revision != Main.screenGeometry().revision ||
+            motion.oneOnly != colorOs() || !MiniPlayerRuntime.detachedRail() || !view.isAttachedToWindow ||
+            MiniPlayerScene.aodActive || MiniPlayerScene.keyguardGoingAway || !Main.screenOnCached()) {
+            finishRailFusion()
+            return
+        }
+        if (motion.progress >= .5f && !motion.rebound) {
+            motion.rebound = true
+            selectedIsland = motion.plan.to
+            refresh()
+            if (railFusion !== motion) return
+            view.prepareRailFusionContent()
+            motion.newArt = view.railArtworkBox(motion.plan.after.getValue(motion.plan.to))
+        }
+        motion.frame = motion.plan.frame(motion.progress, motion.oldArt, motion.newArt, ShortcutDisc.ICON_SHARE)
+        view.setRailFusionFrame(motion.frame)
+        val slots = railSlots()
+        railBubbles.forEach { (key, bubble) -> placeRailBubble(bubble, slots[key]) }
     }
     private val smallRest = FloatArray(2)
     private val smallFollow = Matrix()
@@ -2808,6 +2913,7 @@ private class MiniPlayerController(
     fun switchIsland(next: Boolean, flingPx: Float = 0f) {
         // One island out as its card or not, a swipe switches the row's own islands: the card
         // stays as it is (2026-09-25).
+        finishRailFusion()
         player?.takeIf { it.vertical && it.railContentSwitching() }?.finishRailContentTransition()
         val keys = islandKeys
         if (!canSwitchIsland(next)) {
@@ -2822,15 +2928,7 @@ private class MiniPlayerController(
             resetIslandDrag()
             clearSmallNudge()
             val nextKey = RailIslandStrip.cycle(keys, selectedIsland, next) ?: return
-            player?.switchRailContent(next) {
-                if (nextKey in islandKeys) {
-                    selectedIsland = nextKey
-                    preferredSmall = null
-                    aloneFirst = null
-                }
-                refresh()
-                schedulePosition()
-            }
+            switchRailIsland(nextKey)
             return
         }
         if (colorOs()) {
@@ -4207,7 +4305,7 @@ private class MiniPlayerController(
     private fun frameTaken(): Boolean = swap != null || frameTakenBesideSwap()
 
     private fun frameTakenBesideSwap(): Boolean = morph != null || group != null || flight != null ||
-        exchange != null || noteMorphKey != null || pillLandingBox != null || spread != null
+        exchange != null || noteMorphKey != null || pillLandingBox != null || spread != null || railFusion != null
 
     /** A ColorOS update is drawing the capsule and nothing else: another update takes over from it. */
     private fun updating(): Boolean = swap?.kind == SWAP_UPDATE && !frameTakenBesideSwap()
@@ -6347,7 +6445,7 @@ private class MiniPlayerController(
                 // the exit aimed at the card and then jumped to full size as it went (2026-09-26).
                 listOfNotNull(transitionHeader()?.takeIf {
                     morph?.toNative == false && (noteMorphKey == null || noteMorphKey == MUSIC_ISLAND)
-                })
+                }) + listOfNotNull(railMediaExitView)
             // The row spreading out as the list or folding back: where its islands start from.
             val spreadRest = spreadMoving()?.let {
                 player?.takeIf { v -> v.isAttachedToWindow }
@@ -7495,6 +7593,7 @@ private class MiniPlayerController(
     }
 
     fun expandRailSelection(key: String): Boolean {
+        finishRailFusion()
         if (!Main.miniPlayerIslandsCanShow() || MiniPlayerScene.keyguardGoingAway || key !in collapsedRailKeys()) return false
         player?.finishRailContentTransition()
         openDetachedIsland(key)
@@ -7604,6 +7703,7 @@ private class MiniPlayerController(
         val parent = card.parent as? View ?: return false
         unpinCard()
         railMediaExitView = card
+        contentTopAt = 0L
         railMediaExitToken = token
         railCollapsedToken = null
         railExitPillWasVisible = player?.let { it.visibility == View.VISIBLE && it.alpha * it.transitionAlpha > .01f } == true
@@ -7629,6 +7729,7 @@ private class MiniPlayerController(
         // Selection remains expanded until the independent card animation has finished.
         MiniPlayerRuntime.chooseNative(token)
         if (Main.coverModeOn()) Main.miniPlayerLeaveCover()
+        Main.reassertClockRoom()
         val animation = android.animation.ValueAnimator.ofFloat(0f, 1f).apply {
             duration = 320L
             interpolator = android.view.animation.LinearInterpolator()
@@ -9823,6 +9924,8 @@ private class MiniPlayerController(
     private fun listPulled(): Boolean = stackDragged() || kotlin.math.abs(NumState.overScroll()) > 0.5f
 
     fun prepareForSleep() {
+        finishRailFusion()
+        rememberLockPresentation()
         // Give the open rows back before HyperOS starts its own AOD fold, as for a media swipe.
         if (colorOs() && spread != null) endSpread(folded = false, why = "native AOD handoff")
     }
@@ -11519,6 +11622,7 @@ private class MiniPlayerController(
         "exitPillHeld=$railExitPillWasVisible exitHiddenBeforeRestore=$lastRailExitHiddenBeforeRestore returnOwned=${railCollapsedToken != null}"
 
     fun onKeyguardExit() {
+        finishRailFusion(refreshNow = false)
         setRailBubblesShown(false)
         railOpening.clear()
         railPosition?.cancel()
@@ -11542,6 +11646,7 @@ private class MiniPlayerController(
     }
 
     fun destroy() {
+        finishRailFusion(commit = false, refreshNow = false)
         handler.removeCallbacks(rememberPresentation)
         railPosition?.cancel()
         railBubbles.values.forEach { host.removeView(it.view) }
@@ -12249,8 +12354,13 @@ private class MiniPlayerController(
         val focus = LockIslands.focusKeys().filter { entry.takeFocus(it, landscape) }
         val openMusic = entry.takeMusic(music != null && Main.miniPlayerMediaCardPresent() &&
             (transitionHeader()?.height ?: 0) > 0, landscape)
-        snapshot?.selected?.let { if (entry.takeSelection(it in islandKeys, landscape)) railReturnedSelection = it }
-        if (!notifications && !openMusic && focus.isEmpty()) return false
+        fun restoreSelection() {
+            snapshot?.selected?.let { if (entry.takeSelection(it in islandKeys, landscape)) railReturnedSelection = it }
+        }
+        if (!notifications && !openMusic && focus.isEmpty()) {
+            restoreSelection()
+            return false
+        }
         MiniPlayerRuntime.applyingEntryDefaults = true
         try {
             if (notifications) NumState.goTo(
@@ -12262,7 +12372,7 @@ private class MiniPlayerController(
             }
             if (openMusic && music != null) {
                 if (collapsed and MiniPlayerConfig.COLLAPSE_MUSIC != 0) {
-                    railReturnedSelection = MUSIC_ISLAND
+                    if (snapshot?.selected == null) railReturnedSelection = MUSIC_ISLAND
                     MiniPlayerRuntime.chooseMini(music.sessionToken)
                     Main.selectLockscreenStartupView(-1)
                 } else {
@@ -12271,6 +12381,8 @@ private class MiniPlayerController(
                 }
             }
         } finally { MiniPlayerRuntime.applyingEntryDefaults = false }
+        // A remembered focus/notification seat wins over the collapsed-music fallback above.
+        restoreSelection()
         scheduleRefresh()
         return true
     }
@@ -12278,6 +12390,7 @@ private class MiniPlayerController(
     private fun refreshUnsafe() { android.os.Trace.beginSection("MC refresh"); try {
         lottiesFollowDoze()
         if (configStale) {
+            finishRailFusion(refreshNow = false)
             configStale = false
             config = JSONObject(MiniPlayerConfig.fromPreferences(prefs))
             configuredHeightDp = MiniPlayerConfig.visibleHeightDp(config.toString())
@@ -12356,6 +12469,7 @@ private class MiniPlayerController(
             islandKeys = islandKeys.filter { it !in railOpening }
             islandKeys = RailIslandStrip.order(islandKeys, islandOrder, STACK_ISLAND, MUSIC_ISLAND)
         }
+        if (railFusion?.let { it.keys != islandKeys } == true) finishRailFusion(refreshNow = false)
         // Islands out as their cards keep their places too, for when they come back.
         var order = islandKeys
         // A new island in the row comes up beside the first, swiped alone or not.
@@ -13792,6 +13906,7 @@ private class MiniPlayerController(
     }
 
     private fun position() {
+        if (railFusion != null) { applyRailFusionFrame(); return }
         updateNotificationCompacting()
         val view = player ?: return
         if (view.visibility != View.VISIBLE || spread != null) return
