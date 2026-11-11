@@ -4,7 +4,7 @@ import android.view.MotionEvent
 import android.view.View
 import java.util.WeakHashMap
 
-/** Keep native selection/activation; adapt only the relocated left shortcut's horizontal axis. */
+/** Share native shortcut hit regions with rail routing; mirror only the relocated left axis. */
 internal object ShortcutGestureRuntime {
     private val installed = WeakHashMap<ClassLoader, Boolean>()
     private var downs = 0
@@ -28,10 +28,10 @@ internal object ShortcutGestureRuntime {
     private fun eligible() = MiniPlayerRuntime.detachedRail() && Main.screenOn() &&
         Main.keyguardLocked() && !Main.bouncerShown() && !MiniPlayerScene.aodActive && !MiniPlayerScene.keyguardGoingAway
 
-    fun hitsTorch(icon: View, other: View?, x: Float, y: Float): Boolean {
+    fun hitsShortcut(icon: View, other: View?, x: Float, y: Float): Boolean {
         // Native hit testing waits for alpha == 1. Accept the visible wake ramp while
         // retaining native activation and rejecting doze, hidden icons and unlock.
-        if (!eligible() || !icon.isShown || !ShortcutGesturePolicy.torchVisible(icon.alpha) ||
+        if (!eligible() || !icon.isShown || !ShortcutGesturePolicy.shortcutVisible(icon.alpha) ||
             icon.width <= 0 || icon.height <= 0) return false
         val at = IntArray(2).also(icon::getLocationOnScreen)
         val dx = x - at[0] - icon.width / 2f
@@ -40,7 +40,7 @@ internal object ShortcutGestureRuntime {
             val xy = IntArray(2).also(it::getLocationOnScreen)
             kotlin.math.hypot(x - xy[0] - it.width / 2f, y - xy[1] - it.height / 2f)
         } ?: Float.POSITIVE_INFINITY
-        return ShortcutGesturePolicy.torchHit(dx, dy, minOf(icon.width, icon.height) / 2f,
+        return ShortcutGesturePolicy.shortcutHit(dx, dy, minOf(icon.width, icon.height) / 2f,
             icon.resources.displayMetrics.density, neighbour)
     }
 
@@ -57,7 +57,8 @@ internal object ShortcutGestureRuntime {
                     val owner = chain.thisObject
                     val left = Xp.getObjectField(owner, "leftIcon") as? View
                     val right = Xp.getObjectField(owner, "rightIcon") as? View
-                    if (icon != null && icon === left && hitsTorch(icon, right,
+                    val other = if (icon === left) right else left
+                    if (icon != null && (icon === left || icon === right) && hitsShortcut(icon, other,
                             (chain.args[1] as Number).toFloat(), (chain.args[2] as Number).toFloat())) {
                         assistedHits++
                         true

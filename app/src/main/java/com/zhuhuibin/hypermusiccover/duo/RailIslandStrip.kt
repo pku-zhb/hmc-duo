@@ -14,8 +14,10 @@ internal object RailIslandStrip {
         return keys[(index + if (up) keys.size - 1 else 1) % keys.size]
     }
 
-    /** The native stack grows bottom-up: notifications, live cards, then the top music card. */
-    fun expansionTarget(collapsed: List<String>): String? = collapsed.firstOrNull()
+    /** Open in native stack order: music, live cards in their stable order, then notifications. */
+    fun expansionTarget(collapsed: List<String>, stack: String, music: String): String? =
+        music.takeIf { it in collapsed } ?: collapsed.firstOrNull { it != stack }
+            ?: stack.takeIf { it in collapsed }
 
     data class Slot(val key: String, val top: Float, val height: Float, val primary: Boolean)
     data class Plan(val slots: List<Slot>, val hidden: Int)
