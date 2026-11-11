@@ -32,3 +32,6 @@ local.properties
 .kotlin/
 
 /hyper-canvas/build/
+
+# Locally built and retained trial packages.
+/releases/local/

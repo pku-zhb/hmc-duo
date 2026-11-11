@@ -1,10 +1,87 @@
-# Fold settings decisions
+# Duo implementation status
 
 This fork targets the owner’s Xiaomi 18 Fold. General device compatibility is not a goal.
 
-## Device verification status (2026-11-11)
+## Current Duo work (2026-11-11)
 
-### OPEN: lock-screen flashlight and camera shortcuts do not launch
+The project, installation package, code namespace, launcher label and project links
+now belong to `hypermusiccover-duo` / `com.zhuhuibin.hypermusiccover.duo`.
+Maintainer: `pku-zhb`. Automatic updates remain disabled; upstream copyright and
+credits are preserved. The history below describes the separate Fold preview
+package and must not be read as verification of a Duo installation.
+
+Preview `0.2.0-preview.1` (`20001`) is installed on the connected device. Debug and
+Release builds, release lint/R8 and all 625 JVM tests pass. This preview uses the
+local debug signing certificate, not a production release key. The old Fold app
+is retained, and its four local appearance/language preference files were copied
+to Duo with byte-for-byte verification. Existing SystemUI runtime settings remain
+in their original shared location.
+
+The owner performs LSPosed selection, all phone UI interactions and restarts.
+Background installation does not establish that Duo hooks are active. No process
+restart or Duo phone behavior has been verified in this session.
+
+### Shortcut geometry and swipe direction candidate
+
+The owner reports that camera opens on an up-left drag but its animation starts
+at MiDuo's earlier position. Torch has also opened with a rightward drag.
+The last runtime probe reported Fold build 10101025; a Duo runtime probe after the
+owner's module switch/restart is pending.
+
+The live AOD APK matches the analyzed sample (SHA-256
+`c336e5ec5e42d2584a972a223b5334a7f9efe97a50cd8a487957d890dac3eec6`).
+Its `ShortcutMoveController` tests the displayed icon's screen position, but
+calculates positive horizontal travel for the semantic left shortcut and negative
+travel for the right shortcut. `ShortcutOccludedAnimController.onTouchUp` uses the
+native activation state; the release coordinates do not select or launch an app.
+MiDuo's `BaseShortcutAnimController.updateShortcutView` hook separately caches its
+own relocated animation origin.
+
+The candidate therefore:
+
+- Leaves MiDuo's button positions and native animation origins together; the capsule
+  reserves room above them instead of moving them again.
+- Gives the entire gesture starting on a native shortcut back to the native path.
+- Projects only the relocated left shortcut's X travel onto the original axis,
+  so both buttons use an inward leftward drag. Vertical travel, slop, activation,
+  cancellation and selected shortcut identity remain native.
+- Removes the unsuccessful forced-tap activation adapter. Read-only counters expose
+  native hits, direction and projection via `layoutstate.shortcutGesture`.
+
+Host geometry and native-axis contract tests pass. Device acceptance of the new
+Duo package is pending; neither button is declared fixed by these tests.
+
+### Vertical capsule typography
+
+The right column remains the title and the left column the secondary information.
+The renderer measures actual font advances: CJK stays upright, horizontal-script
+words remain shaped sideways, one to four digits share one horizontal cell, and
+punctuation uses vertical forms. Extended grapheme clusters, including joined emoji,
+flags and skin tones, stay intact. Long content reserves a vertical ellipsis cell;
+opening the native card exposes the full text. The underlying accessible text stays
+unmodified. No continuous marquee runs in the small vertical capsule.
+
+Design references: [W3C vertical text](https://www.w3.org/International/articles/vertical-text/)
+and [Pages vertical text](https://support.apple.com/en-mide/guide/pages-iphone/tanc8021e516/ios).
+These informed the mixed-script layout; the bounded two-column summary is a Duo
+interaction choice. Android supports the [extended grapheme matcher](https://developer.android.com/reference/java/util/regex/Pattern.html)
+used by the text planner. Phone visual acceptance remains pending.
+
+### Disabled-feature investigation
+
+| Feature | Current finding and recovery boundary |
+| --- | --- |
+| Full-screen artwork | `Main.effectiveCoverStyle` and `FoldSettingsPolicy` force the supported square style; inner-landscape composition also assumes that geometry. Restore a per-display full-cover scene only after its clock, notification floor, lyrics and AOD transitions have an accepted geometry contract. |
+| Background switching / blur / moving backdrop | `FoldSettingsPolicy.nativeBackdrop` remains true for the right rail even if the availability flag is lifted. `CoverPush` then bypasses wallpaper delivery. Separate cover geometry from background selection and retain the existing generation/first-frame handoff; flipping the UI switch alone cannot work. The installed wallpaper has a version-bound GL-handler/re-upload profile, so a generic invalidate is insufficient. |
+| Capsule Gaussian blur | Retired during material consolidation. Native Soft Glass and following the final native-player material remain the supported options; a second independent blur layer would need a clear interaction with HyperLight and AOD. |
+| Notification marquee | Replaced by measured mixed-script typography and full-text expansion. A perpetual marquee in two narrow columns obscures reading order; it stays off. |
+| HyperCanvas / StandBy | Hidden extension pages retain their underlying code. The upstream Canvas provider hardcodes the Enhanced host package and requires matching signatures. Duo host checks now use its own application ID, but the provider and extension build/signing must be migrated together before re-enabling. |
+| Waveform | The page is hidden; its audio acquisition/runtime code remains. Validate the capture source, permissions and AOD lifecycle independently before restoring the controls. |
+| Donations / experimental iPhone gestures | Retired intentionally, not compatibility defects to re-enable. Unused donation resources and funding configuration are removed. |
+
+## Historical Fold device reports (2026-11-11)
+
+### OPEN: lock-screen shortcuts do not reliably launch
 
 - Affected build: `10101024` / `1.1.1-15-fold-preview`, package `com.zhuhuibin.hypermusiccover.fold`.
 - Reproduction: on the lit lock screen, tap the right-column flashlight or camera button. The expected shortcut does not open. Earlier reports included press/shake feedback without activation.
@@ -56,10 +133,11 @@ This fork targets the owner’s Xiaomi 18 Fold. General device compatibility is 
 
 ## Deferred work requiring discussion
 
-- Redesign vertical notification text presentation and handling of long content.
+- Validate the new mixed-script vertical notification renderer on the phone and
+  refine it against actual clipping, orientation and reading-order reports.
 - Investigate full-screen cover refresh and background rendering before re-enabling any related controls. Restore meaningful blur, dim and animated-background settings only with a supported implementation.
-- Replace the displayed maintainer/author identity with this fork’s agreed identity. The final display name is not decided. Preserve upstream copyright and license notices, and credit upstream authors and existing contributors in the contributors/credits section.
-- Replace the upstream update feed, release links, issue/feedback links and other upstream-specific branding with this fork’s own destinations. Decide its release/update policy before enabling a new channel.
+- Maintainer and destination migration is complete in Duo; upstream attribution stays in Credits and NOTICE.
+- Duo destinations are configured. A signed release/update policy is still required before enabling automatic updates.
 - Revisit the horizontal demonstration after the real interaction and animation design is settled.
 
-The final author identity and demonstration assets remain unchanged. Upstream attribution and license notices are preserved.
+The demonstration assets remain unchanged. Duo identity is configured; upstream attribution and license notices are preserved.

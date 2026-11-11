@@ -17,6 +17,11 @@ not the destination for project links, updates or bug reports.
   tests or installed hooks do not establish correct phone behavior.
 - Source work and host builds do not authorize phone installation, restarts or
   live setting changes. Follow the conversation's current device authorization.
+- The owner performs all phone UI interaction, LSPosed switching and restarts.
+  Prepare and install authorized preview APKs in the background, then provide
+  concrete manual test steps and expected observations. Do not launch activities,
+  automate gestures, capture the UI or restart phone processes to verify a build.
+  Read-only ADB diagnostics may support the owner's reports.
 - MiDuo owns native shortcuts. Keep visual bounds, touch hit testing, gesture
   direction and animation origins in the same coordinate space.
 - The vertical capsule is a summary. Full text stays in the expanded native card.
