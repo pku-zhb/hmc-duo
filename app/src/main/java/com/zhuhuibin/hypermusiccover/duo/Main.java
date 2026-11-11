@@ -668,6 +668,7 @@ public class Main extends XposedModule {
     private static long sCardSampleAt;
     private static ViewTreeObserver.OnPreDrawListener sCardGuard;
     private static View sCardGuarded, sCardArt, sCardTitle, sCardArtist;
+    private static final ArtworkThumbnailVeil sArtVeil = new ArtworkThumbnailVeil();
     /** The title carrying our play/pause listener, and what it was clickable-wise before. */
     private static View sCardTitleTapped;
     private static boolean sCardTitleClickable;
@@ -925,6 +926,7 @@ public class Main extends XposedModule {
         @Override
         public void run() {
             forgetSysReads();
+            if (LockLyrics.lockScreenGone()) sArtVeil.clear();
             LockLyrics.refresh();
         }
     };
@@ -3610,6 +3612,7 @@ public class Main extends XposedModule {
                     applyGlassBrightness();
                 } else if (Intent.ACTION_SCREEN_OFF.equals(a)) {
                     sScreenOn = false;
+                    sArtVeil.clear();
                     sAodGrey = Float.NaN;
                     // Held into a doze, the screen wake lock would pull the phone back out of it.
                     if (sKeepAwakeView != null) keepAwake(false);
@@ -3619,6 +3622,7 @@ public class Main extends XposedModule {
                 }
                 CoverBackdrop.refreshVisibility();
                 if (Intent.ACTION_USER_PRESENT.equals(a)) {
+                    sArtVeil.clear();
                     CoverMorphLayer.cancel();
                     CoverCardLayer.hideNow();
                 }
@@ -7275,6 +7279,7 @@ public class Main extends XposedModule {
     private static void exitCoverMode(boolean animate) {
         CoverCardLayer.leaving();
         sCoverMode = false;
+        sArtVeil.clear();
         LockLyrics.setPlayerChosen(false);
         // Hand the clock to Canvas before releasing the cover, avoiding an OEM exit and re-entry.
         CanvasHostBridge.sceneChanged();
@@ -7655,6 +7660,7 @@ public class Main extends XposedModule {
     }
 
     static void prepareAodArtwork(boolean heldAod) {
+        sArtVeil.clear();
         // Asleep straight from an app there are no lock-screen rows; the live reading is the doze transition's.
         if (sAodArtworkExpanded || !AodArtworkPolicy.shouldExpand(sCoverMode,
                 effectiveCoverStyle().mode == CoverCardStyle.CARD, heldAod,
@@ -8742,6 +8748,7 @@ public class Main extends XposedModule {
                 View art = card.findViewById(card.getResources()
                         .getIdentifier("album_art", "id", "com.android.systemui"));
                 if (art != null && art != sCardArt) {
+                    sArtVeil.clear();
                     // A card view we have not written to. Forgetting what we wrote to the last
                     // one makes scaleArt() read this one's scale as the OEM's, which it is -
                     // otherwise a new thumbnail that happened to arrive carrying the number we
@@ -8774,6 +8781,8 @@ public class Main extends XposedModule {
         // it - and because this runs every frame, the card restores itself on unlock by itself.
         View c = sContainer;
         boolean onKeyguard = sCardForced || (keyguardShowing() && c != null && c.isShown());
+        boolean railLyrics = MiniPlayerRuntime.detachedRail();
+        boolean fixedControls = ArtworkThumbnailPolicy.fixedControls(railLyrics, onKeyguard, sCardForced);
         // A capture for the app's preview wants the settled look, not whichever frame an
         // animation happens to be on. Everywhere else the fade IS the state.
         float p = !onKeyguard ? 0f
@@ -8807,9 +8816,10 @@ public class Main extends XposedModule {
                 && LockLyrics.sEnabled && LockLyrics.hasLyrics() && !LockLyrics.playerChosen();
         float exc = stepLyricArt(!fullScreenLyrics
                 && (sMcArtInLyrics || LockLyrics.compactWithoutLyrics()) && sLyricUp);
-        // Slide both text lines into the thumbnail's freed space as the artwork leaves.
-        // Full-screen lyrics always hide it, by the same spring: switched, the title jumped there.
-        float hideP = fullScreenLyrics || sMcHideArt ? p * (1f - exc) : 0f;
+        // Legacy layouts slide the text into the departing artwork's slot. The rail keeps both
+        // controls anchored to the native thumbnail/title layout throughout the page change.
+        float hideP = ArtworkThumbnailPolicy.hideProgress(fixedControls,
+                fullScreenLyrics || sMcHideArt ? p * (1f - exc) : 0f);
         View art = sCardArt;
         if (art != null) {
             // INVISIBLE at the far end, not GONE: the constraints around it are the card's
@@ -8836,7 +8846,7 @@ public class Main extends XposedModule {
                 scaleArt(art, 1f - hideP * (1f - (fullCover ? FULL_ART_MIN_SCALE : CARD_ART_MIN_SCALE)));
                 blurArt(art, fullCover ? hideP : 0f);
             }
-            if (CoverMorphLayer.active()) {
+            if (CoverMorphLayer.active() && !fixedControls) {
                 // The moving copy owns these pixels until it reaches either endpoint. Keep the
                 // OEM view in the layout so its slot and the title continue to move normally.
                 // On the way back it fades in under the landing copy instead of being switched on
@@ -8846,8 +8856,15 @@ public class Main extends XposedModule {
                 if (art.getAlpha() != a) art.setAlpha(a);
             }
         }
+        // Keep the original image as the return control. The overlay marks its selected page
+        // without changing its bounds, the title inset, the lyrics anchor or the card layout.
+        boolean artworkExpanded = sCoverMode && !LockLyrics.wantsCompactArtwork();
+        boolean veil = ArtworkThumbnailPolicy.veil(fixedControls, artworkExpanded,
+                screenOnCached(), MiniPlayerScene.INSTANCE.getAodActive()
+                        || ClockCollapse.phase() == ClockCollapse.Phase.AOD,
+                MiniPlayerScene.INSTANCE.getKeyguardGoingAway());
+        sArtVeil.update(art, veil, veil ? coverMorphThumbnailRadius() : 0f);
         if (!onKeyguard) LyricsButton.release();
-        boolean railLyrics = MiniPlayerRuntime.detachedRail();
         boolean lyricsButton = onKeyguard && !sCardForced
                 && LyricsButtonPolicy.offer(railLyrics, sCoverMode, LockLyrics.sEnabled,
                     LockLyrics.hasDisplayContent(), fullScreenLyrics || !LockLyrics.wantsCompactArtwork()
@@ -9253,11 +9270,9 @@ public class Main extends XposedModule {
     /**
      * Whether the card's artwork is currently a toggle for cover mode.
      *
-     * Both directions: the thumbnail is what put the cover up, so it is also the natural thing
-     * to tap to put the wallpaper back. With the restyle's hide-artwork option on, the way back
-     * falls out on its own - the thumbnail is INVISIBLE in cover mode by the time anyone could
-     * tap it, and the rectangle test asks isShown(). Off the lock screen the card belongs to the
-     * shade, where the OEM's own click is the right one.
+     * Both directions: the thumbnail opens the large cover and remains the return control on
+     * the rail player. Legacy layouts can still hide it in cover mode. Off the lock screen the
+     * card belongs to the shade, where the OEM's own click is the right one.
      */
     private static boolean wantsArtTap() {
         return singleCoverTapEnabled() && sCardShowing;
@@ -10125,6 +10140,7 @@ public class Main extends XposedModule {
         // nothing would ever run the assert that would have done it, and the shade would keep a
         // title that pauses the music.
         applyTitleTap(null, false);
+        sArtVeil.clear();
         LyricsButton.release();
         if (d == null || g == null) return;
         try {
