@@ -22,7 +22,6 @@ An LSPosed module forked from [HyperMusicCover](https://github.com/zyl6932/Hyper
 | 🎤 **Lyrics** | Synced and word-timed lyrics, translation, font packs and effects |
 | (・ω・) **Kaomoji companion** | A face that bops to the beat when neither lyrics nor the big cover are up |
 | 📊 **Audio visualizer** *(beta)* | Super Island and player bars that follow the music, even at zero volume |
-| 🏝️ **iPhone-ify** *(A/B)* | Hold Super Island to open an iPhone-style card at the camera, over the other pills, for music and other islands |
 | 🎛️ **Player styling** | Artwork shape, backgrounds, materials, colors and scrolling titles |
 | 🎬 **Spotify Canvas** | Video backgrounds through the optional [HyperCanvas](https://github.com/Lewewe/HyperCanvas) extension |
 | 🌙 **StandBy** *(alpha)* | Full-screen clock, music and widgets on the charger through the optional [HyperImmersive](https://github.com/Lewewe/HyperImmersive) extension |
