@@ -22,7 +22,6 @@
 | 🎤 **歌词** | 同步歌词、逐词歌词、翻译、字体包和歌词效果 |
 | (・ω・) **歌词伙伴颜文字** | 歌词和大封面都未显示时，随节拍摆动的颜文字 |
 | 📊 **音频可视化** *(Beta)* | 超级岛和播放器上随音乐跳动的频谱，静音时同样有效 |
-| 🏝️ **iPhone-ify** *(A/B)* | 长按超级岛，在摄像头处打开 iPhone 风格卡片，覆盖其他胶囊，音乐和其他超级岛均适用 |
 | 🎛️ **播放器外观** | 封面形状、背景、材质、配色和歌名滚动 |
 | 🎬 **Spotify Canvas** | 通过可选扩展 [HyperCanvas](https://github.com/Lewewe/HyperCanvas) 显示视频背景 |
 | 🌙 **StandBy** *(Alpha)* | 通过可选扩展 [HyperImmersive](https://github.com/Lewewe/HyperImmersive)，在充电时显示全屏时钟、音乐和小组件 |
