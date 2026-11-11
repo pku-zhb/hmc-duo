@@ -202,6 +202,11 @@ internal class ShortcutDisc(context: Context) : FrameLayout(context) {
             "shape=${shapeW}x${shapeH}+$shapeDx"
     } ?: "no icon"
 
+    /** A rail merge covers this glass while the icon keeps its identity above the shared shell. */
+    fun setMaterialAlpha(alpha: Float) {
+        if (abs(element.alpha - alpha) > .002f) element.alpha = alpha.coerceIn(0f, 1f)
+    }
+
     /** The picture's alpha: it comes in last on a small island forming out of the pill. */
     fun setIconAlpha(alpha: Float) {
         icon?.let { if (kotlin.math.abs(it.alpha - alpha) > 0.002f) it.alpha = alpha }

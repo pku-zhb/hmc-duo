@@ -260,11 +260,7 @@ final class LockScreenRailRuntime {
     }
 
     static void centerClock(View target, RectF ink) {
-        if (plan == null || !Main.sReflowLockContent || !active() || ink == null
-                || !(target.getParent() instanceof View)) return;
-        if (!map(root, (View) target.getParent(), plan.content, box)) return;
-        float x = ClockHorizontalPlacement.translation(ink.left, ink.right, target.getPivotX(),
-                target.getScaleX(), target.getLeft(), box.centerX());
+        float x = clockTranslation(target, ink);
         if (!Float.isFinite(x)) return;
         Owned state = owned.get(target);
         if (state == null) { state = new Owned(target); owned.put(target, state); }
@@ -285,6 +281,24 @@ final class LockScreenRailRuntime {
             if (group.getClipToPadding()) group.setClipToPadding(false);
             if (v == boundary || v == Main.sContainer) break;
         }
+    }
+
+    /** Shared by the cover pose and its native handoff, in the target parent's coordinates. */
+    static float clockTranslation(View target, RectF ink) {
+        RightRailLayout.Plan p = plan;
+        if (p == null || !Main.sReflowLockContent || !active() || ink == null || target == null
+                || !(target.getParent() instanceof View)) return Float.NaN;
+        float bias = clockOpticalOffset();
+        FoldMusicLayout.Box area = bias == 0f ? p.content : new FoldMusicLayout.Box(
+                p.content.left + bias, p.content.top, p.content.right + bias, p.content.bottom);
+        if (!map(root, (View) target.getParent(), area, box)) return Float.NaN;
+        return ClockHorizontalPlacement.translation(ink.left, ink.right, target.getPivotX(),
+                target.getScaleX(), target.getLeft(), box.centerX());
+    }
+
+    private static float clockOpticalOffset() {
+        return root == null ? 0f : ClockHorizontalPlacement.opticalOffset(root.getWidth(),
+                root.getHeight(), root.getResources().getDisplayMetrics().density);
     }
 
     private static FoldMusicLayout.Box rect(RectF b) {
@@ -436,9 +450,11 @@ final class LockScreenRailRuntime {
         RightRailLayout.Plan p = plan;
         return reflowing() && p != null ? p.content.right : Main.screenWidth();
     }
-    static float contentCenterX() {
+    static float clockCenterX() {
         RightRailLayout.Plan p = plan;
-        return reflowing() && p != null ? (p.content.left + p.content.right) / 2 : Main.screenWidth() / 2f;
+        return reflowing() && p != null
+                ? (p.content.left + p.content.right) / 2 + clockOpticalOffset()
+                : Main.screenWidth() / 2f;
     }
     static CoverCardStyle.Rect artwork(View view, CoverCardStyle style, float clock,
                                        float media, float aspect) {
