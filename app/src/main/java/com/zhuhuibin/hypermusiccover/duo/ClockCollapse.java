@@ -428,6 +428,10 @@ final class ClockCollapse {
 
     /** @param src which route took this entry, for the log - see noteEntry. */
     static void enter(boolean animate, boolean wake, String src) {
+        if (MiniPlayerScene.INSTANCE.getKeyguardGoingAway()) {
+            sWaking = false;
+            return;
+        }
         observeClockGeometry();
         if (!Main.screenOn() && !sWaking) {
             // The AOD shows the full clock; the wake brings it in.
@@ -535,7 +539,8 @@ final class ClockCollapse {
 
     /** The binder thread heard the keyguard start waking up. */
     static void noteWaking() {
-        sWaking = true;
+        sWaking = !MiniPlayerScene.INSTANCE.getKeyguardGoingAway();
+        WallpaperHandoffDiagnostics.note("wake", "coverEntry=" + sWaking + " phase=" + sPhase);
     }
 
     /**
@@ -2548,6 +2553,12 @@ final class ClockCollapse {
     private static void frame() {
         Phase phase = sPhase;
         if (phase == Phase.OFF) return;
+        if (MiniPlayerScene.INSTANCE.getKeyguardGoingAway()) {
+            sWaking = false;
+            // A direct biometric exit must not start a cover entry from this AOD frame.
+            // An already running lit-screen transition keeps its existing handoff.
+            if (phase == Phase.AOD) return;
+        }
         // The cover holds the y, so the room is not asked while it is up: the yes/no the faces
         // are told is checked from here instead (NotifPresence).
         NotifPresence.recheck();
