@@ -25,4 +25,11 @@ public class ShortcutGesturePolicyTest {
         assertEquals(800, ShortcutGesturePolicy.nativeX(true, false, 1000, 800), 0);
         assertEquals(200, ShortcutGesturePolicy.nativeX(false, true, 100, 200), 0);
     }
+    @Test public void nearTorchRimIsForgivenWithoutStealingTheCameraOrDistantTouches() {
+        assertTrue(ShortcutGesturePolicy.torchHit(-29, 0, 24, 1, 65));
+        assertFalse(ShortcutGesturePolicy.torchHit(-33, 0, 24, 1, 65));
+        assertFalse(ShortcutGesturePolicy.torchHit(0, 29, 24, 1, 25));
+        assertFalse(ShortcutGesturePolicy.torchHit(Float.NaN, 0, 24, 1, 65));
+        assertTrue(ShortcutGesturePolicy.torchHit(-58, 0, 48, 2, 130));
+    }
 }
