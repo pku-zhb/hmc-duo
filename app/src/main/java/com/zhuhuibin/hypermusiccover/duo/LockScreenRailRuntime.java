@@ -22,7 +22,6 @@ final class LockScreenRailRuntime {
     private static View keyguardCanvas;
     private static long planRevision = -1;
     private static int planWidth, planHeight;
-    private static final IdentityHashMap<View, ControlOffset> controls = new IdentityHashMap<>();
     private static final IdentityHashMap<View, ControlOffset> clockOffsets = new IdentityHashMap<>();
     private static final class ControlOffset {
         float baseline, written, delta;
@@ -135,7 +134,6 @@ final class LockScreenRailRuntime {
         if (retained) next = plan;
         else if (next != null) planRevision = revision;
         plan = next;
-        positionControls();
         if (next != null && Main.sReflowLockContent) {
             cacheNotificationFloor();
             int id = root.getResources().getIdentifier("notification_stack_scroller", "id", "com.android.systemui");
@@ -192,30 +190,6 @@ final class LockScreenRailRuntime {
                 bars.left, bars.top, bars.right, bars.bottom, holes);
         return Insets.of(Math.round(safe.left), Math.round(safe.top),
                 Math.round(root.getWidth() - safe.right), Math.round(root.getHeight() - safe.bottom));
-    }
-
-    /** Move the clickable wrapper together with its glyph; never leave the touch target behind. */
-    static void positionControls() {
-        if (!active() || MiniPlayerScene.INSTANCE.getKeyguardGoingAway()) return;
-        View[] pair = MiniPlayerRuntime.railShortcutViews();
-        if (pair == null || pair.length != 2) return;
-        for (int i = 0; i < 2; i++) {
-            View v = pair[i];
-            if (!shortcutWrapper(v) && v.getParent() instanceof View
-                    && shortcutWrapper((View) v.getParent())) v = (View) v.getParent();
-            // Both discovery paths are supported: the OEM API returns an icon, the fallback a wrapper.
-            if (!shortcutWrapper(v)) continue;
-            float delta = i == 0 ? plan.firstOffsetY : plan.secondOffsetY;
-            ControlOffset lease = controls.get(v);
-            if (lease == null) { lease = new ControlOffset(v, delta); controls.put(v, lease); }
-            lease.delta = delta;
-            lease.apply(v);
-        }
-    }
-
-    private static boolean shortcutWrapper(View v) {
-        try { return v.getResources().getResourceEntryName(v.getId()).endsWith("_layout"); }
-        catch (Throwable ignored) { return false; }
     }
 
     static boolean holdGeometry() {
@@ -395,8 +369,6 @@ final class LockScreenRailRuntime {
     private static void restore() {
         NumState.INSTANCE.restoreRailFooter();
         restoreClockOffsets();
-        for (java.util.Map.Entry<View, ControlOffset> e : controls.entrySet()) e.getValue().restore(e.getKey());
-        controls.clear();
         restoreContent();
     }
 

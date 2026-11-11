@@ -42,19 +42,15 @@ final class RightRailLayout {
         float gap = 12f * density;
         boolean narrow = width / density < 600f || width > height * 1.05f;
         float thickness = (narrow ? 46f : 48f) * density;
-        float controlSpan = Math.max(Math.abs(ay - by), 72f * density);
-        float controlY = Math.min((ay + by) / 2,
-                height - bottomInset - gap - diameter / 2 - controlSpan / 2) - 24f * density;
-        float firstY = controlY + (ay < by ? -1 : 1) * controlSpan / 2;
-        float secondY = controlY + (ay < by ? 1 : -1) * controlSpan / 2;
+        // MiDuo owns the button positions, hit rectangles and native launch origin.
+        // Place our capsule around that measured pair; never relocate either shortcut.
+        float controlSpan = Math.abs(ay - by);
+        float controlY = (ay + by) / 2;
         float centerX = (ax + bx) / 2;
         float right = centerX + thickness / 2, left = centerX - thickness / 2;
         float ceiling = topInset + gap + thickness + gap;
-        float circleGap = Math.max(0f, controlSpan - visibleDiscDiameter);
-        // Include the lowest curved indicator, not just the capsule's rectangular body.
-        float limit = narrow
-                ? Math.min(firstY, secondY) - visibleDiscDiameter / 2 - circleGap - indicatorExtent
-                : Math.min(firstY, secondY) - diameter / 2 - gap;
+        // Reserve the entire native hit wrapper, plus the curved capsule indicator.
+        float limit = Math.min(a.top, b.top) - gap - indicatorExtent;
         float companionTop = topInset + gap;
         float maxLength = limit - companionTop - thickness - gap;
         float length = Math.min(221f * density, maxLength);
@@ -62,20 +58,13 @@ final class RightRailLayout {
                 Math.min((topInset + height - bottomInset) / 2 - (narrow ? 16f : 12f) * density, limit - length / 2));
         float bottom = centerY + length / 2;
         float top = bottom - length;
-        if (narrow) {
-            // Keep the capsule from moving downward while making the two visible edge gaps equal.
-            float firstCenter = bottom + indicatorExtent + circleGap + visibleDiscDiameter / 2;
-            controlY = firstCenter + controlSpan / 2;
-            firstY = controlY + (ay < by ? -1 : 1) * controlSpan / 2;
-            secondY = controlY + (ay < by ? 1 : -1) * controlSpan / 2;
-        }
         float contentRight = Math.min(Math.min(a.left, b.left), left) - gap;
         if (left < leftInset || right > width - rightInset || bottom > height - bottomInset
                 || length < 140f * density || contentRight - leftInset < 260f * density) return null;
         return new Plan(new FoldMusicLayout.Box(left, top, right, bottom),
                 new FoldMusicLayout.Box(left, top - gap - thickness, right, top - gap),
                 new FoldMusicLayout.Box(leftInset, topInset, contentRight, height - bottomInset),
-                centerX, controlY, controlSpan, firstY - ay, secondY - by);
+                centerX, controlY, controlSpan, 0f, 0f);
     }
 
     static final class VerticalFace {
