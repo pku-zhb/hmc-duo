@@ -12,7 +12,10 @@ General device compatibility is not a goal.
 ## Current features
 
 - Square artwork, synchronized/word-timed lyrics and lyric translation.
-- A vertical music/notification capsule beside MiDuo's shortcut column.
+- A vertical capsule with ordered notification, live-card and music bubbles beside
+  MiDuo's shortcut column; swipe to switch or tap a bubble to select it.
+- Upward swipes in the left clock/notification area expand the selected capsule
+  before remaining collapsed content and swipe-to-unlock.
 - Separate inner-landscape startup choices and a cover/lyrics two-column layout.
 - Native player, clock and notification reflow with AOD/wake handling.
 - Native Soft Glass or the native player's final material, including HyperLight.
@@ -38,10 +41,12 @@ Launcher name: `hypermusiccover-duo`. This installs separately from Enhanced and
    when published, or build locally.
 3. Disable the previous music module in LSPosed, enable Duo and its recommended
    scopes. Do not enable both music modules together.
-4. Restart scoped processes and import settings. Removed options stay disabled.
+4. Restart scoped processes yourself and import settings. Removed options stay disabled.
 
 Preview builds require device acceptance. This repository does not imply a stable
 Duo release exists. APKs signed with different keys cannot update each other.
+Updates no longer restart scoped processes automatically. The owner chooses when
+to restart and load the new module code.
 
 ## Build and check
 

@@ -22,6 +22,9 @@ not the destination for project links, updates or bug reports.
   concrete manual test steps and expected observations. Do not launch activities,
   automate gestures, capture the UI or restart phone processes to verify a build.
   Read-only ADB diagnostics may support the owner's reports.
+  APK replacement must not indirectly restart scopes either. The loaded preview 1
+  receiver kills scoped processes on replacement; use a staged update for that
+  transition, activated by the owner's reboot. Later builds only log replacement.
 - MiDuo owns native shortcuts. Keep visual bounds, touch hit testing, gesture
   direction and animation origins in the same coordinate space.
 - The vertical capsule is a summary. Full text stays in the expanded native card.

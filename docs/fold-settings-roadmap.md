@@ -18,15 +18,103 @@ to Duo with byte-for-byte verification. Existing SystemUI runtime settings remai
 in their original shared location.
 
 The owner performs LSPosed selection, all phone UI interactions and restarts.
-Background installation does not establish that Duo hooks are active. No process
-restart or Duo phone behavior has been verified in this session.
+The current read-only runtime probe confirms Duo build 20001 after the owner's
+module switch. No agent-driven phone UI interaction or restart is permitted.
 
-### Shortcut geometry and swipe direction candidate
+### Owner acceptance and remaining issues in preview 1
+
+- Camera opens correctly; shortcut animation origins and release cancellation work.
+- Torch still needs a precise start and only opens intermittently.
+- The mixed-script vertical text is acceptable on the outer screen.
+- Collapsing the player no longer flashes the native media card. The clock still
+  jumps between its animated endpoint and its final position.
+- Unlock from the lit lock screen and PIN screen works. Direct AOD unlock still
+  flashes black, for less time than before.
+- Artwork and lyrics can require repeated initial taps from player-only startup.
+- Left-area upward swipes can unlock or show notifications without opening music.
+  Two-item HyperOS capsule switching can lose the other bubble or repeat an item.
+- Inner-screen and inner-landscape acceptance is explicitly deferred.
+
+### Preview 2 changes awaiting device acceptance
+
+The candidate is `0.2.0-preview.2` (`20002`). Its interaction contract is:
+
+- HyperOS has one main capsule and a bubble for each other collapsed item, in fixed
+  top-to-bottom order: ordinary notifications, individual focus/live cards, music.
+  Missing kinds leave no placeholder. Existing focus-card order survives updates.
+- A bubble tap selects that capsule; a main-capsule tap retains its open action.
+  Vertical swipes cycle in either direction, including with only two items. One
+  remaining item does not turn a swipe on the capsule into a card-open gesture.
+- An upward swipe starting in the left clock/notification area opens the selected
+  main capsule first, then the next selected collapsed item on a later gesture.
+  Only after all are expanded does that gesture return to native swipe-to-unlock.
+  Short, reversed and cancelled claimed drags open nothing. ColorOS uses the same
+  selected-item priority while retaining its single-capsule presentation.
+- The outer-screen rail is bottom aligned above the native shortcuts, moving it
+  down. An overflow window retains all items for cycling if many live cards cannot
+  fit at once. Inner-screen placement retains its existing baseline.
+- Focus cards are identified through the system's focus-notification predicate and
+  `param_island`, not a hardcoded vendor list. A real Meituan delivery card still
+  needs device acceptance; a missing focus payload cannot be inferred from its app.
+
+Other corrections in this candidate:
+
+- Torch can start within an extra 8 dp of its displayed icon, only when that point
+  is closer to torch than camera. Native activation distance and cancellation stay
+  intact. Counters now retain assisted hits, peak travel and activation at release.
+- The clock exit targets the rail's resting vertical lift and horizontal centre,
+  then hands off to that same geometry before drawing the final frame.
+- Artwork/lyrics controls select a concrete page before entering cover mode;
+  lyrics page toggles retain parsed lyrics and an in-flight lookup.
+- Repeated doze callbacks cannot clear an ongoing keyguard exit, and AOD wake
+  callbacks cannot re-enter the cover while unlocking. This is a black-flash
+  candidate, not a confirmed fix. Bounded transition and dim histories are separate
+  so a fade's alpha samples cannot erase the unlock timeline.
+- Package replacement only logs that a manual restart is needed. Preview 1's
+  already loaded receiver still kills scoped processes on replacement, so its
+  upgrade must use a staged session activated by the owner's reboot.
+
+Host verification for preview 2: all 638 tests in 108 suites passed, with zero
+failures, errors or skips. Debug and Release APKs built successfully, including
+release R8 and vital lint. The retained release APK is
+`releases/local/hypermusiccover-duo-0.2.0-preview.2.apk`, SHA-256
+`efd278ed6e7add37b4583ed4e1819d104cb844e3510eb49e11e00a6e808e719e`.
+Its debug signing certificate matches the installed preview 1, whose APK hash was
+checked directly on the device. This is a preview artifact, not a production key.
+
+Device delivery: staged session `1254977386` is ready, not applied, and not failed.
+PackageManager returned `Success. Reboot device to apply staged session`.
+The installed version remains 20001 until the owner reboots the whole phone.
+SystemUI and AOD PIDs were unchanged across staging. The temporary APK in
+`/data/local/tmp` was removed after the session took ownership of its copy.
+No phone UI interaction, scope change, process restart or device reboot was used.
+This follows the [AOSP staged-session commit contract](https://android.googlesource.com/platform/frameworks/base/+/main/services/core/java/com/android/server/pm/PackageManagerShellCommand.java).
+
+Manual acceptance after the owner's reboot (outer screen only):
+
+1. In HyperOS style with music and notifications, swipe the capsule up and down
+   repeatedly. Exactly one capsule and one bubble remain; either direction changes
+   the selection. Tapping the bubble selects it. With a real focus card, verify the
+   fixed notification/focus/music order and that absent categories leave no gap.
+2. Collapse all content, select music on the right, then swipe upward from the left
+   clock/notification area. Music opens first. Repeat to open remaining collapsed
+   content; only the following upward swipe can unlock. Repeat with notifications
+   selected first and with ColorOS style. Capsule swipes only switch selections.
+3. Start a fresh lock session in player-only mode. The first artwork and lyrics
+   button taps should select their intended pages. Repeat after collapsing/reopening.
+4. Collapse the expanded player several times. Neither the native card nor the
+   clock should jump back after the collapse animation lands.
+5. Try torch from the icon centre and near its rim, dragging left/up-left. Record
+   which starts still fail. Short releases must still cancel; camera must still work.
+6. Compare direct AOD unlock with lit lock-screen unlock. Report any remaining black
+   flash and which route causes it. Do not infer success from the host AOD tests.
+
+### Preview 1 shortcut geometry and swipe direction
 
 The owner reports that camera opens on an up-left drag but its animation starts
 at MiDuo's earlier position. Torch has also opened with a rightward drag.
-The last runtime probe reported Fold build 10101025; a Duo runtime probe after the
-owner's module switch/restart is pending.
+These were the reports before Duo preview 1; the current acceptance above
+supersedes them. The current runtime is Duo build 20001.
 
 The live AOD APK matches the analyzed sample (SHA-256
 `c336e5ec5e42d2584a972a223b5334a7f9efe97a50cd8a487957d890dac3eec6`).
@@ -48,8 +136,8 @@ The candidate therefore:
 - Removes the unsuccessful forced-tap activation adapter. Read-only counters expose
   native hits, direction and projection via `layoutstate.shortcutGesture`.
 
-Host geometry and native-axis contract tests pass. Device acceptance of the new
-Duo package is pending; neither button is declared fixed by these tests.
+Host geometry and native-axis contract tests pass. The owner accepted camera and
+animation behavior; torch reliability remains open and has the preview 2 candidate.
 
 ### Vertical capsule typography
 
@@ -65,7 +153,7 @@ Design references: [W3C vertical text](https://www.w3.org/International/articles
 and [Pages vertical text](https://support.apple.com/en-mide/guide/pages-iphone/tanc8021e516/ios).
 These informed the mixed-script layout; the bounded two-column summary is a Duo
 interaction choice. Android supports the [extended grapheme matcher](https://developer.android.com/reference/java/util/regex/Pattern.html)
-used by the text planner. Phone visual acceptance remains pending.
+used by the text planner. The owner accepted the outer-screen visual result.
 
 ### Disabled-feature investigation
 
@@ -118,9 +206,10 @@ used by the text planner. Phone visual acceptance remains pending.
 - Keep the demonstration unchanged.
 - Remove the A/B tab, its hidden unlock gesture, its exclusive iPhone-style native-island hooks, configuration commands and backup fields. Old module state and imported backups cannot reactivate these removed features; the app drops the obsolete unlock flag on load. Shared native media-card rendering and theme selection remain available.
 
-## Dedicated Fold settings consolidation
+## Historical Fold settings consolidation
 
-- Black-flash investigation is deferred at the owner’s request; retain existing diagnostics.
+- Black-flash investigation was deferred at that stage; the preview 2 work above
+  resumes it with a bounded candidate and diagnostics.
 - Replace overlapping music-entry toggles with collapsed-all, expanded-all, and music-only startup layouts. Music-only offers player, artwork or lyrics. Inner landscape has separate initial-state and music-view choices, applied on its first entry in each lock session; AOD wake retains live choices.
 - Remove full-size-button and under-display-fingerprint controls. Expose the actual notification-floor override as one switch.
 - Hide waveform and extension pages. Native island appearance stays Soft Glass; normal-player backgrounds remain configurable.
@@ -133,8 +222,8 @@ used by the text planner. Phone visual acceptance remains pending.
 
 ## Deferred work requiring discussion
 
-- Validate the new mixed-script vertical notification renderer on the phone and
-  refine it against actual clipping, orientation and reading-order reports.
+- Keep the accepted outer-screen mixed-script renderer; inner-screen validation
+  remains deferred until the owner resumes it.
 - Investigate full-screen cover refresh and background rendering before re-enabling any related controls. Restore meaningful blur, dim and animated-background settings only with a supported implementation.
 - Maintainer and destination migration is complete in Duo; upstream attribution stays in Credits and NOTICE.
 - Duo destinations are configured. A signed release/update policy is still required before enabling automatic updates.
