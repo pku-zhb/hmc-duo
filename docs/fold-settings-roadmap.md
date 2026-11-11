@@ -10,7 +10,7 @@ Maintainer: `pku-zhb`. Automatic updates remain disabled; upstream copyright and
 credits are preserved. The history below describes the separate Fold preview
 package and must not be read as verification of a Duo installation.
 
-Preview `0.2.0-preview.1` (`20001`) is installed on the connected device. Debug and
+Preview `0.2.0-preview.1` (`20001`) was installed on the connected device. Debug and
 Release builds, release lint/R8 and all 625 JVM tests pass. This preview uses the
 local debug signing certificate, not a production release key. The old Fold app
 is retained, and its four local appearance/language preference files were copied
@@ -18,8 +18,8 @@ to Duo with byte-for-byte verification. Existing SystemUI runtime settings remai
 in their original shared location.
 
 The owner performs LSPosed selection, all phone UI interactions and restarts.
-The current read-only runtime probe confirms Duo build 20001 after the owner's
-module switch. No agent-driven phone UI interaction or restart is permitted.
+The current read-only runtime probe confirms Duo build 20002 after the authorized
+direct update below. The owner performs phone UI interactions and explicit restarts.
 
 ### Owner acceptance and remaining issues in preview 1
 
@@ -71,8 +71,8 @@ Other corrections in this candidate:
   candidate, not a confirmed fix. Bounded transition and dim histories are separate
   so a fade's alpha samples cannot erase the unlock timeline.
 - Package replacement only logs that a manual restart is needed. Preview 1's
-  already loaded receiver still kills scoped processes on replacement, so its
-  upgrade must use a staged session activated by the owner's reboot.
+  already loaded receiver kills scoped processes on replacement; the owner
+  explicitly authorized a direct replacement for this transition.
 
 Host verification for preview 2: all 638 tests in 108 suites passed, with zero
 failures, errors or skips. Debug and Release APKs built successfully, including
@@ -82,15 +82,18 @@ release R8 and vital lint. The retained release APK is
 Its debug signing certificate matches the installed preview 1, whose APK hash was
 checked directly on the device. This is a preview artifact, not a production key.
 
-Device delivery: staged session `1254977386` is ready, not applied, and not failed.
-PackageManager returned `Success. Reboot device to apply staged session`.
-The installed version remains 20001 until the owner reboots the whole phone.
-SystemUI and AOD PIDs were unchanged across staging. The temporary APK in
-`/data/local/tmp` was removed after the session took ownership of its copy.
-No phone UI interaction, scope change, process restart or device reboot was used.
-This follows the [AOSP staged-session commit contract](https://android.googlesource.com/platform/frameworks/base/+/main/services/core/java/com/android/server/pm/PackageManagerShellCommand.java).
+Device delivery: the owner requested ordinary replacement instead of the prepared
+staged update. Session `1254977386` was abandoned and verified absent before the
+direct install. PackageManager returned `Success`; the installed package is now
+20002 and its on-device APK hash matches the retained artifact above. A read-only
+SystemUI probe reports `runtimeVersion=20002`, so the new hooks are already loaded.
+The old receiver restarted SystemUI on replacement; no explicit restart command,
+phone UI interaction, scope change or device reboot was performed. A whole-device
+reboot is not needed for this update. The temporary APK in `/data/local/tmp` was
+removed. Future authorized previews use ordinary replacement, with explicit
+restarts left to the owner and no automatic restart in the new module code.
 
-Manual acceptance after the owner's reboot (outer screen only):
+Manual acceptance with preview 2 loaded (outer screen only):
 
 1. In HyperOS style with music and notifications, swipe the capsule up and down
    repeatedly. Exactly one capsule and one bubble remain; either direction changes
@@ -114,7 +117,7 @@ Manual acceptance after the owner's reboot (outer screen only):
 The owner reports that camera opens on an up-left drag but its animation starts
 at MiDuo's earlier position. Torch has also opened with a rightward drag.
 These were the reports before Duo preview 1; the current acceptance above
-supersedes them. The current runtime is Duo build 20001.
+supersedes them. The current runtime is Duo build 20002.
 
 The live AOD APK matches the analyzed sample (SHA-256
 `c336e5ec5e42d2584a972a223b5334a7f9efe97a50cd8a487957d890dac3eec6`).
