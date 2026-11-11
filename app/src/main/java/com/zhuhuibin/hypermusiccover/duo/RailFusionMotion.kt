@@ -13,7 +13,8 @@ internal object RailFusionMotion {
         fun valid() = listOf(x, y, w, h).all { it.isFinite() } && w > 0f && h >= w
     }
     data class Frame(val incoming: Boolean, val primary: Box, val seats: Map<String, Box>,
-        val companionMaterial: Float, val detail: Float, val icon: Box, val iconAlpha: Float)
+        val companionMaterial: Float, val detail: Float, val icon: Box, val iconAlpha: Float,
+        val surface: RailSurfaceContour.Shape)
 
     class Plan internal constructor(val from: String, val to: String,
         val before: Map<String, Box>, val after: Map<String, Box>, val joined: Boolean,
@@ -63,7 +64,10 @@ internal object RailFusionMotion {
                 icon = if (incoming) mix(circleArt, newArt, leg) else mix(oldArt, circleArt, leg)
             }
             val detail = if (incoming) smooth((t - .57f) / .43f) else 1f - smooth(t / .38f)
-            return Frame(incoming, primary, seats, material, detail, icon, iconAlpha)
+            val companion = if (single) null else seats.getValue(if (incoming) from else to)
+            val tension = if (joined) kotlin.math.sin(t * Math.PI).toFloat().coerceAtLeast(0f) else 0f
+            return Frame(incoming, primary, seats, material, detail, icon, iconAlpha,
+                RailSurfaceContour.shape(primary, companion, tension))
         }
     }
 

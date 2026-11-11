@@ -4,11 +4,11 @@ import org.junit.Test;
 import static org.junit.Assert.*;
 
 public class ShortcutGesturePolicyTest {
-    @Test public void visibleWakeRampAcceptsTorchBeforeFullOpacity() {
+    @Test public void visibleWakeRampAcceptsShortcutsBeforeFullOpacity() {
         for (float alpha : new float[]{.1f, .25f, .5f, .97f, 1f})
-            assertTrue(ShortcutGesturePolicy.torchVisible(alpha));
+            assertTrue(ShortcutGesturePolicy.shortcutVisible(alpha));
         for (float alpha : new float[]{0f, .01f, .099f, Float.NaN, Float.POSITIVE_INFINITY})
-            assertFalse(ShortcutGesturePolicy.torchVisible(alpha));
+            assertFalse(ShortcutGesturePolicy.shortcutVisible(alpha));
     }
 
     // Contract from the on-device ShortcutMoveController: left consumes positive X,
@@ -32,11 +32,20 @@ public class ShortcutGesturePolicyTest {
         assertEquals(800, ShortcutGesturePolicy.nativeX(true, false, 1000, 800), 0);
         assertEquals(200, ShortcutGesturePolicy.nativeX(false, true, 100, 200), 0);
     }
-    @Test public void nearTorchRimIsForgivenWithoutStealingTheCameraOrDistantTouches() {
-        assertTrue(ShortcutGesturePolicy.torchHit(-29, 0, 24, 1, 65));
-        assertFalse(ShortcutGesturePolicy.torchHit(-33, 0, 24, 1, 65));
-        assertFalse(ShortcutGesturePolicy.torchHit(0, 29, 24, 1, 25));
-        assertFalse(ShortcutGesturePolicy.torchHit(Float.NaN, 0, 24, 1, 65));
-        assertTrue(ShortcutGesturePolicy.torchHit(-58, 0, 48, 2, 130));
+    @Test public void nearEitherRimIsForgivenWithoutStealingItsNeighbourOrDistantTouches() {
+        assertTrue(ShortcutGesturePolicy.shortcutHit(-29, 0, 24, 1, 65));
+        assertFalse(ShortcutGesturePolicy.shortcutHit(-33, 0, 24, 1, 65));
+        assertFalse(ShortcutGesturePolicy.shortcutHit(0, 29, 24, 1, 25));
+        assertFalse(ShortcutGesturePolicy.shortcutHit(Float.NaN, 0, 24, 1, 65));
+        assertTrue(ShortcutGesturePolicy.shortcutHit(-58, 0, 48, 2, 130));
+    }
+    @Test public void theSamePointCannotBelongToBothAdjacentShortcuts() {
+        for (int x = -40; x <= 40; x++) for (int y = -40; y <= 100; y++) {
+            float toTorch = (float) Math.hypot(x, y);
+            float toCamera = (float) Math.hypot(x, y - 60);
+            boolean torch = ShortcutGesturePolicy.shortcutHit(x, y, 24, 1, toCamera);
+            boolean camera = ShortcutGesturePolicy.shortcutHit(x, y - 60, 24, 1, toTorch);
+            assertFalse(torch && camera);
+        }
     }
 }

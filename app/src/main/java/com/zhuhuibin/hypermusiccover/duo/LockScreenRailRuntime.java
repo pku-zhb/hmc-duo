@@ -446,6 +446,13 @@ final class LockScreenRailRuntime {
         RightRailLayout.Plan p = plan;
         return reflowing() && p != null && map(root, host, p.content, out);
     }
+    /** Empty space beside the rail follows content gestures; actual controls claim their own hits. */
+    static boolean contentSwipeArea(View host, RectF out) {
+        RightRailLayout.Plan p = plan;
+        if (!reflowing() || p == null || root == null) return false;
+        return map(root, host, new FoldMusicLayout.Box(p.content.left, p.content.top,
+                root.getWidth(), p.content.bottom), out);
+    }
     static float contentWidth() {
         RightRailLayout.Plan p = plan;
         return reflowing() && p != null ? p.content.right : Main.screenWidth();

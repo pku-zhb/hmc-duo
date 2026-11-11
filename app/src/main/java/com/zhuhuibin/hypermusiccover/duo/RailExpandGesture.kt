@@ -12,8 +12,10 @@ internal class RailExpandGesture {
     fun start(eligible: Boolean) { pending = eligible; claimed = false }
     fun move(dx: Float, dy: Float, slop: Float): Boolean {
         if (!pending || claimed) return false
-        if (dy > slop || abs(dx) > slop && abs(dx) >= abs(dy)) { pending = false; return false }
-        if (-dy > slop && -dy > abs(dx) * 1.2f) {
+        if (dy > slop) { pending = false; return false }
+        // A diagonal near a shortcut must not abandon the content guard and then unlock.
+        // Reserve an upward stream first; only a deliberate upward release opens its card.
+        if (-dy > slop) {
             claimed = true
             return true
         }

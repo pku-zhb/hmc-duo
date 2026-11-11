@@ -5,7 +5,7 @@ final class ShortcutGesturePolicy {
     private ShortcutGesturePolicy() {}
 
     /** A visible icon can receive a gesture before its wake fade finishes. */
-    static boolean torchVisible(float alpha) {
+    static boolean shortcutVisible(float alpha) {
         return Float.isFinite(alpha) && alpha >= .1f;
     }
 
@@ -14,8 +14,8 @@ final class ShortcutGesturePolicy {
                 ? initialX - (physicalX - initialX) : physicalX;
     }
 
-    /** Forgive a thumb landing near the torch rim, without crossing into its neighbour. */
-    static boolean torchHit(float dx, float dy, float radius, float density, float otherDistance) {
+    /** Forgive a thumb landing near either rim, without crossing into its neighbour. */
+    static boolean shortcutHit(float dx, float dy, float radius, float density, float otherDistance) {
         if (!Float.isFinite(dx) || !Float.isFinite(dy) || !Float.isFinite(radius)
                 || !Float.isFinite(density) || radius <= 0 || density <= 0) return false;
         float distance = (float) Math.hypot(dx, dy);
