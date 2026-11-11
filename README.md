@@ -14,6 +14,10 @@ General device compatibility is not a goal.
 - Square artwork, synchronized/word-timed lyrics and lyric translation.
 - A vertical capsule with ordered notification, live-card and music bubbles beside
   MiDuo's shortcut column; swipe to switch or tap a bubble to open its card.
+  HyperOS switches stop at the first and last item. Its capsule keeps its length
+  while following a drag into the next bubble, then separates with a spring release.
+- A fixed player control cycles artwork, lyrics and the native lock-screen clock;
+  its icon shows the next action, and the native thumbnail keeps its place.
 - Upward swipes in the clock/content area, including the gap beside the right
   controls, expand music, live cards, then notifications. Swipe-to-unlock follows
   when all available content is open; shortcut and capsule gestures keep their own targets.
