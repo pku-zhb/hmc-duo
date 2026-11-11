@@ -14,6 +14,13 @@ internal object RailIslandStrip {
         return keys[(index + if (up) keys.size - 1 else 1) % keys.size]
     }
 
+    /** HyperOS follows visible seat order; an edge or stale selection has no next target. */
+    fun adjacent(keys: List<String>, selected: String?, up: Boolean): String? {
+        val index = keys.indexOf(selected)
+        if (index < 0) return null
+        return keys.getOrNull(index + if (up) -1 else 1)
+    }
+
     /** Open in native stack order: music, live cards in their stable order, then notifications. */
     fun expansionTarget(collapsed: List<String>, stack: String, music: String): String? =
         music.takeIf { it in collapsed } ?: collapsed.firstOrNull { it != stack }

@@ -11,18 +11,48 @@ class RailIslandStripTest {
         assertEquals(listOf("notifications", "music"),
             RailIslandStrip.order(listOf("music", "notifications"), keys, "notifications", "music"))
     }
-    @Test fun twoIslandsSwapBothWaysWithoutDroppingOrDuplicatingABubble() {
+    @Test fun twoIslandsSwapTowardTheirNeighbourWithoutDroppingOrDuplicatingABubble() {
         val two = listOf("notifications", "music")
         var selected = "music"
         repeat(6) {
-            val next = RailIslandStrip.cycle(two, selected, true)!!
+            val up = selected == "music"
+            val next = RailIslandStrip.adjacent(two, selected, up)!!
             assertNotEquals(selected, next)
-            assertEquals(selected, RailIslandStrip.cycle(two, next, false))
+            assertEquals(selected, RailIslandStrip.adjacent(two, next, !up))
             val plan = RailIslandStrip.layout(two, next, 46f, 460f, 1f, false)!!
             assertEquals(two, plan.slots.map { it.key })
             assertEquals(1, plan.slots.count { it.primary })
             selected = next
         }
+    }
+    @Test fun hyperOsSwipesVisitOnlyTheImmediateSeatInEachDirection() {
+        assertEquals("delivery", RailIslandStrip.adjacent(keys, "notifications", false))
+        assertEquals("notifications", RailIslandStrip.adjacent(keys, "delivery", true))
+        assertEquals("timer", RailIslandStrip.adjacent(keys, "delivery", false))
+        assertEquals("delivery", RailIslandStrip.adjacent(keys, "timer", true))
+        assertEquals("music", RailIslandStrip.adjacent(keys, "timer", false))
+        assertEquals("timer", RailIslandStrip.adjacent(keys, "music", true))
+    }
+    @Test fun hyperOsCannotWrapPastTheTopOrBottomSeat() {
+        assertNull(RailIslandStrip.adjacent(keys, "notifications", true))
+        assertNull(RailIslandStrip.adjacent(keys, "music", false))
+    }
+    @Test fun aMissingSelectionDoesNotInventAnAdjacentTarget() {
+        for (up in listOf(false, true)) {
+            assertNull(RailIslandStrip.adjacent(keys, null, up))
+            assertNull(RailIslandStrip.adjacent(keys, "removed", up))
+        }
+    }
+    @Test fun emptyAndSingleItemRailsHaveNoAdjacentTarget() {
+        for (up in listOf(false, true)) {
+            assertNull(RailIslandStrip.adjacent(emptyList(), null, up))
+            assertNull(RailIslandStrip.adjacent(emptyList(), "music", up))
+            assertNull(RailIslandStrip.adjacent(listOf("music"), "music", up))
+        }
+    }
+    @Test fun colorOsRetainsItsCircularSelectionAtBothEnds() {
+        assertEquals("music", RailIslandStrip.cycle(keys, "notifications", true))
+        assertEquals("notifications", RailIslandStrip.cycle(keys, "music", false))
     }
     @Test fun contentSwipesOpenMusicThenLiveCardsThenNotifications() {
         fun next(collapsed: List<String>) = RailIslandStrip.expansionTarget(collapsed, "notifications", "music")
@@ -54,9 +84,10 @@ class RailIslandStripTest {
             assertTrue(p.hidden > 0)
             assertEquals(selected, p.slots.single { it.primary }.key)
             assertTrue(p.slots.all { it.top >= 0 && it.top + it.height <= 460.001f })
-            selected = RailIslandStrip.cycle(many, selected, true)!!
+            if (visited.size < many.size) selected = RailIslandStrip.adjacent(many, selected, false)!!
         }
         assertEquals(many.toSet(), visited)
+        assertNull(RailIslandStrip.adjacent(many, selected, false))
     }
     @Test fun colorOsKeepsOneCapsuleWithTheSameSelectionPriority() {
         val p = RailIslandStrip.layout(keys, "delivery", 46f, 460f, 1f, true)!!

@@ -20,7 +20,8 @@ internal object RailFusionMotion {
         val before: Map<String, Box>, val after: Map<String, Box>, val joined: Boolean,
         val single: Boolean) {
         /** Art seats have the actual (inset) artwork size, rather than the outer glass diameter. */
-        fun frame(progress: Float, oldArt: Box, newArt: Box, iconShare: Float): Frame {
+        fun frame(progress: Float, oldArt: Box, newArt: Box, iconShare: Float,
+                  recoilY: Float = 0f): Frame {
             val t = if (progress.isFinite()) progress.coerceIn(0f, 1f) else 1f
             val incoming = t >= .5f
             val leg = smooth(if (incoming) 2f * t - 1f else 2f * t)
@@ -42,19 +43,28 @@ internal object RailFusionMotion {
             } else if (joined) {
                 val targetCircle = before.getValue(to)
                 val oldCircle = after.getValue(from)
-                val union = Box(old.x, min(old.y, targetCircle.y), old.w,
-                    max(old.y + old.h, targetCircle.y + targetCircle.h) - min(old.y, targetCircle.y))
-                primary = if (incoming) mix(union, next, leg) else mix(old, union, leg)
-                for (key in before.keys) seats[key] = mix(before.getValue(key), after.getValue(key), smooth(t))
-                seats[from] = if (incoming) oldCircle else primary
+                val upwards = targetCircle.cy < old.cy
+                // Keep the shell's length: bring its leading round end onto the target bubble.
+                // At the held handoff both pictures are inside the merged shell. The outgoing
+                // picture reaches its final, separate bubble seat only after release.
+                val merged = Box(old.x,
+                    if (upwards) targetCircle.y else targetCircle.y + targetCircle.h - old.h,
+                    old.w, old.h)
+                val exitCap = Box(merged.x,
+                    if (upwards) merged.y + merged.h - merged.w else merged.y,
+                    merged.w, merged.w)
+                val drag = 2f * t
+                primary = if (incoming) mix(merged, next, leg) else mix(old, merged, drag)
+                for (key in before.keys) seats[key] = before.getValue(key)
+                seats[from] = if (incoming) mix(exitCap, oldCircle, leg) else primary
                 seats[to] = if (incoming) primary else targetCircle
-                val companion = if (incoming) oldCircle else targetCircle
+                val companion = seats.getValue(if (incoming) from else to)
                 // Only the glass disappears under the merged shell; its live icon stays visible.
                 val covered = (min(primary.y + primary.h, companion.y + companion.h) -
                     max(primary.y, companion.y)).coerceIn(0f, companion.h) / companion.h
                 material = 1f - smooth(covered)
                 icon = if (incoming) mix(inset(targetCircle, iconShare), newArt, leg)
-                    else mix(oldArt, inset(oldCircle, iconShare), leg)
+                    else mix(oldArt, inset(exitCap, iconShare), drag)
             } else {
                 // A wrap must not grow a long capsule through unrelated bubbles. Exchange size
                 // in the two original seats instead; interpolation preserves every intervening gap.
@@ -64,10 +74,16 @@ internal object RailFusionMotion {
                 icon = if (incoming) mix(circleArt, newArt, leg) else mix(oldArt, circleArt, leg)
             }
             val detail = if (incoming) smooth((t - .57f) / .43f) else 1f - smooth(t / .38f)
+            // Recoil belongs to the active shell, not the whole rail. Keep semantic progress
+            // monotone while the runtime's physical spring carries this independent offset.
+            val recoil = if (joined && recoilY.isFinite()) recoilY else 0f
+            val drawnPrimary = primary.copy(y = primary.y + recoil)
+            val drawnIcon = icon.copy(y = icon.y + recoil)
+            seats[if (incoming) to else from] = drawnPrimary
             val companion = if (single) null else seats.getValue(if (incoming) from else to)
             val tension = if (joined) kotlin.math.sin(t * Math.PI).toFloat().coerceAtLeast(0f) else 0f
-            return Frame(incoming, primary, seats, material, detail, icon, iconAlpha,
-                RailSurfaceContour.shape(primary, companion, tension))
+            return Frame(incoming, drawnPrimary, seats, material, detail, drawnIcon, iconAlpha,
+                RailSurfaceContour.shape(drawnPrimary, companion, tension))
         }
     }
 
@@ -83,6 +99,8 @@ internal object RailFusionMotion {
         if (before.keys != after.keys || before[to] == null || after[from] == null) return null
         val keys = before.keys.toList()
         val adjacent = abs(keys.indexOf(from) - keys.indexOf(to)) == 1
+        if (adjacent && (before.getValue(from).w != after.getValue(to).w ||
+                before.getValue(from).h != after.getValue(to).h)) return null
         return Plan(from, to, before, after, adjacent, false)
     }
 
