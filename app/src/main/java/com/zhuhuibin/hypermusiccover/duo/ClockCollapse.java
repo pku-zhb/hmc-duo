@@ -1868,6 +1868,7 @@ final class ClockCollapse {
         NotifPresence.recheck(true);
         Main.restoreGlass();
         Main.onClockReleased();
+        LockScreenRailRuntime.clockReleased();
         if (was) Xp.log(TAG + "clock: released (" + why + ")");
     }
 
@@ -2768,9 +2769,10 @@ final class ClockCollapse {
             // there until LAND_ANYWAY_MS gave up and the clock jumped to where it belonged.
             // Reported 2026-09-22 as 划掉通知后息屏，时钟还在没划掉的位置，过一段时间又跳回正
             // 确的位置. Nothing remembered, nothing to go stale.
-            float toTop = in ? coverTop : m.inkTop;
+            float railLift = !in && !sExitToAod ? LockScreenRailRuntime.nativeClockLift() : 0f;
+            float toTop = in ? coverTop : m.inkTop + railLift;
             float toUnit = in ? coverUnit : m.unit;
-            float toDate = in ? coverDate : m.dateTop;
+            float toDate = in ? coverDate : m.dateTop + railLift;
             sLastToUnit = toUnit;
             top = sFromTop + (toTop - sFromTop) * t;
             unit = sFromUnit + (toUnit - sFromUnit) * t;
@@ -2864,7 +2866,7 @@ final class ClockCollapse {
         // exactly those to the middle when its music page is up (its magazine clock's IMMERSED
         // scene). The same here, faded in and out with the pose so the hand-back lands on the
         // OEM's own x.
-        float k = m.anchored ? 0f : sCenterK;
+        float k = m.anchored ? 0f : LockScreenRailRuntime.reflowing() ? 1f : sCenterK;
         float midX = k > 0f ? screenMidX() : Float.NaN;
         for (View root : Main.clockRoots()) {
             View g = Main.clockTarget(root);

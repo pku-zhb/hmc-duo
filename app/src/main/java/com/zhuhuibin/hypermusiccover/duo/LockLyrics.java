@@ -1933,10 +1933,16 @@ final class LockLyrics {
     }
 
     static void selectStartupPage(boolean lyrics, String key, MediaController controller) {
+        if (lyrics) sEnabled = true;
+        selectPage(lyrics, key, controller);
+    }
+
+    /** An explicit page switch retains this track's parsed lyrics and in-flight lookup. */
+    static void selectPage(boolean lyrics, String key, MediaController controller) {
         sPlayerChosen = false;
+        sNotificationCompact = false;
         sTapHidden = !lyrics;
         if (lyrics) {
-            sEnabled = true;
             sArtworkPage.preferCompact();
             if (key != null && !key.isEmpty()) onTrack(key, controller);
         } else sArtworkPage.preferCover();
@@ -1996,6 +2002,11 @@ final class LockLyrics {
      */
     static void toggleByTap(String key, MediaController c) {
         if (!sEnabled) return;
+        if (MiniPlayerRuntime.detachedRail()) {
+            selectPage(sTapHidden || sPlayerChosen, key, c);
+            Main.saveState();
+            return;
+        }
         sTapHidden = !sTapHidden;
         if (sTapHidden) sArtworkPage.preferCover();
         else sArtworkPage.preferCompact();

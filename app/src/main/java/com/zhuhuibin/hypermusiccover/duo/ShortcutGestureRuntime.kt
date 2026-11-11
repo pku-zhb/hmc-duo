@@ -1,6 +1,7 @@
 package com.zhuhuibin.hypermusiccover.duo
 
 import android.view.MotionEvent
+import android.view.View
 import java.util.WeakHashMap
 
 /** Keep native selection/activation; adapt only the relocated left shortcut's horizontal axis. */
@@ -19,9 +20,26 @@ internal object ShortcutGestureRuntime {
     private data class Gesture(val x: Float, val downTime: Long)
     private val mirrored = WeakHashMap<Any, Gesture>()
     private var projected = 0
+    private var assistedHits = 0
+    private var peakDistance = 0f
+    private var lastPeak = 0f
+    private var lastActive = false
 
     private fun eligible() = MiniPlayerRuntime.detachedRail() && Main.screenOnCached() &&
-        Main.keyguardLocked() && !Main.bouncerShown() && !MiniPlayerScene.keyguardGoingAway
+        Main.keyguardLocked() && !Main.bouncerShown() && !MiniPlayerScene.aodActive && !MiniPlayerScene.keyguardGoingAway
+
+    fun hitsTorch(icon: View, other: View?, x: Float, y: Float): Boolean {
+        if (!eligible() || !icon.isShown || icon.alpha < .98f || icon.width <= 0) return false
+        val at = IntArray(2).also(icon::getLocationOnScreen)
+        val dx = x - at[0] - icon.width / 2f
+        val dy = y - at[1] - icon.height / 2f
+        val neighbour = other?.takeIf { it.isShown && it.width > 0 }?.let {
+            val xy = IntArray(2).also(it::getLocationOnScreen)
+            kotlin.math.hypot(x - xy[0] - it.width / 2f, y - xy[1] - it.height / 2f)
+        } ?: Float.POSITIVE_INFINITY
+        return ShortcutGesturePolicy.torchHit(dx, dy, minOf(icon.width, icon.height) / 2f,
+            icon.resources.displayMetrics.density, neighbour)
+    }
 
     fun install(controller: Any?) {
         val plugin = runCatching { Xp.getObjectField(controller ?: return, "miuiShortcutPlugin") }.getOrNull() ?: return
@@ -29,6 +47,20 @@ internal object ShortcutGestureRuntime {
         if (installed[loader] == true) return
         runCatching {
             val cls = Xp.findClass("com.miui.keyguard.shortcuts.controller.ShortcutMoveController", loader)
+            Xp.hookAll(cls, "isTouchOnIcon") { chain ->
+                val result = chain.proceed()
+                if (result == true) result else runCatching {
+                    val icon = chain.args.getOrNull(0) as? View
+                    val owner = chain.thisObject
+                    val left = Xp.getObjectField(owner, "leftIcon") as? View
+                    val right = Xp.getObjectField(owner, "rightIcon") as? View
+                    if (icon != null && icon === left && hitsTorch(icon, right,
+                            (chain.args[1] as Number).toFloat(), (chain.args[2] as Number).toFloat())) {
+                        assistedHits++
+                        true
+                    } else result
+                }.getOrDefault(result)
+            }
             Xp.hookAll(cls, "initCommonTouchEvent") { chain ->
                 val result = chain.proceed()
                 runCatching {
@@ -58,6 +90,14 @@ internal object ShortcutGestureRuntime {
             }
             Xp.hookAll(cls, "onTouchEvent") { chain ->
                 val event = chain.args.firstOrNull() as? MotionEvent
+                runCatching {
+                    if (event?.actionMasked == MotionEvent.ACTION_DOWN) peakDistance = 0f
+                    if (event?.actionMasked == MotionEvent.ACTION_UP) {
+                        lastPeak = peakDistance
+                        val anim = Xp.getObjectField(chain.thisObject, "shortcutOccludedAnimController")
+                        lastActive = Xp.getObjectField(anim, "isActive") == true
+                    }
+                }
                 // A diagnostic failure must never prevent native dispatch or cause a second dispatch.
                 val result = chain.proceed()
                 runCatching {
@@ -73,7 +113,11 @@ internal object ShortcutGestureRuntime {
                                 }
                                 if (side >= 0 && result == true) hits++
                             }
-                            MotionEvent.ACTION_MOVE -> { dx = event.rawX - startX; dy = event.rawY - startY }
+                            MotionEvent.ACTION_MOVE -> {
+                                dx = event.rawX - startX; dy = event.rawY - startY
+                                val distance = (Xp.getObjectField(chain.thisObject, "moveDistance") as Number).toFloat()
+                                peakDistance = maxOf(peakDistance, distance)
+                            }
                             MotionEvent.ACTION_UP -> { ups++; dx = event.rawX - startX; dy = event.rawY - startY }
                             MotionEvent.ACTION_CANCEL -> cancels++
                         }
@@ -86,5 +130,6 @@ internal object ShortcutGestureRuntime {
     }
 
     @JvmStatic fun describe() = "installed=${installed.isNotEmpty()} launch=native projected=$projected downs=$downs hits=$hits " +
-        "ups=$ups cancels=$cancels side=$side dx=${dx.toInt()} dy=${dy.toInt()} error=$failure"
+        "assisted=$assistedHits ups=$ups cancels=$cancels side=$side dx=${dx.toInt()} dy=${dy.toInt()} " +
+        "lastPeak=${lastPeak.toInt()} lastActive=$lastActive error=$failure"
 }

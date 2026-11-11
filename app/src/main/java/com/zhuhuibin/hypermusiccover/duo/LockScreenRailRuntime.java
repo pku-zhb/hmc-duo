@@ -358,12 +358,23 @@ final class LockScreenRailRuntime {
         boolean dateInClock = false;
         for (View target : targets) if (under(date, target)) dateInClock = true;
         if (date != null && date.isShown() && !dateInClock && !targets.contains(date)) targets.add(date);
-        float delta = -12f * root.getResources().getDisplayMetrics().density;
+        float delta = nativeClockLift();
         for (View target : targets) {
             ControlOffset lease = clockOffsets.get(target);
             if (lease == null) { lease = new ControlOffset(target, delta); clockOffsets.put(target, lease); }
             lease.apply(target);
         }
+    }
+
+    /** The exit animation and the idle lease must land on the same clock pose. */
+    static float nativeClockLift() {
+        return active() && root != null ? -12f * root.getResources().getDisplayMetrics().density : 0f;
+    }
+
+    static void clockReleased() {
+        if (!active()) return;
+        centerClocks();
+        liftNativeClock();
     }
 
     private static void restore() {

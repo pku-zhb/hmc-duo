@@ -991,9 +991,7 @@ public class Main extends XposedModule {
             ctx.registerReceiver(new BroadcastReceiver() {
                 @Override
                 public void onReceive(Context c, Intent i) {
-                    Xp.log(TAG + "module updated, restarting " + Application.getProcessName());
-                    new Handler(Looper.getMainLooper()).postDelayed(
-                            () -> android.os.Process.killProcess(android.os.Process.myPid()), 1500);
+                    Xp.log(TAG + "module updated; waiting for the owner's restart: " + Application.getProcessName());
                 }
             }, filter, Context.RECEIVER_EXPORTED);
             sModuleUpdateRegistered = true;
@@ -7499,6 +7497,10 @@ public class Main extends XposedModule {
 
     /** Enter through the same route as the OEM artwork, with MiniPlayerRuntime owning the bridge. */
     static void miniPlayerEnterCover() {
+        if (MiniPlayerRuntime.detachedRail()) {
+            selectRailMusicPage(MiniPlayerConfig.VIEW_ARTWORK);
+            return;
+        }
         if (!miniPlayerCanShow()) return;
         // Taken before the entry moves anything: the lyrics grow out of the island as it is now.
         LockLyrics.notePopOrigin(MiniPlayerRuntime.detachedRail()
@@ -9283,7 +9285,8 @@ public class Main extends XposedModule {
             boolean onCard = (wantsArtTap() || MiniPlayerRuntime.wantsNativeArtworkGesture())
                     && screenOn() && keyguardShowing() && onKeyguardNow()
                     && !bouncerUp() && !sGestureOnCentre && !sGestureOnCharge;
-            sArtSwallow = onCard && artRectContains(ev.getRawX(), ev.getRawY());
+            sArtSwallow = onCard && !LyricsButton.contains(ev.getRawX(), ev.getRawY())
+                    && artRectContains(ev.getRawX(), ev.getRawY());
             if (sArtSwallow) {
                 sArtDownAt = android.os.SystemClock.uptimeMillis();
                 long downAt = sArtDownAt;
@@ -9304,6 +9307,11 @@ public class Main extends XposedModule {
             sArtSwallow = false;
             long held = android.os.SystemClock.uptimeMillis() - sArtDownAt;
             if (held < ART_TAP_MS && artRectContains(ev.getRawX(), ev.getRawY())) {
+                if (MiniPlayerRuntime.detachedRail()) {
+                    selectRailMusicPage(sCoverMode && !LockLyrics.wantsCompactArtwork()
+                            ? MiniPlayerConfig.VIEW_PLAYER : MiniPlayerConfig.VIEW_ARTWORK);
+                    return true;
+                }
                 // The same rectangle is both the way in and the way out, and which one it is
                 // is read at UP rather than at DOWN: a cover that came up under the finger
                 // during the gesture (the OEM can re-lay the card out at any point) would
@@ -11312,7 +11320,7 @@ public class Main extends XposedModule {
     static void toggleCanvasLyrics() {
         if (!CanvasHostBridge.active() || !LockLyrics.sEnabled || !LockLyrics.hasLyrics()
                 || !keyguardShowing() || bouncerUp()) return;
-        MiniPlayerRuntime.keepCanvasPlayerExpanded();
+        MiniPlayerRuntime.keepMusicExpanded();
         String key = trackKey(sWatched);
         if (key.isEmpty()) key = sTrackKey;
         if (LockLyrics.wantsWindow()) {
@@ -11335,11 +11343,9 @@ public class Main extends XposedModule {
     }
 
     static void openLyricsFromButton() {
-        if (!sCoverMode && MiniPlayerRuntime.detachedRail() && LockLyrics.sEnabled && LockLyrics.hasDisplayContent()) {
-            LockLyrics.selectStartupPage(true, trackKey(sWatched), sWatched);
-            sTapSuppressed = false;
-            setCoverEnabled(true, true, false);
-            applyMediaCard();
+        if (MiniPlayerRuntime.detachedRail()) {
+            selectRailMusicPage(LockLyrics.wantsAttached()
+                    ? MiniPlayerConfig.VIEW_PLAYER : MiniPlayerConfig.VIEW_LYRICS);
             return;
         }
         if (sCoverMode && LockLyrics.sEnabled && LockLyrics.companionPage()) {
@@ -11359,6 +11365,36 @@ public class Main extends XposedModule {
         LockLyrics.setPlayerChosen(showing && coverMorphCardMode());
         onTwoFingerTap(!fromPlayer && !showing);
         applyMediaCard();
+    }
+
+    /** Resolve a button's requested page before entering the scene, including the first tap. */
+    private static void selectRailMusicPage(int page) {
+        if (!screenOnCached() || !keyguardShowing() || !onKeyguardNow() || bouncerUp()
+                || controlCenterUp() || chargeAnimUp() || !sCardShowing
+                || MiniPlayerScene.INSTANCE.getKeyguardGoingAway()) return;
+        boolean lyrics = page == MiniPlayerConfig.VIEW_LYRICS;
+        if (lyrics && (!LockLyrics.sEnabled || !LockLyrics.hasDisplayContent())) return;
+        MiniPlayerRuntime.forgetRestoreScene();
+        MiniPlayerRuntime.keepMusicExpanded();
+        if (page == MiniPlayerConfig.VIEW_PLAYER) {
+            LockLyrics.setPlayerChosen(true);
+            CoverMorphLayer.cancel();
+            sTapSuppressed = true;
+            if (sCoverMode) setCoverEnabled(false, true, false);
+            LockLyrics.refresh();
+        } else {
+            if (sCoverMode && LockLyrics.wantsCompactArtwork() != lyrics) beginCompactArtworkMorph(!lyrics);
+            else CoverMorphLayer.cancel();
+            String key = trackKey(sWatched);
+            if (key.isEmpty()) key = sTrackKey;
+            LockLyrics.selectPage(lyrics, key, sWatched);
+            sTapSuppressed = false;
+            if (!sCoverMode) setCoverEnabled(true, true, false);
+            else refreshCoverGeometry();
+        }
+        CoverBackdrop.sync(false);
+        applyMediaCard();
+        MiniPlayerRuntime.refresh();
     }
 
     /**

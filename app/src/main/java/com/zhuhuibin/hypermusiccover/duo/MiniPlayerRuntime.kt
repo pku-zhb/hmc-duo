@@ -1828,7 +1828,7 @@ object MiniPlayerRuntime {
     }
 
     /** A Canvas lyrics toggle changes the page while retaining the expanded native player. */
-    @JvmStatic fun keepCanvasPlayerExpanded() {
+    @JvmStatic fun keepMusicExpanded() {
         Main.miniPlayerSession()?.sessionToken?.let { chooseNative(it) }
     }
 
@@ -10894,7 +10894,8 @@ private class MiniPlayerController(
         val wrapper = (icon.parent as? View)?.takeIf { p ->
             runCatching { p.resources.getResourceEntryName(p.id) }.getOrNull()?.endsWith("_layout") == true
         }
-        onButton(icon, x, y) || wrapper != null && onButton(wrapper, x, y)
+        onButton(icon, x, y) || wrapper != null && onButton(wrapper, x, y) ||
+            it == 0 && ShortcutGestureRuntime.hitsTorch(icon, button(1), x, y)
     }
 
     fun discAt(x: Float, y: Float): Int? = (0..1).firstOrNull {

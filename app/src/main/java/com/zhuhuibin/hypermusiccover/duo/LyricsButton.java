@@ -263,6 +263,12 @@ final class LyricsButton {
         return button != null && requested && !besideControls;
     }
 
+    static boolean contains(float x, float y) {
+        if (button == null || !requested || !button.isShown() || button.getAlpha() < .1f) return false;
+        android.graphics.Rect bounds = new android.graphics.Rect();
+        return button.getGlobalVisibleRect(bounds) && bounds.contains((int) x, (int) y);
+    }
+
     private static float position(View card, View view, boolean horizontal) {
         float value = 0f;
         while (view != null && view != card) {
