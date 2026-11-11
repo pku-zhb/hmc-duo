@@ -558,6 +558,8 @@ final class ClockCollapse {
      * and place do not, the spring carries those.
      */
     static void toAod() {
+        // A sleep callback already queued when direct unlock begins cannot retake the clock.
+        if (MiniPlayerScene.INSTANCE.getKeyguardGoingAway()) return;
         Main.prepareAodArtwork(keepInAod());
         sWaking = false;
         // The doze about to start has drawn nothing yet, so it has no pose to be steady against.

@@ -237,6 +237,22 @@ object MediaCardRuntime {
             .forEach { it.applyElements(); it.motion() }
     }
 
+    /** Live native controls, including app-defined actions, without assigning new behaviors. */
+    @JvmStatic fun nativeHeaderControls(card: View): List<View> {
+        fun inside(view: View): Boolean {
+            var node: View? = view
+            while (node != null && node !== card) node = node.parent as? View
+            return node === card
+        }
+        return states.values.toList().flatten().filter { it.scope == "notification" && inside(it.album) }
+            .flatMap { state ->
+                val actions = runCatching { Xp.callMethod(state.holder, "getActionList") as? List<*> }
+                    .getOrNull().orEmpty()
+                (listOf(field(state.holder, "seamless"), field(state.holder, "appIcon")) + actions +
+                    (0..4).map { field(state.holder, "action$it") }).filterIsInstance<View>()
+            }.filter(::inside).distinct()
+    }
+
     @JvmStatic fun describe(): String = states.values.flatten().joinToString("\n") {
         "${it.scope} theme=${setting(it.scope, "theme")} materialCount=${materials.size} clip=${it.overlay?.clipToOutline} attached=${it.album.isAttachedToWindow} shown=${it.album.isShown} background=${setting(it.scope, "background")} flow=${setting(it.scope, "flow")} cover=${setting(it.scope, "cover")} overlay=${it.overlay != null} rotation=${it.rotation?.isRunning == true} token=${it.requestToken.hashCode()} geometry=${it.geometryReport()}"
     }

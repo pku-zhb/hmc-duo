@@ -476,6 +476,8 @@ public class Main extends XposedModule {
     private static volatile float sGlassEnd = DEFAULT_GLASS_END;
     /** The session we are mirroring, plus the callback that keeps the cover on the right track. */
     private static MediaController sWatched;
+    private static final MusicSessionLifecycle<android.media.session.MediaSession.Token> sSessionLifecycle =
+            new MusicSessionLifecycle<>(64);
     private static final class SessionMetadata {
         final android.media.session.MediaSession.Token token;
         final MediaMetadata metadata;
@@ -948,6 +950,7 @@ public class Main extends XposedModule {
     private static void armLeave(Class<?> owner, String method, String tag) {
         try {
             Xp.hookAll(owner, method, chain -> {
+                MiniPlayerScene.INSTANCE.keyguardLeaving();
                 LockLyrics.lockScreenLeaving(tag);
                 main().post(kickLyrics);
                 main().postDelayed(kickLyrics, 160L);
@@ -1221,7 +1224,10 @@ public class Main extends XposedModule {
         try {
             Class<?> ks = Xp.findClass("com.android.systemui.keyguard.KeyguardService$2", cl);
             Xp.hookAll(ks, "onStartedGoingToSleep", chain -> {
-                main().post(() -> MiniPlayerRuntime.prepareForSleep());
+                MiniPlayerScene.INSTANCE.startedGoingToSleep();
+                main().post(() -> {
+                    if (!MiniPlayerScene.INSTANCE.getKeyguardGoingAway()) MiniPlayerRuntime.prepareForSleep();
+                });
                 Object result = chain.proceed();
                 main().post(new Runnable() {
                     @Override
@@ -1789,6 +1795,7 @@ public class Main extends XposedModule {
                                 !sGestureOnCentre && !sGestureOnCharge
                                 && !LyricsButton.contains(ev.getRawX(), ev.getRawY())
                                 && !artRectContains(ev.getRawX(), ev.getRawY()));
+                        if (contentSwipe == MiniPlayerRuntime.CONTENT_NATIVE_CONTROL) return chain.proceed();
                         if (contentSwipe == SWIPE_FIRED) {
                             cancelPendingTap("content swipe expands the foreground capsule");
                             MotionEvent cancel = MotionEvent.obtain(ev);
@@ -5836,6 +5843,7 @@ public class Main extends XposedModule {
             MediaController best = null;
             long bestScore = Long.MIN_VALUE;
             for (MediaController c : cs) {
+                if (!mediaSessionAlive(c.getSessionToken())) continue;
                 PlaybackState ps = c.getPlaybackState();
                 if (ps == null) continue;
                 boolean playing = ps.getState() == PlaybackState.STATE_PLAYING;
@@ -7361,7 +7369,39 @@ public class Main extends XposedModule {
     }
 
     static MediaController miniPlayerSession() {
-        return sWatched;
+        MediaController current = sWatched;
+        return current != null && mediaSessionAlive(current.getSessionToken()) ? current : null;
+    }
+
+    static boolean mediaSessionAlive(android.media.session.MediaSession.Token token) {
+        return sSessionLifecycle.alive(token);
+    }
+
+    static boolean mediaSessionCallbackCurrent(android.media.session.MediaSession.Token token,
+                                               android.media.session.MediaSession.Token current) {
+        return sSessionLifecycle.accepts(token, current);
+    }
+
+    /** A destroyed session may leave its resumption card behind; let that native card own it. */
+    static void mediaSessionDestroyed(android.media.session.MediaSession.Token token) {
+        if (token == null || !mediaSessionAlive(token)) return;
+        sSessionLifecycle.destroy(token);
+        Runnable reconcile = () -> {
+            boolean retainedCard = token.equals(sCardToken);
+            if (retainedCard) {
+                sCardToken = null;
+                sCardPresent = false;
+                sCardShowing = false;
+                main().removeCallbacks(sCardGone);
+                main().removeCallbacks(sCardRemoved);
+                MiniPlayerRuntime.mediaCardRemoved();
+                applyMediaCard();
+                applyCardState();
+            }
+            rebindSession();
+        };
+        if (Looper.myLooper() == Looper.getMainLooper()) reconcile.run();
+        else main().post(reconcile);
     }
 
     /** The OEM header owns the media card's background and foreground rim. */
@@ -8749,6 +8789,8 @@ public class Main extends XposedModule {
                         .getIdentifier("album_art", "id", "com.android.systemui"));
                 if (art != null && art != sCardArt) {
                     sArtVeil.clear();
+                    MediaTextInset.update((TextView) sCardTitle, 0f);
+                    MediaTextInset.update((TextView) sCardArtist, 0f);
                     // A card view we have not written to. Forgetting what we wrote to the last
                     // one makes scaleArt() read this one's scale as the OEM's, which it is -
                     // otherwise a new thumbnail that happened to arrive carrying the number we
@@ -8760,7 +8802,7 @@ public class Main extends XposedModule {
                         .getIdentifier("header_title", "id", "com.android.systemui"));
                 sCardArtist = card.findViewById(card.getResources()
                         .getIdentifier("header_artist", "id", "com.android.systemui"));
-                if ((sCoverMode && (sMcHideArt || sMcTitleTap || LockLyrics.sEnabled)) || CanvasHostBridge.active()) guardCard(card);
+                if (MiniPlayerRuntime.detachedRail() || (sCoverMode && (sMcHideArt || sMcTitleTap || LockLyrics.sEnabled)) || CanvasHostBridge.active()) guardCard(card);
                 else releaseCardGuard();
                 assertMediaCard(card);
             }
@@ -8780,7 +8822,8 @@ public class Main extends XposedModule {
         // are about the lock screen. The clock container is the test - only the keyguard shows
         // it - and because this runs every frame, the card restores itself on unlock by itself.
         View c = sContainer;
-        boolean onKeyguard = sCardForced || (keyguardShowing() && c != null && c.isShown());
+        boolean onKeyguard = sCardForced || (LockscreenSurfacePolicy.visible(keyguardShowing(),
+                MiniPlayerScene.INSTANCE.getKeyguardGoingAway()) && c != null && c.isShown());
         boolean railLyrics = MiniPlayerRuntime.detachedRail();
         boolean fixedControls = ArtworkThumbnailPolicy.fixedControls(railLyrics, onKeyguard, sCardForced);
         // A capture for the app's preview wants the settled look, not whichever frame an
@@ -8863,12 +8906,13 @@ public class Main extends XposedModule {
                 screenOnCached(), MiniPlayerScene.INSTANCE.getAodActive()
                         || ClockCollapse.phase() == ClockCollapse.Phase.AOD,
                 MiniPlayerScene.INSTANCE.getKeyguardGoingAway());
-        sArtVeil.update(art, veil, veil ? coverMorphThumbnailRadius() : 0f);
+        // The fixed cycle control now expresses the next action; leave the thumbnail unshaded.
+        sArtVeil.update(art, veil && !fixedControls, veil ? coverMorphThumbnailRadius() : 0f);
         if (!onKeyguard) LyricsButton.release();
         boolean lyricsButton = onKeyguard && !sCardForced
-                && LyricsButtonPolicy.offer(railLyrics, sCoverMode, LockLyrics.sEnabled,
+                && (railLyrics || LyricsButtonPolicy.offer(false, sCoverMode, LockLyrics.sEnabled,
                     LockLyrics.hasDisplayContent(), fullScreenLyrics || !LockLyrics.wantsCompactArtwork()
-                        || LockLyrics.playerChosen() || LockLyrics.wantsAttached())
+                        || LockLyrics.playerChosen() || LockLyrics.wantsAttached()))
                 && coverMorphEligible() && sCardShowing && card.isShown();
         boolean canvasLyrics = CanvasHostBridge.active() && onKeyguard && !sCardForced
                 && LockLyrics.sEnabled && LockLyrics.hasLyrics() && sCardShowing && card.isShown();
@@ -8877,12 +8921,23 @@ public class Main extends XposedModule {
         // beside the controls.
         float lyricsInset = LyricsButton.update(card, lyricsButton || canvasLyrics, canvasLyrics,
                 !railLyrics && lyricsButton && !fullScreenLyrics && LockLyrics.wantsCompactArtwork());
-        alignCardTextLeft(card, (TextView) sCardTitle, hideP, lyricsInset);
-        alignCardTextLeft(card, (TextView) sCardArtist, hideP, lyricsInset);
+        // Apply the user's source/output visibility before reserving this frame's text width.
+        MediaCardRuntime.afterCardPass(card);
+        if (fixedControls) {
+            java.util.List<View> controls = MediaCardRuntime.nativeHeaderControls(card);
+            MediaTextInset.update(card, (TextView) sCardTitle, lyricsInset, controls);
+            MediaTextInset.update(card, (TextView) sCardArtist, lyricsInset, controls);
+            MediaTextInset.prioritize(card, (TextView) sCardTitle, (TextView) sCardArtist, controls);
+        } else {
+            MediaTextInset.update((TextView) sCardTitle, 0f);
+            MediaTextInset.update((TextView) sCardArtist, 0f);
+            MediaTextInset.releaseControls(card);
+        }
+        alignCardTextLeft(card, (TextView) sCardTitle, hideP, fixedControls ? 0f : lyricsInset);
+        alignCardTextLeft(card, (TextView) sCardArtist, hideP, fixedControls ? 0f : lyricsInset);
         LyricsButton.place(card, (TextView) sCardTitle, (TextView) sCardArtist, sCardArt);
         applyTitleTap((TextView) sCardTitle, sMcTitleTap && sCoverMode && onKeyguard);
         if (onKeyguard && !sCardForced) sampleCardRect(card, p);
-        MediaCardRuntime.afterCardPass(card);
     }
 
     /**
@@ -9335,8 +9390,7 @@ public class Main extends XposedModule {
             long held = android.os.SystemClock.uptimeMillis() - sArtDownAt;
             if (held < ART_TAP_MS && artRectContains(ev.getRawX(), ev.getRawY())) {
                 if (MiniPlayerRuntime.detachedRail()) {
-                    selectRailMusicPage(sCoverMode && !LockLyrics.wantsCompactArtwork()
-                            ? MiniPlayerConfig.VIEW_PLAYER : MiniPlayerConfig.VIEW_ARTWORK);
+                    cycleRailMusicPage();
                     return true;
                 }
                 // The same rectangle is both the way in and the way out, and which one it is
@@ -10116,10 +10170,14 @@ public class Main extends XposedModule {
         if (sCardGuarded == card && sCardGuard != null) return;
         releaseCardGuard();
         sCardGuard = new ViewTreeObserver.OnPreDrawListener() {
+            private final MediaTextLayoutGate textLayoutGate = new MediaTextLayoutGate();
             @Override
             public boolean onPreDraw() { android.os.Trace.beginSection("MC cardGuard"); try {
                 assertMediaCard(card);
-                return true;
+                boolean textLayoutChanged = MediaTextInset.consumeLayoutChange();
+                // Give a new bind one layout pass, never an unbounded drawing veto. The
+                // immediate text clip remains safe if an OEM keeps rewriting its padding.
+                return textLayoutGate.allow(textLayoutChanged);
             } finally { android.os.Trace.endSection(); } }
         };
         card.getViewTreeObserver().addOnPreDrawListener(sCardGuard);
@@ -10140,6 +10198,9 @@ public class Main extends XposedModule {
         // nothing would ever run the assert that would have done it, and the shade would keep a
         // title that pauses the music.
         applyTitleTap(null, false);
+        MediaTextInset.update((TextView) sCardTitle, 0f);
+        MediaTextInset.update((TextView) sCardArtist, 0f);
+        if (d != null) MediaTextInset.releaseControls(d);
         sArtVeil.clear();
         LyricsButton.release();
         if (d == null || g == null) return;
@@ -10355,7 +10416,13 @@ public class Main extends XposedModule {
             } catch (Throwable t) {
                 sCardToken = null;
             }
-            sCardKey = cardKey(mediaData);
+            if (sCardToken != null && !mediaSessionAlive(sCardToken)) {
+                // The pipeline can rebind an old resumption card after the session died.
+                // It remains native content, not a new interactive Duo music island.
+                showing = false;
+                sCardToken = null;
+                sCardKey = "";
+            } else sCardKey = cardKey(mediaData);
             // The card's title may be one the session callback has not shown us yet.
             TrackName.note(sWatched);
         } else {
@@ -10711,7 +10778,7 @@ public class Main extends XposedModule {
                 sMediaCb = new MediaController.Callback() {
                     @Override
                     public void onMetadataChanged(MediaMetadata md) {
-                        if (sWatched == null || !watched.getSessionToken().equals(sWatched.getSessionToken())) return;
+                        if (sWatched == null || !mediaSessionCallbackCurrent(watched.getSessionToken(), sWatched.getSessionToken())) return;
                         sWatchedMetadata = new SessionMetadata(watched, md);
                         TrackName.note(watched.getPackageName(), md);
                         // Every track change re-reads the state rather than trusting that the
@@ -10725,7 +10792,7 @@ public class Main extends XposedModule {
 
                     @Override
                     public void onPlaybackStateChanged(PlaybackState state) {
-                        if (sWatched == null || !watched.getSessionToken().equals(sWatched.getSessionToken())) return;
+                        if (sWatched == null || !mediaSessionCallbackCurrent(watched.getSessionToken(), sWatched.getSessionToken())) return;
                         LockLyrics.onPlaybackState(state);
                         updateCoverCardPlayback(state);
                         MiniPlayerRuntime.refresh();
@@ -10734,7 +10801,7 @@ public class Main extends XposedModule {
                     @Override
                     public void onQueueChanged(List<android.media.session.MediaSession.QueueItem> queue) {
                         if (sWatched == null
-                                || !watched.getSessionToken().equals(sWatched.getSessionToken())) {
+                                || !mediaSessionCallbackCurrent(watched.getSessionToken(), sWatched.getSessionToken())) {
                             return;
                         }
                         // Spotify can reshuffle without changing the current metadata. Its queue
@@ -10744,7 +10811,7 @@ public class Main extends XposedModule {
 
                     @Override
                     public void onSessionDestroyed() {
-                        rebindSession();
+                        mediaSessionDestroyed(watched.getSessionToken());
                     }
                 };
                 try {
@@ -10914,7 +10981,7 @@ public class Main extends XposedModule {
     /** The controller the card is bound to, or null if the card has not named one. */
     private static MediaController controllerFromCard(Context ctx) {
         android.media.session.MediaSession.Token t = sCardToken;
-        if (t == null) return null;
+        if (!mediaSessionAlive(t)) return null;
         try {
             return new MediaController(ctx, t);
         } catch (Throwable e) {
@@ -11372,8 +11439,7 @@ public class Main extends XposedModule {
 
     static void openLyricsFromButton() {
         if (MiniPlayerRuntime.detachedRail()) {
-            selectRailMusicPage(LockLyrics.wantsAttached()
-                    ? MiniPlayerConfig.VIEW_PLAYER : MiniPlayerConfig.VIEW_LYRICS);
+            cycleRailMusicPage();
             return;
         }
         if (sCoverMode && LockLyrics.sEnabled && LockLyrics.companionPage()) {
@@ -11395,13 +11461,24 @@ public class Main extends XposedModule {
         applyMediaCard();
     }
 
+    static int nextRailMusicPage() {
+        return RailMusicPagePolicy.next(RailMusicPagePolicy.current(sCoverMode,
+                LockLyrics.requestedLyricsPage()), LockLyrics.sEnabled);
+    }
+
+    static void cycleRailMusicPage() {
+        selectRailMusicPage(nextRailMusicPage());
+    }
+
     /** Resolve a button's requested page before entering the scene, including the first tap. */
     private static void selectRailMusicPage(int page) {
         if (!screenOnCached() || !keyguardShowing() || !onKeyguardNow() || bouncerUp()
                 || controlCenterUp() || chargeAnimUp() || !sCardShowing
                 || MiniPlayerScene.INSTANCE.getKeyguardGoingAway()) return;
         boolean lyrics = page == MiniPlayerConfig.VIEW_LYRICS;
-        if (lyrics && (!LockLyrics.sEnabled || !LockLyrics.hasDisplayContent())) return;
+        // A pending lyric lookup must not turn the first click into a no-op. The selected
+        // page waits for its content, and the next click can still return to the native clock.
+        if (lyrics && !LockLyrics.sEnabled) return;
         MiniPlayerRuntime.forgetRestoreScene();
         MiniPlayerRuntime.keepMusicExpanded();
         if (page == MiniPlayerConfig.VIEW_PLAYER) {
