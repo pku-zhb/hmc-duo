@@ -300,7 +300,10 @@ internal object LockIslands {
     fun foldsNatively(): Boolean = nativeStack
 
     /** Folded, as the stack last said; read from it when it has not said yet. */
-    private fun stackFolded(): Boolean = NumState.inNumber ?: (NumState.state() == "NUMBER")
+    private fun stackFolded(): Boolean = NumState.representedByIsland()
+
+    /** Reconcile an explicit choice even when native NUMBER did not change this frame. */
+    fun refreshPresentation() { main.post { if (nativeStack) followStack("presentation") } }
 
     /** The stack island stands for the folded stack right now (NumState's hands-up asks). */
     fun foldsToCount(): Boolean = nativeStack && (active || spreading) && stackMembers.isNotEmpty()
@@ -1099,7 +1102,7 @@ internal object LockIslands {
     /** The islands put together from the last run: the focus ones and the stack island. */
     private fun publish() {
         updateNotificationArtwork()
-        val stack = stackNote?.takeIf { !stackOut }
+        val stack = stackNote?.takeIf { !stackOut && (!nativeStack || NumState.representedByIsland()) }
         // Spread out, the count stays hidden too: the row folding back comes into its place. So
         // with the stack opened its own way: the pill now grows back in from nothing, and the
         // count line showed through ("2 notifications") until it had (recording 2026-10-24).
