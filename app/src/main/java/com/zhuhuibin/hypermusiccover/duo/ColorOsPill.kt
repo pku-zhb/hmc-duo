@@ -421,7 +421,9 @@ internal class GooGlass(context: Context) : FrameLayout(context) {
     private val local = Path()
     private var dressWith: ((ImageView) -> Unit)? = null
     private var dressedAs = -1
-    private var dressedSize = false
+    private var requestedAs = -1
+    private var sdfWidth = 0
+    private var sdfHeight = 0
     private val shape = object : ViewOutlineProvider() {
         override fun getOutline(view: View, outline: Outline) {
             if (local.isEmpty) outline.setEmpty() else outline.setPath(local)
@@ -438,6 +440,7 @@ internal class GooGlass(context: Context) : FrameLayout(context) {
         outlineSpotShadowColor = Color.TRANSPARENT
         element.scaleType = ImageView.ScaleType.FIT_XY
         element.shape = shape
+        element.clipToOutline = true
         addView(element, LayoutParams(-1, -1))
         isClickable = false
         isFocusable = false
@@ -446,20 +449,43 @@ internal class GooGlass(context: Context) : FrameLayout(context) {
 
     fun dress(generation: Int, apply: (ImageView) -> Unit) {
         dressWith = apply
-        if (generation == dressedAs && dressedSize) return
-        dressedAs = generation
-        if (width > 1 && height > 1) {
-            dressedSize = true
-            apply(element)
-        }
+        requestedAs = generation
+        applyDressIfReady()
     }
 
-    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
-        super.onSizeChanged(w, h, oldw, oldh)
-        // A material applied before there was a size draws nothing (ShortcutDisc).
-        if (w > 1 && h > 1 && !dressedSize) {
-            dressedSize = true
-            dressWith?.invoke(element)
+    override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
+        // The rail can move its shell with a direct layout between host traversals. Its
+        // background still needs a real frame before the vendor material is applied; dressing
+        // only the sized parent left the element at 0 x 0 and cached that incomplete dressing.
+        val w = right - left
+        val h = bottom - top
+        if (element.measuredWidth != w || element.measuredHeight != h || element.isLayoutRequested) {
+            element.measure(MeasureSpec.makeMeasureSpec(w.coerceAtLeast(0), MeasureSpec.EXACTLY),
+                MeasureSpec.makeMeasureSpec(h.coerceAtLeast(0), MeasureSpec.EXACTLY))
+        }
+        element.layout(0, 0, w, h)
+        applyDressIfReady()
+    }
+
+    private fun applyDressIfReady() {
+        val apply = dressWith ?: return
+        if (local.isEmpty || element.width <= 1 || element.height <= 1) return
+        if (requestedAs != dressedAs) {
+            apply(element)
+            element.outlineProvider = shape
+            element.clipToOutline = true
+            dressedAs = requestedAs
+            // A recorded card recipe can contain the card's own SDF bounds. The shell's
+            // current extent, rather than that old card frame, owns its native glass contour.
+            sdfWidth = 0
+            sdfHeight = 0
+        }
+        if (sdfWidth != element.width || sdfHeight != element.height) {
+            sdfWidth = element.width
+            sdfHeight = element.height
+            runCatching {
+                sdfSize?.invoke(element, sdfWidth.toFloat(), sdfHeight.toFloat())
+            }
         }
     }
 
@@ -469,11 +495,19 @@ internal class GooGlass(context: Context) : FrameLayout(context) {
         local.offset(-originX, -originY)
         invalidateOutline()
         element.invalidateOutline()
+        applyDressIfReady()
     }
 
     fun clearShape() {
         local.reset()
         invalidateOutline()
         element.invalidateOutline()
+    }
+
+    companion object {
+        private val sdfSize by lazy {
+            runCatching { View::class.java.getMethod("setMiGlassSdfMaxSize",
+                Float::class.javaPrimitiveType, Float::class.javaPrimitiveType) }.getOrNull()
+        }
     }
 }
