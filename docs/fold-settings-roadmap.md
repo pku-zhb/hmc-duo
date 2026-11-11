@@ -23,14 +23,98 @@ package was 20003 while the SystemUI probe still reported 20002, with its proces
 unchanged; the owner subsequently supplied preview-3 feedback. Preview 4 was then
 installed after fresh explicit confirmation, temporarily replaced with preview 3
 for a compatibility comparison, and restored to preview 4 at the owner's request.
-Source and retained artifacts stay at their existing versions.
+Preview 5 is the next host-built candidate. The owner explicitly requested no
+installation, phone debugging or restart for this iteration.
+
+### Preview 4 feedback and preview 5 candidate (2026-11-12)
+
+The owner accepted the content expansion order, the filled gesture gap, notification
+entry choices, both independent notification options after disabling HyperLight's
+equivalents, and the persistent thumbnail. The owner also confirmed that the veil
+was present, then requested replacing the separate artwork/lyrics actions with a
+fixed three-page cycle.
+
+Remaining device reports were a rare expanded-notification/bubble position flash,
+an intermittent missing notification-return animation (music return was reliable),
+glass losing its advanced material during transitions, a stretched rather than
+translated capsule, unwanted end-to-start cycling, and occasional undersized media
+cards also reported on another device. Artist marquee sizing appeared inconsistent.
+Black flashing remains open; the owner requested renewed investigation without
+assuming that the MiDuo update caused it.
+
+Before preview-5 delivery, the owner added three reports: paused/background music
+could leave an unopenable capsule or button, a downward collapse did not start in
+the clock area, and seeking was intercepted whenever another item remained folded.
+These are included in this candidate rather than deferred to another preview.
+The owner further reproduced long-title overlap with the visible output/source
+control immediately after a track change; sleeping and waking corrected the
+truncation. The media-control audit therefore includes same-view metadata changes,
+visibility changes, text bounds, and touch priority rather than only initial binding.
+
+Candidate `0.2.0-preview.5` (`20005`) addresses this batch:
+
+- Expanded notification intent now also gates publication of its rail bubble, not
+  just native wake defaults. A transient NUMBER report cannot publish a bubble for
+  an explicitly expanded list. Explicit choices reconcile the published state.
+- Native notification return normalizes the initial fade and follows scroll/fade
+  progress. A one-traversal native completion retains a short visible bubble birth;
+  unavailable completion has a bounded cancellation path rather than blocking later
+  gestures. The stable music return path is retained.
+- HyperOS switching selects immediate neighbours with hard ends. Its shell keeps
+  its height while moving until the leading cap matches the target bubble. Both
+  icons reach the joined shell before release; the outgoing icon then separates
+  into its bubble. The existing damped nudge spring supplies the release recoil,
+  independently of the monotone content handoff. ColorOS keeps its existing cycle.
+- The shared glass layer is measured with its native material child before applying
+  the material, waits for a valid contour, and updates native SDF bounds as it moves.
+  This fixes an incomplete zero-size material setup; its appearance needs device
+  acceptance.
+- Content reflow keeps the uncontracted width and logical layout specification.
+  OEM pixel-width writebacks cannot become a smaller baseline on every frame or
+  lock session. Restoration only changes widths still owned by this adapter.
+- One fixed control cycles native clock/wallpaper, artwork, lyrics, then clock.
+  The icon names the next action; the thumbnail stays visible without a veil.
+  Lyrics loading does not discard the requested page. The title and artist reserve
+  real text-layout width for the control so native marquee measures the usable area.
+  Visible native source/output/action controls also constrain each text row's
+  usable bounds; hidden controls restore that space. Metadata and layout updates
+  reconcile before drawing rather than waiting for an AOD cycle. Native control
+  interaction and the user's existing visibility preferences remain authoritative.
+- Repeated showing/doze reports cannot clear an ongoing unlock. Existing verified
+  exit hooks share the exit state, explicit cancellation/new sleep can reset it,
+  and queued scene work checks the current state. State transitions publish atomically
+  across callback threads. This is a source-supported black-flash candidate, not
+  a device-confirmed resolution.
+- Destroyed media sessions cannot be reconstructed from a stale native card token;
+  callbacks belong to the session that registered them. Valid paused sessions stay
+  eligible without an arbitrary inactivity timeout. Lock-screen-only controls also
+  respect the exit state instead of relying on a native view's lingering visibility.
+- Downward collapse accepts the full content region, including the clock, while
+  shortcuts and rail controls keep their own gestures. Native player controls claim
+  their touch stream at DOWN so an unfinished expansion sequence cannot cancel a
+  seek gesture partway through a horizontal drag.
+
+Host validation: all 744 tests in 125 suites passed, with no failures, errors or
+skips. Debug and Release builds passed, including release R8 and vital lint. The
+final incremental verification includes the last callback and button-depth edits.
+The signed release APK was verified as package `com.zhuhuibin.hypermusiccover.duo`,
+version `20005` / `0.2.0-preview.5`, with the existing local debug certificate.
+This remains a development preview rather than a production signing-key release.
+
+Retained artifact: `releases/local/hypermusiccover-duo-0.2.0-preview.5.apk`, SHA-256
+`db3381534006be45d8207906b65e2793a096c4a39280e8c20a820841a4cf104c`.
+A matching copy is in the owner's `00 Temp` inbox. The earlier host-only draft was
+retained locally with a `pre-feedback` suffix; the final APK includes every added
+report above. Build logs and verification metadata remain outside synced storage.
+All preview-5 phone acceptance remains pending. No installation or phone debugging
+was performed for this iteration; the owner requested stopping after delivery.
 
 ### Preview 3 compatibility comparison (2026-11-12)
 
 After updating MiDuo and another plugin, the owner explicitly requested installing
 the retained preview 3 to compare behavior. Direct replacement with downgrade
 enabled returned `Success`, preserving application data without uninstalling.
-The previous installed package was 20004; the installed package is now 20003 and
+The previous installed package was 20004; the package became 20003 at that step and
 its APK SHA-256 is
 `d343d91b40de4506ab35a454fccc60dc465517db2f2446fc0e3e9f941462f028`, matching
 `releases/local/hypermusiccover-duo-0.2.0-preview.3.apk`. Both APK signatures matched
@@ -50,8 +134,8 @@ The authorized restore used ordinary data-preserving replacement and returned
 preview-4 artifact. SystemUI PID 3143 stayed unchanged, and the read-only probe
 reported runtime 20003 pending the owner's manual restart. The temporary device
 APK was removed. No GUI operation, scope change or restart was performed. The
-preview-4 checks below remain pending; black flashing is tracked separately from
-the gesture, notification, artwork and rail-animation acceptance.
+preview-4 checks below describe that installation's acceptance plan. The subsequent
+partial acceptance and remaining reports are recorded above.
 
 ### Owner acceptance and remaining issues in preview 1
 
@@ -98,7 +182,7 @@ controls and the content area: an upward drag there could bypass all expansion
 and enter the unlock screen. Shortcut tolerance should remain generous while that
 gap is filled.
 
-### Preview 4 changes awaiting device acceptance
+### Preview 4 implementation and delivery history
 
 The candidate is `0.2.0-preview.4` (`20004`).
 
