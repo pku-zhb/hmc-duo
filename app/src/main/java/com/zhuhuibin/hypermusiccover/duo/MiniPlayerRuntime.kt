@@ -941,7 +941,7 @@ object MiniPlayerRuntime {
             synchronized(controllers) { controllers.remove(host) }
             return
         }
-        RailShortcutTapRuntime.install(shortcutController)
+        ShortcutGestureRuntime.install(shortcutController)
         val (left, right) = resolveShortcuts(shortcutController) ?: findShortcuts(root) ?: return
         if (left === right) return
         if (old != null && old.left === left && old.right === right) {
@@ -1040,6 +1040,7 @@ object MiniPlayerRuntime {
     }
 
     private var routed: WeakReference<MiniPlayerView>? = null
+    private var routedNativeShortcut = false
 
     /**
      * Hands a whole gesture that starts on the pill to the pill and to nothing else. The pill's
@@ -1048,6 +1049,18 @@ object MiniPlayerRuntime {
      */
     @JvmStatic fun routeTouch(ev: MotionEvent): Boolean { android.os.Trace.beginSection("MC t.route"); try {
         val action = ev.actionMasked
+        if (action == MotionEvent.ACTION_DOWN) {
+            routedNativeShortcut = detachedRail() && live().any { it.nativeShortcutAt(ev.rawX, ev.rawY) }
+            if (routedNativeShortcut) {
+                endRoute()
+                releasePress()
+                noteTouch("native shortcut gesture; capsule bypassed")
+            }
+        }
+        if (routedNativeShortcut) {
+            if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) routedNativeShortcut = false
+            return false
+        }
         // Native hands-up can fold the list inside dispatch, before onScrollTouch returns.
         stackForProbe()?.let { noteStackSwipe(ev, it) }
         if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) releasePress()
@@ -2183,7 +2196,6 @@ private class MiniPlayerController(
      * and came back: a flash.
      */
     private fun followShortcuts() {
-        LockScreenRailRuntime.positionControls()
         updateRailAodInset()
         val view = player ?: return
         // The spread's morphs place the pill; out as the list, it is not drawn.
@@ -10877,6 +10889,14 @@ private class MiniPlayerController(
      * Which disc's button a point is on, if its disc is showing: the icon, or the
      * shortcut_view_*_layout around it, which is what takes the tap.
      */
+    fun nativeShortcutAt(x: Float, y: Float): Boolean = (0..1).any {
+        val icon = button(it)
+        val wrapper = (icon.parent as? View)?.takeIf { p ->
+            runCatching { p.resources.getResourceEntryName(p.id) }.getOrNull()?.endsWith("_layout") == true
+        }
+        onButton(icon, x, y) || wrapper != null && onButton(wrapper, x, y)
+    }
+
     fun discAt(x: Float, y: Float): Int? = (0..1).firstOrNull {
         if (discs[it]?.visibility != View.VISIBLE) return@firstOrNull false
         val icon = button(it)

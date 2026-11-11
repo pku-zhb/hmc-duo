@@ -41,8 +41,9 @@ public class RightRailLayoutTest {
         assertTrue(p.pill.bottom + 12*d < torch.top);
         assertTrue(p.companion.top >= 12*d);
         assertEquals(1380, torch.top, 0);
-        assertTrue(p.controlsY < (1439 + 1589) / 2f);
-        assertTrue(1589 + p.secondOffsetY < 1589);
+        assertEquals((1439 + 1589) / 2f, p.controlsY, .001f);
+        assertEquals(0, p.firstOffsetY, 0);
+        assertEquals(0, p.secondOffsetY, 0);
     }
     @Test public void cutoutsAndInsufficientRoomFailClosed() {
         assertNull(plan(400, 850, button(328, 190), button(328, 274)));
@@ -52,14 +53,14 @@ public class RightRailLayoutTest {
         assertNull(plan(400, 850, null, button(328, 704)));
         assertNull(plan(Float.NaN, 850, button(328, 620), button(328, 704)));
     }
-    @Test public void crampedButtonsSpreadApartWithoutEnteringTheNavigationInset() {
+    @Test public void crampedNativeButtonsAreNeverMovedByTheCapsule() {
         RightRailLayout.Plan p = RightRailLayout.plan(1168, 1712, 2.75f, 0, 126, 0, 66,
                 new FoldMusicLayout.Box(995, 1388, 1127, 1520),
                 new FoldMusicLayout.Box(995, 1538, 1127, 1670 - 24));
         assertNotNull(p);
-        assertTrue(p.firstOffsetY < 0);
-        assertTrue(p.controlsSpan >= 72 * 2.75f);
-        assertTrue(p.controlsY + p.controlsSpan / 2 + 66 <= 1712 - 66 - 12 * 2.75f + .01f);
+        assertEquals(0, p.firstOffsetY, 0);
+        assertEquals(0, p.secondOffsetY, 0);
+        assertTrue(p.pill.bottom + 9 * 2.75f + 12 * 2.75f <= 1388);
     }
     @Test public void faceHasUprightArtworkTextAndActionsWithoutOverlapping() {
         for (boolean second : new boolean[]{false, true}) {
@@ -97,7 +98,7 @@ public class RightRailLayoutTest {
             assertTrue(p.companion.top >= 24*d);
         }
     }
-    @Test public void outerAndInnerLandscapeIncludeTheCurvedIndicatorInEqualVisibleGaps() {
+    @Test public void outerAndInnerLandscapeKeepTheCapsuleOutsideNativeShortcutHitTargets() {
         float d = 2.75f, disc = Math.round(48f * d * .85f), bow = 9f * d;
         float[][] scenes = {{1168, 1712, 995, 1388, 1538}, {2364, 1672, 2180, 1348, 1498}};
         for (float[] scene : scenes) {
@@ -109,10 +110,12 @@ public class RightRailLayoutTest {
             float cameraCenter = (camera.top + camera.bottom) / 2 + p.secondOffsetY;
             float pillGap = torchCenter - disc/2 - (p.pill.bottom + bow);
             float buttonGap = cameraCenter - torchCenter - disc;
-            assertEquals(buttonGap, pillGap, .001f);
+            assertTrue(p.pill.bottom + bow + 12*d <= torch.top);
+            assertEquals(0f, p.firstOffsetY, 0f);
+            assertEquals(0f, p.secondOffsetY, 0f);
             assertTrue(pillGap >= 0);
             assertEquals(46*d, p.pill.width(), .001f);
-            assertTrue(cameraCenter < (camera.top + camera.bottom) / 2);
+            assertEquals((camera.top + camera.bottom) / 2, cameraCenter, 0);
         }
     }
     @Test public void innerPortraitPreservesItsExistingCapsuleWidthAndCenter() {
