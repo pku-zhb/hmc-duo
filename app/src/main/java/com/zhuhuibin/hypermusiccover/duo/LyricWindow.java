@@ -68,6 +68,8 @@ final class LyricWindow {
     /** The observer the view's pre-draw was added to, so it can be taken off the same one. */
     private static ViewTreeObserver sHostVto;
     private static boolean sHdr;
+    private static boolean sHdrInkReady;
+    private static int sHdrGeneration;
     private static int sLayerId;
 
     private LyricWindow() {
@@ -200,10 +202,8 @@ final class LyricWindow {
             } catch (Throwable t) {
                 Xp.w(TAG + "setTrustedOverlay unavailable: " + t);
             }
-            // Coming up in the middle of a held note: the window is in HDR from its first frame
-            // rather than a frame later. The glow needs the canvas' extended range, not a mode of
-            // its own, and one frame of it is one frame of a white where there should be a
-            // brighter one.
+            // Request HDR before the first frame of a held note. Extended-range ink is armed
+            // after that frame commits, so a delayed window update cannot flash SDR-clipped ink.
             sHdr = LockLyrics.hdrWanted();
             colourMode(lp, sHdr);
             wm.addView(v, lp);
@@ -211,6 +211,7 @@ final class LyricWindow {
             sWm = wm;
             sLp = lp;
             setHost(layer);
+            armHdrInk();
             Xp.log(TAG + "window added, hw=" + v.isHardwareAccelerated() + " hdr=" + sHdr);
             return v;
         } catch (Throwable t) {
@@ -219,6 +220,8 @@ final class LyricWindow {
             sWm = null;
             sLp = null;
             sHdr = false;
+            sHdrInkReady = false;
+            sHdrGeneration++;
             Xp.log(TAG + "window could not be added: " + Log.getStackTraceString(t));
             return null;
         }
@@ -233,6 +236,8 @@ final class LyricWindow {
         sWm = null;
         sLp = null;
         sHdr = false;
+        sHdrInkReady = false;
+        sHdrGeneration++;
         if (v == null) return;
         try {
             // Not removeViewImmediate: this is called from the view's own frame callback, and an
@@ -251,14 +256,72 @@ final class LyricWindow {
      */
     static void setHdr(boolean on) {
         if (sView == null || sLp == null || sHdr == on) return;
-        sHdr = on;
+        sHdrInkReady = false;
+        sHdrGeneration++;
         colourMode(sLp, on);
         try {
             sWm.updateViewLayout(sView, sLp);
+            sHdr = on;
+            armHdrInk();
+            sView.invalidate();
             Xp.log(TAG + "HDR " + (on ? "on" : "off"));
         } catch (Throwable t) {
+            colourMode(sLp, sHdr);
             Xp.w(TAG + "HDR update failed: " + t);
         }
+    }
+
+    static boolean hdrInkReady() {
+        return sHdr && sHdrInkReady;
+    }
+
+    /** Keep SDR ink until the asynchronous window colour-mode change has drawn a frame. */
+    private static void armHdrInk() {
+        sHdrInkReady = false;
+        final int generation = ++sHdrGeneration;
+        final LyricView view = sView;
+        if (!sHdr || view == null) return;
+        if (!view.isAttachedToWindow()) {
+            // addView returns before the first traversal attaches this view. Its hardware
+            // flag is not valid yet, so defer once instead of permanently disarming this mode.
+            try {
+                view.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
+                    @Override public void onViewAttachedToWindow(View attached) {
+                        attached.removeOnAttachStateChangeListener(this);
+                        registerHdrInk(view, generation);
+                    }
+
+                    @Override public void onViewDetachedFromWindow(View detached) {}
+                });
+            } catch (Throwable t) {
+                Xp.w(TAG + "HDR attach acknowledgement unavailable, keeping SDR ink: " + t);
+            }
+            return;
+        }
+        registerHdrInk(view, generation);
+    }
+
+    private static void registerHdrInk(final LyricView view, final int generation) {
+        if (generation != sHdrGeneration || view != sView || !sHdr
+                || !view.isHardwareAccelerated()) return;
+        try {
+            view.getViewTreeObserver().registerFrameCommitCallback(new Runnable() {
+                @Override public void run() {
+                    Main.main().post(new Runnable() {
+                        @Override public void run() {
+                            if (generation != sHdrGeneration || view != sView || !sHdr) return;
+                            sHdrInkReady = true;
+                            view.redraw();
+                        }
+                    });
+                }
+            });
+        } catch (Throwable t) {
+            // The lyrics remain readable in SDR if this OEM cannot acknowledge a frame. Do not
+            // let an optional HDR effect abort window creation or orphan an already-added view.
+            Xp.w(TAG + "HDR frame acknowledgement unavailable, keeping SDR ink: " + t);
+        }
+        view.invalidate();
     }
 
     /**
@@ -296,6 +359,7 @@ final class LyricWindow {
         int[] loc = new int[2];
         v.getLocationOnScreen(loc);
         return "win=up hdr=" + (sHdr ? 1 : 0) + " hw=" + (v.isHardwareAccelerated() ? 1 : 0)
+                + " hdrInk=" + (sHdrInkReady ? 1 : 0)
                 + " " + v.getWidth() + "x" + v.getHeight() + "@" + loc[0] + "," + loc[1]
                 + " scale=" + v.getScaleY() + " pivot=" + (int) v.getPivotX() + "," + (int) v.getPivotY()
                 + " cm=" + (sLp == null ? "?" : sLp.getColorMode())
