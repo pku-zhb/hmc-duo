@@ -20,8 +20,9 @@ in their original shared location.
 The owner performs LSPosed selection, all phone UI interactions and restarts.
 Preview 3 was delivered by ordinary replacement. At that delivery the installed
 package was 20003 while the SystemUI probe still reported 20002, with its process ID
-unchanged; the owner subsequently supplied preview-3 feedback. Preview 4 is prepared
-only and has not been installed.
+unchanged; the owner subsequently supplied preview-3 feedback. Preview 4 is now
+installed after fresh explicit confirmation. Its installation left SystemUI on
+runtime 20003 pending the owner's manual restart.
 
 ### Owner acceptance and remaining issues in preview 1
 
@@ -108,15 +109,19 @@ The initial compile caught SDK 37's non-null Kotlin Animator signature; the nati
 Folme callbacks legitimately pass null, so a Java adapter now preserves the OEM
 callback contract without introducing a Kotlin null assertion.
 
-The owner paused installation while using the phone and requires fresh explicit
-confirmation before every future install. No preview-4 installation has been
-attempted. Delivery remains pending; the owner performs all phone acceptance,
-GUI interaction and restarts. The retained artifact is
+The owner requires fresh explicit confirmation before every install and supplied
+that confirmation for preview 4 after the earlier pause. Ordinary replacement
+returned `Success`. Installed version 20004 and the device APK SHA-256 match the
+retained artifact. The SystemUI PID stayed unchanged and its read-only probe still
+reports runtime 20003. No GUI operation, scope change or restart was performed;
+the temporary device APK was removed. The owner restarts SystemUI to load 20004
+and performs phone acceptance. The retained artifact is
 `releases/local/hypermusiccover-duo-0.2.0-preview.4.apk`, SHA-256
 `1ce3b566236bca0faa189f8c948e469874b8784f2083b0c9434a1d8a55c62ce8`.
-Package identity, version 20004 and the same local debug signing certificate were
-verified from the APK. Its signature must still be checked against the currently
-installed package before a later authorized replacement.
+Package identity, version 20004 and the local debug signing certificate were
+verified before installation. The currently installed preview-3 APK was pulled
+read-only and its signing certificate matched; the ordinary replacement retains
+application data. This is a development preview, not a production signing key.
 
 Manual acceptance for preview 4 (outer screen):
 
