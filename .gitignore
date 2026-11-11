@@ -32,3 +32,9 @@ local.properties
 .kotlin/
 
 /hyper-canvas/build/
+
+# Locally built and retained trial packages.
+/releases/local/
+
+# Local agent notes; keep a private copy, never commit it.
+/AGENTS.md
