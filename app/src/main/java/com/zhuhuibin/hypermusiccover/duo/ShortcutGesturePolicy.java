@@ -3,6 +3,12 @@ package com.zhuhuibin.hypermusiccover.duo;
 /** Project a relocated left shortcut's inward drag onto the OEM's original rightward axis. */
 final class ShortcutGesturePolicy {
     private ShortcutGesturePolicy() {}
+
+    /** A visible icon can receive a gesture before its wake fade finishes. */
+    static boolean torchVisible(float alpha) {
+        return Float.isFinite(alpha) && alpha >= .1f;
+    }
+
     static float nativeX(boolean rightRail, boolean leftShortcut, float initialX, float physicalX) {
         return rightRail && leftShortcut && Float.isFinite(initialX) && Float.isFinite(physicalX)
                 ? initialX - (physicalX - initialX) : physicalX;
