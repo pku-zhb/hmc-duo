@@ -424,6 +424,10 @@ final class LockScreenRailRuntime {
         RightRailLayout.Plan p = plan;
         return active() && p != null && map(root, host, p.companion, out);
     }
+    static boolean strip(View host, RectF out) {
+        RightRailLayout.Plan p = plan;
+        return active() && p != null && map(root, host, p.strip, out);
+    }
     static boolean content(View host, RectF out) {
         RightRailLayout.Plan p = plan;
         return reflowing() && p != null && map(root, host, p.content, out);

@@ -4,11 +4,11 @@ package com.zhuhuibin.hypermusiccover.duo;
 final class RightRailLayout {
     private RightRailLayout() {}
     static final class Plan {
-        final FoldMusicLayout.Box pill, companion, content;
+        final FoldMusicLayout.Box pill, companion, content, strip;
         final float controlsX, controlsY, controlsSpan, firstOffsetY, secondOffsetY;
-        Plan(FoldMusicLayout.Box pill, FoldMusicLayout.Box companion, FoldMusicLayout.Box content,
+        Plan(FoldMusicLayout.Box pill, FoldMusicLayout.Box companion, FoldMusicLayout.Box content, FoldMusicLayout.Box strip,
              float controlsX, float controlsY, float controlsSpan, float firstOffsetY, float secondOffsetY) {
-            this.pill = pill; this.companion = companion; this.content = content;
+            this.pill = pill; this.companion = companion; this.content = content; this.strip = strip;
             this.controlsX = controlsX; this.controlsY = controlsY; this.controlsSpan = controlsSpan;
             this.firstOffsetY = firstOffsetY; this.secondOffsetY = secondOffsetY;
         }
@@ -48,15 +48,16 @@ final class RightRailLayout {
         float controlY = (ay + by) / 2;
         float centerX = (ax + bx) / 2;
         float right = centerX + thickness / 2, left = centerX - thickness / 2;
-        float ceiling = topInset + gap + thickness + gap;
         // Reserve the entire native hit wrapper, plus the curved capsule indicator.
         float limit = Math.min(a.top, b.top) - gap - indicatorExtent;
         float companionTop = topInset + gap;
         float maxLength = limit - companionTop - thickness - gap;
         float length = Math.min(221f * density, maxLength);
-        float centerY = Math.max(ceiling + length / 2,
+        // Lower the outer-screen strip; retain the untested inner-screen baseline.
+        float ceiling = topInset + gap + thickness + gap;
+        float previousCenter = Math.max(ceiling + length / 2,
                 Math.min((topInset + height - bottomInset) / 2 - (narrow ? 16f : 12f) * density, limit - length / 2));
-        float bottom = centerY + length / 2;
+        float bottom = width / density < 600f && height >= width ? limit : previousCenter + length / 2;
         float top = bottom - length;
         float contentRight = Math.min(Math.min(a.left, b.left), left) - gap;
         if (left < leftInset || right > width - rightInset || bottom > height - bottomInset
@@ -64,6 +65,7 @@ final class RightRailLayout {
         return new Plan(new FoldMusicLayout.Box(left, top, right, bottom),
                 new FoldMusicLayout.Box(left, top - gap - thickness, right, top - gap),
                 new FoldMusicLayout.Box(leftInset, topInset, contentRight, height - bottomInset),
+                new FoldMusicLayout.Box(left, companionTop, right, bottom),
                 centerX, controlY, controlSpan, 0f, 0f);
     }
 
