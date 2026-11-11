@@ -110,11 +110,7 @@ private fun MiniPlayerPage(blur: Boolean, refreshKey: Int, onBack: () -> Unit) {
                     top.yukonga.miuix.kmp.basic.BasicComponent(
                         title = stringResource(R.string.duo_vertical_text),
                         summary = stringResource(R.string.duo_vertical_text_summary))
-                    SwitchPreference(title = stringResource(R.string.mini_status_at_date),
-                        summary = stringResource(R.string.mini_status_at_date_summary),
-                        checked = config.optBoolean(MiniPlayerConfig.STATUS_AT_DATE),
-                        enabled = alive && config.optBoolean(MiniPlayerConfig.ENABLED),
-                        onCheckedChange = { push(MiniPlayerConfig.STATUS_AT_DATE, it) })
+
                 }
                 SmallTitle(text = stringResource(R.string.fold_material_section))
                 Card(Modifier.padding(horizontal = 12.dp).padding(bottom = 12.dp)) {

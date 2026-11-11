@@ -522,4 +522,11 @@
     <string name="about_duo_summary">Lock-screen music and lyrics for MiDuo and foldable displays.</string>
     <string name="duo_vertical_text">Vertical text</string>
     <string name="duo_vertical_text_summary">Upright CJK, sideways words and horizontal short numbers. Open the card to read longer content.</string>
+    <string name="fold_keep_last">Keep last lock-screen state</string>
+    <string name="fold_keep_last_summary">Remember expanded content and the music page. Custom initial choices below are disabled while this is on.</string>
+    <string name="fold_collapsed_categories">Collapse on lock (select any)</string>
+    <string name="fold_landscape_collapsed">Collapse in inner landscape (select any)</string>
+    <string name="fold_collapsed_categories_summary">Selected categories start in capsules. Select none to expand everything, or all to collapse everything.</string>
+    <string name="fold_live_cards">Live cards</string>
+    <string name="fold_notifications">Notifications</string>
 </resources>

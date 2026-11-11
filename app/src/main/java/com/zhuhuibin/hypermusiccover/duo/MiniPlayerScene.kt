@@ -108,6 +108,7 @@ internal object MiniPlayerScene {
 
     private fun setKeyguardGoingAway(goingAway: Boolean) {
         if (keyguardGoingAway == goingAway) return
+        if (goingAway) MiniPlayerRuntime.rememberLockState()
         keyguardGoingAway = goingAway
         WallpaperHandoffDiagnostics.note("unlock", "away=$goingAway aod=$aodActive screen=${Main.screenOnCached()}")
         synchronized(exitEvents) {

@@ -530,4 +530,11 @@
     <string name="about_duo_summary">为 MiDuo 与折叠屏打造的锁屏音乐和歌词体验。</string>
     <string name="duo_vertical_text">竖排文字</string>
     <string name="duo_vertical_text_summary">汉字直立，英文词组侧转，短数字横排；长内容展开后阅读。</string>
+    <string name="fold_keep_last">保持上次锁屏状态</string>
+    <string name="fold_keep_last_summary">记住内容的展开状态和音乐界面。开启后，下方自定义初始状态不生效。</string>
+    <string name="fold_collapsed_categories">锁屏时收进胶囊（可多选）</string>
+    <string name="fold_landscape_collapsed">内屏横屏时收进胶囊（可多选）</string>
+    <string name="fold_collapsed_categories_summary">选中的类别收进胶囊；不选则全部展开，全选则全部收起。</string>
+    <string name="fold_live_cards">实时卡片</string>
+    <string name="fold_notifications">普通通知</string>
 </resources>

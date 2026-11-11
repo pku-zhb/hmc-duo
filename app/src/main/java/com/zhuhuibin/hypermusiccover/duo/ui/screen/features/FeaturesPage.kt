@@ -55,6 +55,7 @@ import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.preference.ArrowPreference
+import top.yukonga.miuix.kmp.preference.CheckboxPreference
 import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.preference.WindowDropdownPreference
 import top.yukonga.miuix.kmp.theme.LocalDismissState
@@ -478,40 +479,37 @@ private fun CoverGroup(
             },
         )
         val miniConfig = JSONObject(module.miniConfig)
-        fun entrySetting(key: String, value: Int) {
+        fun entrySetting(key: String, value: Any) {
             val next = MiniPlayerConfig.normalizedJson(JSONObject(module.miniConfig).put(key, value).toString())
             onChange(module.copy(miniConfig = next))
             ModuleBridge.setMiniConfig(context, next)
         }
-        WindowDropdownPreference(title = stringResource(R.string.fold_startup_mode),
-            summary = stringResource(R.string.fold_startup_mode_summary),
-            items = listOf(stringResource(R.string.fold_start_collapsed), stringResource(R.string.fold_start_expanded),
-                stringResource(R.string.fold_start_music_only)),
-            selectedIndex = MiniPlayerConfig.startupMode(miniConfig),
-            enabled = enabled && miniConfig.optBoolean(MiniPlayerConfig.ENABLED),
-            onSelectedIndexChange = { entrySetting(MiniPlayerConfig.STARTUP_MODE, it) })
-        if (MiniPlayerConfig.startupMode(miniConfig) == MiniPlayerConfig.START_MUSIC_ONLY) {
-            WindowDropdownPreference(title = stringResource(R.string.fold_startup_music_view),
+        val entryEnabled = enabled && miniConfig.optBoolean(MiniPlayerConfig.ENABLED)
+        val keepLast = MiniPlayerConfig.keepLastLockscreen(miniConfig)
+        SwitchPreference(title = stringResource(R.string.fold_keep_last),
+            summary = stringResource(R.string.fold_keep_last_summary),
+            checked = keepLast, enabled = entryEnabled,
+            onCheckedChange = { entrySetting(MiniPlayerConfig.KEEP_LAST_LOCKSCREEN, it) })
+        for (landscape in listOf(false, true)) {
+            val mask = MiniPlayerConfig.collapsedCategories(miniConfig, landscape)
+            BasicComponent(title = stringResource(if (landscape) R.string.fold_landscape_collapsed else R.string.fold_collapsed_categories),
+                summary = stringResource(R.string.fold_collapsed_categories_summary))
+            val categories = listOf(MiniPlayerConfig.COLLAPSE_MUSIC to R.string.fold_music_player,
+                MiniPlayerConfig.COLLAPSE_LIVE to R.string.fold_live_cards,
+                MiniPlayerConfig.COLLAPSE_NOTIFICATIONS to R.string.fold_notifications)
+            for ((bit, label) in categories) CheckboxPreference(title = stringResource(label),
+                checked = mask and bit != 0, enabled = entryEnabled && !keepLast,
+                onCheckedChange = { checked ->
+                    entrySetting(if (landscape) MiniPlayerConfig.LANDSCAPE_COLLAPSED_CATEGORIES else MiniPlayerConfig.COLLAPSED_CATEGORIES,
+                        if (checked) mask or bit else mask and bit.inv())
+                })
+            if (mask and MiniPlayerConfig.COLLAPSE_MUSIC == 0) WindowDropdownPreference(
+                title = stringResource(if (landscape) R.string.fold_landscape_music_view else R.string.fold_startup_music_view),
                 items = listOf(stringResource(R.string.fold_music_player), stringResource(R.string.fold_music_artwork),
-                    stringResource(R.string.fold_music_lyrics)),
-                selectedIndex = MiniPlayerConfig.startupMusicView(miniConfig),
-                enabled = enabled && miniConfig.optBoolean(MiniPlayerConfig.ENABLED),
-                onSelectedIndexChange = { entrySetting(MiniPlayerConfig.STARTUP_MUSIC_VIEW, it) })
-        }
-        WindowDropdownPreference(title = stringResource(R.string.fold_landscape_startup_mode),
-            summary = stringResource(R.string.fold_landscape_startup_summary),
-            items = listOf(stringResource(R.string.fold_start_collapsed), stringResource(R.string.fold_start_expanded),
-                stringResource(R.string.fold_start_music_only)),
-            selectedIndex = MiniPlayerConfig.startupMode(miniConfig, true),
-            enabled = enabled && miniConfig.optBoolean(MiniPlayerConfig.ENABLED),
-            onSelectedIndexChange = { entrySetting(MiniPlayerConfig.LANDSCAPE_STARTUP_MODE, it) })
-        if (MiniPlayerConfig.startupMode(miniConfig, true) != MiniPlayerConfig.START_COLLAPSED) {
-            WindowDropdownPreference(title = stringResource(R.string.fold_landscape_music_view),
-                items = listOf(stringResource(R.string.fold_music_player), stringResource(R.string.fold_music_artwork),
-                    stringResource(R.string.fold_music_artwork_and_lyrics)),
-                selectedIndex = MiniPlayerConfig.startupMusicView(miniConfig, true),
-                enabled = enabled && miniConfig.optBoolean(MiniPlayerConfig.ENABLED),
-                onSelectedIndexChange = { entrySetting(MiniPlayerConfig.LANDSCAPE_MUSIC_VIEW, it) })
+                    stringResource(if (landscape) R.string.fold_music_artwork_and_lyrics else R.string.fold_music_lyrics)),
+                selectedIndex = MiniPlayerConfig.startupMusicView(miniConfig, landscape),
+                enabled = entryEnabled && !keepLast,
+                onSelectedIndexChange = { entrySetting(if (landscape) MiniPlayerConfig.LANDSCAPE_MUSIC_VIEW else MiniPlayerConfig.STARTUP_MUSIC_VIEW, it) })
         }
 
 

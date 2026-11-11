@@ -14,6 +14,13 @@ object MiniPlayerConfig {
     const val STARTUP_MUSIC_VIEW = "startupMusicView"
     const val LANDSCAPE_STARTUP_MODE = "landscapeStartupMode"
     const val LANDSCAPE_MUSIC_VIEW = "landscapeMusicView"
+    const val COLLAPSED_CATEGORIES = "collapsedCategories"
+    const val LANDSCAPE_COLLAPSED_CATEGORIES = "landscapeCollapsedCategories"
+    const val KEEP_LAST_LOCKSCREEN = "keepLastLockscreen"
+    const val COLLAPSE_MUSIC = 1
+    const val COLLAPSE_LIVE = 2
+    const val COLLAPSE_NOTIFICATIONS = 4
+    const val COLLAPSE_ALL = 7
     const val START_COLLAPSED = 0
     const val START_EXPANDED = 1
     const val START_MUSIC_ONLY = 2
@@ -31,12 +38,22 @@ object MiniPlayerConfig {
     @JvmStatic fun startupMusicView(config: JSONObject, innerLandscape: Boolean): Int =
         if (innerLandscape) config.optInt(LANDSCAPE_MUSIC_VIEW, VIEW_LYRICS).coerceIn(VIEW_PLAYER, VIEW_LYRICS)
         else startupMusicView(config)
+    @JvmStatic fun collapsedCategories(config: JSONObject, innerLandscape: Boolean = false): Int {
+        val key = if (innerLandscape) LANDSCAPE_COLLAPSED_CATEGORIES else COLLAPSED_CATEGORIES
+        val legacy = when (startupMode(config, innerLandscape)) {
+            START_COLLAPSED -> COLLAPSE_ALL
+            START_EXPANDED -> 0
+            else -> COLLAPSE_LIVE or COLLAPSE_NOTIFICATIONS
+        }
+        return config.optInt(key, legacy).coerceIn(0, COLLAPSE_ALL)
+    }
+    @JvmStatic fun keepLastLockscreen(config: JSONObject): Boolean = config.optBoolean(KEEP_LAST_LOCKSCREEN, false)
     @JvmStatic fun automaticCoverAllowed(raw: String?): Boolean = automaticCoverAllowed(raw, false)
     @JvmStatic fun automaticCoverAllowed(raw: String?, innerLandscape: Boolean): Boolean {
         val config = JSONObject(normalizedJson(raw))
-        val mode = startupMode(config, innerLandscape)
-        return !config.getBoolean(ENABLED) || mode != START_COLLAPSED &&
-            (innerLandscape || mode == START_MUSIC_ONLY) && startupMusicView(config, innerLandscape) != VIEW_PLAYER
+        return !config.getBoolean(ENABLED) || !keepLastLockscreen(config) &&
+            collapsedCategories(config, innerLandscape) and COLLAPSE_MUSIC == 0 &&
+            startupMusicView(config, innerLandscape) != VIEW_PLAYER
     }
     const val WIDTH = "widthDp"
     const val HEIGHT_RADIUS = "heightRadiusDp"
@@ -106,11 +123,14 @@ object MiniPlayerConfig {
         STARTUP_MUSIC_VIEW to VIEW_LYRICS,
         LANDSCAPE_STARTUP_MODE to START_EXPANDED,
         LANDSCAPE_MUSIC_VIEW to VIEW_LYRICS,
+        COLLAPSED_CATEGORIES to (COLLAPSE_LIVE or COLLAPSE_NOTIFICATIONS),
+        LANDSCAPE_COLLAPSED_CATEGORIES to 0,
+        KEEP_LAST_LOCKSCREEN to false,
         WIDTH to 221f,
         HEIGHT_RADIUS to 27f,
         ART_RADIUS to 12f,
         ADAPTIVE_WIDTH to false,
-        STATUS_AT_DATE to true,
+        STATUS_AT_DATE to false,
         PILL_STYLE to STYLE_COLOROS,
         LIST_WITHOUT_PLAYER to false,
         NOTE_TEXT_SCROLL to false,
@@ -133,7 +153,7 @@ object MiniPlayerConfig {
 
     // Keep retired keys readable by legacy internals, but never restore their active state.
     private val retiredSwitches = setOf(ADAPTIVE_WIDTH, LIST_WITHOUT_PLAYER,
-        COMPACT_NOTIFICATIONS, BACKGROUND_BLUR, NOTE_TEXT_SCROLL, COLOROS_FULL_SIZE)
+        COMPACT_NOTIFICATIONS, BACKGROUND_BLUR, NOTE_TEXT_SCROLL, COLOROS_FULL_SIZE, STATUS_AT_DATE)
 
     /** Normalize current settings and make old imports safe for the dedicated Fold layout. */
     @JvmStatic fun normalizedJson(raw: String?): String {
@@ -143,8 +163,14 @@ object MiniPlayerConfig {
             out.put(key, if (key in retiredSwitches) {
                 false
             } else if (key == ENABLED || key == MEDIA_COLLAPSED_DEFAULT ||
-                key == STATUS_AT_DATE || key == COLOROS_FULL_SIZE) {
+                key == KEEP_LAST_LOCKSCREEN || key == COLOROS_FULL_SIZE) {
                 runCatching { input.getBoolean(key) }.getOrDefault(fallback)
+            } else if (key == COLLAPSED_CATEGORIES || key == LANDSCAPE_COLLAPSED_CATEGORIES) {
+                val landscape = key == LANDSCAPE_COLLAPSED_CATEGORIES
+                val migrated = JSONObject(input.toString())
+                if (!landscape && !input.has(STARTUP_MODE) && input.optBoolean(MEDIA_COLLAPSED_DEFAULT))
+                    migrated.put(STARTUP_MODE, START_COLLAPSED)
+                collapsedCategories(migrated, landscape)
             } else if (key == STARTUP_MODE) {
                 if (input.has(STARTUP_MODE)) input.optInt(STARTUP_MODE, START_MUSIC_ONLY).coerceIn(START_COLLAPSED, START_MUSIC_ONLY)
                 else if (input.optBoolean(MEDIA_COLLAPSED_DEFAULT, false)) START_COLLAPSED else START_MUSIC_ONLY
@@ -153,7 +179,8 @@ object MiniPlayerConfig {
             } else if (key == LANDSCAPE_MUSIC_VIEW) {
                 input.optInt(key, VIEW_LYRICS).coerceIn(VIEW_PLAYER, VIEW_LYRICS)
             } else if (key == STARTUP_MUSIC_VIEW) {
-                input.optInt(STARTUP_MUSIC_VIEW, VIEW_LYRICS).coerceIn(VIEW_PLAYER, VIEW_LYRICS)
+                if (!input.has(COLLAPSED_CATEGORIES) && startupMode(input) == START_EXPANDED) VIEW_PLAYER
+                else input.optInt(STARTUP_MUSIC_VIEW, VIEW_LYRICS).coerceIn(VIEW_PLAYER, VIEW_LYRICS)
             } else if (key == PILL_STYLE) {
                 input.optInt(key, STYLE_COLOROS).coerceIn(STYLE_COLOROS, STYLE_HYPEROS)
             } else if (key == NOTIFICATION_SIZE) {
@@ -169,7 +196,7 @@ object MiniPlayerConfig {
             })
         }
         // The old key remains a migration stub; it cannot contradict the new entry selector.
-        out.put(MEDIA_COLLAPSED_DEFAULT, startupMode(out) == START_COLLAPSED)
+        out.put(MEDIA_COLLAPSED_DEFAULT, collapsedCategories(out) and COLLAPSE_MUSIC != 0)
         return out.toString()
     }
 

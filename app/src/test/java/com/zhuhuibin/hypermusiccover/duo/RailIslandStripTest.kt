@@ -24,11 +24,11 @@ class RailIslandStripTest {
             selected = next
         }
     }
-    @Test fun mainCapsuleExpandsBeforeOtherKindsAndUnlockRequiresNoCollapsedItems() {
-        assertEquals("music", RailIslandStrip.expansionTarget("music", keys))
-        assertEquals("delivery", RailIslandStrip.expansionTarget("delivery", keys))
-        assertEquals("notifications", RailIslandStrip.expansionTarget("music", keys - "music"))
-        assertNull(RailIslandStrip.expansionTarget("music", emptyList()))
+    @Test fun contentSwipesOpenTheNativeStackBottomUpRegardlessOfTheSelectedCapsule() {
+        assertEquals("notifications", RailIslandStrip.expansionTarget(keys))
+        assertEquals("delivery", RailIslandStrip.expansionTarget(keys - "notifications"))
+        assertEquals("music", RailIslandStrip.expansionTarget(listOf("music")))
+        assertNull(RailIslandStrip.expansionTarget(emptyList()))
     }
     @Test fun everySelectionFitsAboveShortcutsWithoutChangingVisualOrder() {
         for (selected in keys) {
