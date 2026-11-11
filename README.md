@@ -14,13 +14,16 @@ General device compatibility is not a goal.
 - Square artwork, synchronized/word-timed lyrics and lyric translation.
 - A vertical capsule with ordered notification, live-card and music bubbles beside
   MiDuo's shortcut column; swipe to switch or tap a bubble to open its card.
-- Upward swipes in the left clock/notification area expand notifications, live
-  cards, then music; swipe-to-unlock follows when all available content is open.
+- Upward swipes in the clock/content area, including the gap beside the right
+  controls, expand music, live cards, then notifications. Swipe-to-unlock follows
+  when all available content is open; shortcut and capsule gestures keep their own targets.
 - Select which categories collapse on lock, or keep the last lock-screen state.
   Inner landscape has separate category defaults and a cover/lyrics two-column layout.
 - Native player, clock and notification reflow with AOD/wake handling.
 - Native Soft Glass or the native player's final material, including HyperLight.
 - Settings export/import and on-device diagnostic counters.
+- Independent lock-screen notification visibility and retention options. Disable
+  the corresponding HyperLight options when enabling these in Duo.
 
 Full-screen cover/background switching, waveform and optional extension pages
 remain unavailable pending compatibility work. Automatic updates are disabled;
@@ -78,6 +81,9 @@ Commit and push each validated milestone. Keep layout, native gestures, text and
 release identity changes independently reviewable. Report bugs in
 [Duo Issues](https://github.com/pku-zhb/hypermusiccover-duo/issues) with device,
 OS/module version, display form and reproduction steps.
+
+Prepare previews in the background, but obtain a fresh owner confirmation before
+each phone installation. The owner performs all phone UI interactions and restarts.
 
 ## Attribution and licence
 

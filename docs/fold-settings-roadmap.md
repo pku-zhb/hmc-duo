@@ -2,7 +2,7 @@
 
 This fork targets the owner’s Xiaomi 18 Fold. General device compatibility is not a goal.
 
-## Current Duo work (2026-11-11)
+## Current Duo work (2026-11-12)
 
 The project, installation package, code namespace, launcher label and project links
 now belong to `hypermusiccover-duo` / `com.zhuhuibin.hypermusiccover.duo`.
@@ -18,9 +18,10 @@ to Duo with byte-for-byte verification. Existing SystemUI runtime settings remai
 in their original shared location.
 
 The owner performs LSPosed selection, all phone UI interactions and restarts.
-The installed package is now 20003 after the ordinary replacement documented below.
-The read-only SystemUI probe still reports runtime 20002, and its process ID stayed
-unchanged. The owner performs phone UI interactions and the restart to load 20003.
+Preview 3 was delivered by ordinary replacement. At that delivery the installed
+package was 20003 while the SystemUI probe still reported 20002, with its process ID
+unchanged; the owner subsequently supplied preview-3 feedback. Preview 4 is prepared
+only and has not been installed.
 
 ### Owner acceptance and remaining issues in preview 1
 
@@ -52,7 +53,99 @@ needs a small rightward visual adjustment. The active lyric flashes during sleep
 wake, initial lyrics can wait before appearing, and torch cannot start before
 the wake animation finishes.
 
-### Preview 3 changes awaiting device acceptance
+### Owner feedback on preview 3
+
+The owner requested a new left-area order matching the native stack from top to
+bottom: music, live cards, then ordinary notifications. Notifications unchecked
+in the collapsed-category selector still disappeared after wake settled. The
+thumbnail disappearing also moved the lyrics control. Rail switching needed one
+finger-driven progress value, a rounded connecting neck, and a gradual return
+bubble. Other tested behavior had no newly reported issue; inner-screen acceptance
+remains deferred.
+
+The owner additionally reported a narrow unowned touch gap between the right
+controls and the content area: an upward drag there could bypass all expansion
+and enter the unlock screen. Shortcut tolerance should remain generous while that
+gap is filled.
+
+### Preview 4 changes awaiting device acceptance
+
+The candidate is `0.2.0-preview.4` (`20004`).
+
+- Content-area upward swipes open music, live cards in their stable order, then
+  ordinary notifications; missing or already-open items are skipped. The empty
+  space beside the right controls uses the same rule. Capsule/bubble hits and the
+  shortcuts keep their own gestures, selected at DOWN. Both shortcut hit tests
+  and routing share the same nearest-icon 8 dp tolerance. A diagonal upward start
+  cannot abandon expansion and later become an unlock; an insufficient release
+  cancels without opening content.
+- Ordinary notifications now retain the user's chosen LIST/NUMBER presentation.
+  Native AOD geometry does not change that intent; wake defaults and delayed
+  automatic folding follow it. A real manual collapse can still choose NUMBER.
+  Keep-last snapshots store this intent rather than an AOD transition's visibility.
+- The capsule settings page gains two independent, initially off switches:
+  show all lock-screen notifications and retain notifications after unlock/relock.
+  They target the installed OEM's app-visibility and seen-after-unlock filters,
+  while retaining the system privacy provider. The UI tells owners to disable
+  matching HyperLight options when enabling these in Duo; coexistence is not a
+  supported configuration for this iteration.
+- The native artwork thumbnail keeps its slot throughout large-artwork changes.
+  Its existing toggle action remains; an approximately 16% black veil marks the
+  expanded artwork. No additional icon is added, and the lyrics control keeps its
+  anchor. The veil is removed on collapse, AOD, unlock and view replacement.
+- Capsule shell, icons, details and bubbles follow one drag progress, capped at
+  the handoff while held. Release continues from that frame or returns to the
+  original state. The native glass uses a joined path with tangent Bezier necks,
+  preserving the material through connection and separation.
+- Returning content grows a bubble from the existing capsule and separates into
+  its fixed seat. The first returning item grows from a circle into the capsule.
+  Return progress follows the card's actual collapse/exit rather than an unrelated
+  timer; scene interruption and reduced motion settle to a valid final state.
+
+Host verification: all 684 tests in 116 suites passed, with zero failures, errors
+or skips. Debug and Release builds passed, including release R8 and vital lint.
+The initial compile caught SDK 37's non-null Kotlin Animator signature; the native
+Folme callbacks legitimately pass null, so a Java adapter now preserves the OEM
+callback contract without introducing a Kotlin null assertion.
+
+The owner paused installation while using the phone and requires fresh explicit
+confirmation before every future install. No preview-4 installation has been
+attempted. Delivery remains pending; the owner performs all phone acceptance,
+GUI interaction and restarts. The retained artifact is
+`releases/local/hypermusiccover-duo-0.2.0-preview.4.apk`, SHA-256
+`1ce3b566236bca0faa189f8c948e469874b8784f2083b0c9434a1d8a55c62ce8`.
+Package identity, version 20004 and the same local debug signing certificate were
+verified from the APK. Its signature must still be checked against the currently
+installed package before a later authorized replacement.
+
+Manual acceptance for preview 4 (outer screen):
+
+1. In capsule settings, test the two Duo notification options after disabling the
+   corresponding HyperLight options. A notification hidden by app lock-screen
+   rules should appear when show-all is enabled; an undismissed notification
+   should remain after unlock/relock when retention is enabled.
+2. Leave ordinary notifications unchecked in the collapsed-category selector.
+   On the next lock they should stay expanded after the wake animation, and after
+   another AOD cycle. Then check the category, start a new lock, and tap its bubble:
+   the list should open and stay open. A manual downward collapse must still work.
+3. Collapse all three kinds and swipe upward from the clock/content area:
+   music, live cards, notifications, then unlock. Repeat from the empty gap beside
+   the rail. Near-icon torch/camera drags should retain their forgiving native
+   targets, while a short diagonal in the gap should cancel instead of unlocking.
+4. Slowly drag the right capsule, hold midway, reverse, and release short/long.
+   Glass, artwork and text should follow one progress without a second motion
+   starting on release. Try catching a settling animation with a new gesture.
+   Capsule and bubble taps should still open the intended card directly.
+5. With one capsule remaining, collapse another card. Its bubble should bud from
+   the capsule and separate as the card exits. Also return the first item to an
+   empty rail. Test a notification disappearing during this motion; later gestures
+   must still work. Sleep or open the control center mid-motion and check for
+   leftover glass or pressed buttons on return.
+6. Toggle large artwork repeatedly and then open lyrics. The native thumbnail
+   remains in its original slot with only a light veil when expanded; the lyrics
+   control and native card layout should remain stable.
+
+### Preview 3 implementation and delivery history
 
 The candidate is `0.2.0-preview.3` (`20003`).
 

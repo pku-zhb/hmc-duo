@@ -17,6 +17,10 @@ not the destination for project links, updates or bug reports.
   tests or installed hooks do not establish correct phone behavior.
 - Source work and host builds do not authorize phone installation, restarts or
   live setting changes. Follow the conversation's current device authorization.
+- Ask the owner and receive explicit confirmation immediately before every APK
+  installation. Approval for a previous preview does not authorize another install.
+  If the owner is busy or asks to wait, finish source/build/commit preparation and
+  leave the verified APK ready until a new confirmation is received.
 - The owner performs all phone UI interaction, LSPosed switching and restarts.
   Prepare and install authorized preview APKs in the background, then provide
   concrete manual test steps and expected observations. Do not launch activities,
