@@ -448,7 +448,9 @@ final class LockLyrics {
     private static final long STILL_BLUR_WAIT_MS = 1200L;
 
     static boolean blurSettled() {
-        if (!blurWanted()) return true;
+        // Duo's compact rail uses the native wallpaper. Waiting for the hidden artwork's
+        // frosting acknowledgement delayed a ready lyric page by up to 1.2 seconds.
+        if (!LyricPresentationState.waitsForBlur(blurWanted(), CoverBackdrop.hidden())) return true;
         long now = SystemClock.uptimeMillis();
         if (!Main.sVideoWallpaper) {
             // A still cover frosts on the composer and then waits out the fade in the air, so
@@ -1076,7 +1078,27 @@ final class LockLyrics {
      * through is what the lock screen was showing.
      */
     static boolean inHeldAod() {
-        return ClockCollapse.aodHeld() && !Main.screenOnCached();
+        // The clock's sleep hook precedes SCREEN_OFF. Keep the held page visible throughout
+        // that interval instead of briefly treating Phase.AOD as an unlit, unheld page.
+        return ClockCollapse.aodHeld() && (!Main.screenOnCached()
+                || ClockCollapse.phase() == ClockCollapse.Phase.AOD);
+    }
+
+    private static final LyricPresentationState sPresentation = new LyricPresentationState();
+
+    /** One text treatment through sleep/wake, separate from the panel's redraw scheduling. */
+    static boolean ambientText() {
+        ClockCollapse.Phase phase = ClockCollapse.phase();
+        return sPresentation.update(Main.screenOnCached(), phase == ClockCollapse.Phase.AOD,
+                phase == ClockCollapse.Phase.ON || phase == ClockCollapse.Phase.OFF);
+    }
+
+    /** Refresh compositor state on the frame that changes it, not the next 500ms lyric tick. */
+    static void prepareFrame() {
+        // The display listener owns entry into low-power scheduling. Only clear a stale wake
+        // latch here; reading the physical display state on every animated frame is unnecessary.
+        if (sStill && !inHeldAod()) updateStill();
+        updateHdr();
     }
 
     /**
@@ -2745,7 +2767,12 @@ final class LockLyrics {
         // Never in a doze: the window would go bright and ask the display for headroom, which is
         // the opposite of what a display that has just dimmed itself wants. The glow that arms
         // this needs the lyrics on screen, so without this the AOD would ask for HDR too.
-        return sHdr && sGlowing && wantsShown() && !inHeldAod() && !sLines.isEmpty();
+        return sHdr && sGlowing && wantsShown() && !ambientText() && !sLines.isEmpty();
+    }
+
+    /** Extended-range ink is valid only after this window has committed its HDR mode. */
+    static boolean hdrInkAllowed() {
+        return hdrWanted() && LyricWindow.hdrInkReady();
     }
 
     private static boolean sGlowing;

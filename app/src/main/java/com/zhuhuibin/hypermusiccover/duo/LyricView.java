@@ -456,6 +456,8 @@ final class LyricView extends View {
     private float anchorFix, anchorFixWant;
 
     private long lastStep;
+    private boolean ambientText;
+    private boolean hdrInk;
 
     private boolean looping;
     private final int[] loc = new int[2];
@@ -608,7 +610,14 @@ final class LyricView extends View {
         float dt = lastStep == 0L ? 0f : Math.min(0.05f, (now - lastStep) / 1000f);
         lastStep = now;
 
-        boolean changed = followAodDim();
+        LockLyrics.prepareFrame();
+        boolean nextAmbientText = LockLyrics.ambientText();
+        boolean changed = ambientText != nextAmbientText;
+        ambientText = nextAmbientText;
+        boolean nextHdrInk = LockLyrics.hdrInkAllowed();
+        changed |= hdrInk != nextHdrInk;
+        hdrInk = nextHdrInk;
+        changed |= followAodDim();
         changed |= followHostAlpha();
         changed |= followBouncer(dt);
         // Before the band below, which reads this view's scale.
@@ -930,7 +939,7 @@ final class LyricView extends View {
             }
             // A line-timed line lights when it is sung, not when the stack arrives a second early.
             // Still, it lights with the move: there is no frame a second later to light it in.
-            float lTo = on && (still || ms >= l.start) ? 1f : 0f;
+            float lTo = on && (ambientText || ms >= l.start) ? 1f : 0f;
             float lv = approach(lit[i], lTo, dtTo, lTo > lit[i] ? TAU_EMPH_IN : TAU_EMPH_OUT);
             if (Math.abs(lv - lTo) < 0.003f) lv = lTo;
             if (lv != lit[i]) {
@@ -1093,7 +1102,9 @@ final class LyricView extends View {
      * for frame, and looked up again whenever it is not attached - the keyguard is rebuilt.
      */
     private float dimTarget() {
-        if (!LockLyrics.inHeldAod()) return swipeFade();
+        // The dim layer also animates on wake. Follow it until the held clock has landed,
+        // rather than snapping back to full brightness at the earlier SCREEN_ON event.
+        if (!ambientText || !ClockCollapse.aodHeld()) return swipeFade();
         View s = dimSource;
         if (s == null || !s.isAttachedToWindow()) {
             View root = keyguardRoot();
@@ -1523,7 +1534,7 @@ final class LyricView extends View {
         }
         // Playback effects use vsync frames while the display is active. AOD still mode instead
         // uses its scheduled single-frame checkpoints, including Eye-candy's throttled word steps.
-        if (LockLyrics.still()) return false;
+        if (ambientText) return false;
         return wordsLive() || dotsLive() || translationLive(now());
     }
 
@@ -1590,12 +1601,12 @@ final class LyricView extends View {
     boolean dotsLive() {
         // Not while paused: nothing about them moves then, and this kept the whole keyguard
         // window redrawing at the refresh rate for as long as the pause lasted.
-        return dotsFor >= 0 && show > 0f && LockLyrics.playing();
+        return !ambientText && dotsFor >= 0 && show > 0f && LockLyrics.playing();
     }
 
     /** A held note is glowing now, or is about to - the window's HDR mode follows this. */
     private boolean originalGlowSoon() {
-        if (!LockLyrics.sHdr || focus < 0 || show == 0f || !LockLyrics.playing()) return false;
+        if (ambientText || !LockLyrics.sHdr || focus < 0 || show == 0f || !LockLyrics.playing()) return false;
         for (int i = Math.max(0, focus - 1); i <= focus; i++) {
             LyricLine l = lines.get(i);
             if (!l.hasWords() || emph[i] <= 0f) continue;
@@ -1610,6 +1621,7 @@ final class LyricView extends View {
     }
 
     private boolean glowSoon() {
+        if (ambientText) return false;
         if (LockLyrics.sRapidGroups) return originalGlowSoon();
         if (!LockLyrics.sHdr || focus < 0 || show == 0f || !LockLyrics.playing()) return false;
         for (int i = Math.max(0, focus - 12); i <= Math.min(lines.size() - 1, focus + 12); i++) {
@@ -1627,7 +1639,7 @@ final class LyricView extends View {
 
     /** A singing line's words are moving: the fill, the lift, a held note's glow. */
     private boolean originalWordsLive() {
-        if (!LockLyrics.playing() || focus < 0 || show == 0f) return false;
+        if (ambientText || !LockLyrics.playing() || focus < 0 || show == 0f) return false;
         for (int i = Math.max(0, focus - 1); i <= focus; i++) {
             LyricLine l = lines.get(i);
             if (l.hasWords() && emph[i] > 0f && ms >= l.start
@@ -1639,6 +1651,7 @@ final class LyricView extends View {
     }
 
     private boolean wordsLive() {
+        if (ambientText) return false;
         if (LockLyrics.sRapidGroups) return originalWordsLive();
         if (!LockLyrics.playing() || LockLyrics.inHeldAod() || focus < 0 || show == 0f) return false;
         int tail = AliveLyricsEffects.enabled(LockLyrics.sAliveFx)
@@ -1659,7 +1672,7 @@ final class LyricView extends View {
 
     /** A translation that has started fading in still needs frames until it settles. */
     private boolean translationLive(long now) {
-        if (!AliveLyricsEffects.enabled(LockLyrics.sAliveFx) || LockLyrics.still()
+        if (!AliveLyricsEffects.enabled(LockLyrics.sAliveFx) || ambientText
                 || !LockLyrics.playing()) return false;
         for (long at : transFadeAt) {
             if (AliveLyricsEffects.translationNeedsFrame(LockLyrics.sAliveFx, true, false, at, now)) {
@@ -1963,7 +1976,7 @@ final class LyricView extends View {
         java.util.Arrays.fill(scale, INACTIVE_SCALE);
         blur = new float[n];
         transFadeAt = new long[n];
-        boolean fxOn = AliveLyricsEffects.enabled(LockLyrics.sAliveFx) && !LockLyrics.still()
+        boolean fxOn = AliveLyricsEffects.enabled(LockLyrics.sAliveFx) && !ambientText
                 && oldVersion >= 0;
         for (int i = 0; i < n; i++) {
             boolean hasSecondary = b.trans[i] != null || b.roma[i] != null || b.onlineTrans[i] != null;
@@ -2679,7 +2692,9 @@ final class LyricView extends View {
         Layout.Alignment align = alignFor(l.opposite, builtAlign);
         float pivotX = align == Layout.Alignment.ALIGN_CENTER ? lay.getWidth() / 2f
                 : align == Layout.Alignment.ALIGN_OPPOSITE ? lay.getWidth() : 0f;
-        boolean still = LockLyrics.still();
+        // The low-power panel may suspend several seconds after sleep starts. Use the same
+        // full-line treatment throughout the handoff; only draw scheduling depends on still().
+        boolean still = ambientText;
         // Retained lines stay readable, but finished word lifts/glows need no per-word rendering.
         int wordTail = AliveLyricsEffects.enabled(LockLyrics.sAliveFx)
                 ? LIFT_HOLD_MS + LIFT_RETURN_MS : LIFT_MIN_MS;
@@ -2774,7 +2789,7 @@ final class LyricView extends View {
     }
 
     private boolean hdrShimmerEnabled() {
-        return LockLyrics.sHdr;
+        return hdrInk;
     }
 
     /** Text colour: the tint at whiteness 0, white at 1, with an alpha. */
@@ -2987,7 +3002,7 @@ final class LyricView extends View {
         lay.getPaint().setColor(0xFFFFFFFF);
         StaticLayout b = bgLay[i];
         LyricLine line = lines.get(i);
-        boolean eyeCandyBacking = !LockLyrics.still()
+        boolean eyeCandyBacking = !ambientText
                 && AliveLyricsEffects.eyeCandy(LockLyrics.sAliveFx)
                 && line.bg != null;
         if (b != null && (!eyeCandyBacking
@@ -3018,8 +3033,8 @@ final class LyricView extends View {
      * A held note's brightness: HDR only while it glows, scaled with the glow. Nothing else is
      * drawn above white - the highlight is the end of a long note lighting up, not the line.
      */
-    private static float glowGain(float glow) {
-        return LockLyrics.sHdr ? 1f + (HDR_GAIN - 1f) * glow : 1f;
+    private float glowGain(float glow) {
+        return hdrInk ? 1f + (HDR_GAIN - 1f) * glow : 1f;
     }
 
     private void drawTranslation(Canvas c, int i, float a) {
@@ -3030,7 +3045,7 @@ final class LyricView extends View {
         float fade = 1f;
         float lift = 0f;
         int fx = LockLyrics.sAliveFx;
-        if (AliveLyricsEffects.enabled(fx) && !LockLyrics.still()) {
+        if (AliveLyricsEffects.enabled(fx) && !ambientText) {
             long at = transFadeAt.length > i ? transFadeAt[i] : 0L;
             if (at == -1L) {
                 at = now();
@@ -3257,7 +3272,7 @@ final class LyricView extends View {
             // white as its tail began, especially on character-timed lyrics.
             float sustainedGlow = 0f;
             boolean syllableStarted = sungChars > cs;
-            if (LockLyrics.sHdr && glowOn && syllableStarted
+            if (hdrInk && glowOn && syllableStarted
                     && dur >= GLOW_MIN_MS) {
                 sustainedGlow = ms < end ? clamp01((ms - s) / (dur * 0.3f))
                         : 1f - clamp01((ms - end) / (float) GLOW_TAIL_MS);
@@ -3320,7 +3335,7 @@ final class LyricView extends View {
                                  int start, int end, float baseline, float e, boolean lead,
                                  float gain) {
         if (AliveLyricsEffects.eyeCandy(LockLyrics.sAliveFx) && l.hasWords()
-                && !LockLyrics.still() && !LockLyrics.inHeldAod()) {
+                && !ambientText) {
             drawKaraokeSyllable(c, l, lay, p, xs, cs, ce, rs, re, syllable, start, end,
                     baseline, e, lead, gain, true);
             return;
@@ -3329,7 +3344,7 @@ final class LyricView extends View {
             drawSyllableRun(c, l, lay, p, xs, cs, ce, rs, re, baseline, false, gain);
             return;
         }
-        boolean lifted = lead && !LockLyrics.still() && !LockLyrics.inHeldAod();
+        boolean lifted = lead && !ambientText;
         boolean activeLead = lead && focus >= 0 && l == lines.get(focus)
                 && LockLyrics.playing() && lifted && Main.screenOnCached();
         boolean colorFill = false;
