@@ -24,8 +24,9 @@ not automatically verified on every device, display or OS version.
 The owner reported severe AOD and native-island animation slowdown with the
 Preview 16 / Lite Preview 3 pair. A read-only CPU sample identified repeated
 reflection and exception construction in Lite, with HMC-side palette/source
-processing amplifying the shared material path. This iteration changes HMC only;
-Lite receives a separate implementation handoff. See the
+processing amplifying the shared material path. Both projects are now maintained
+by the same executor. HMC Preview 17 and Lite Preview 5 implement the paired
+source fixes; the unified material editor stays on its own worktree. See the
 [Preview 17 record](releases/preview-17.md). Device improvement is not yet accepted.
 
 ### Preview 16 compatibility handoff
