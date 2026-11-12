@@ -43,7 +43,19 @@ configuration migration must be supplied by its separate implementation.
 
 ## Validation status
 
-Host build, tests and artifact checks are recorded after completion below.
+All 953 host tests passed across 153 suites, with no failures, errors or skips.
+Debug, Release and Release vital lint completed successfully. The release APK
+passed ZIP integrity, 16 KiB-aware alignment, identity and Android signature
+checks. Its embedded source revision is
+`43a8136386e3edc226a92dd92fe89766270cee97`.
+
+- HMC package: `com.zhuhuibin.hypermusiccover.duo`.
+- HMC version: `0.2.0-preview.16` / `20016`, not debuggable.
+- HMC APK: 4,212,357 bytes; SHA-256
+  `7e156d5652371f4e95f7f92306a9dd1b2858de02f567fdb18b3a4f7f11b1119c`.
+- The existing development preview signing certificate is retained.
+- Versioned repository and personal archive copies match the phone Download
+  copy. This build has not been installed or reloaded.
 The ROM-specific media calculation and notification binder signatures were
 verified against retained SystemUI code. The View/RenderNode bridge and material
 readback signatures were verified against the phone's framework, copied through
@@ -51,9 +63,18 @@ read-only ADB. No screenshot, GUI input, installation, scope reload or device
 reboot was used. Missing OEM signatures fail conservatively rather than replaying
 a cached effect.
 
-A compatible fixed Lite version and paired device acceptance remain pending.
-The previous Lite baseline is not evidence that its handoff requirements are
-implemented. Passing host tests cannot establish visual compatibility.
+The separate Lite executor subsequently delivered `0.1.0-preview3` / `3`,
+archived from `50d2a6c42ebc3e914864f9e8c77317b6568594d8`. Its package/version and
+repository/personal archive hashes were independently checked:
+`a93bdec15e7fd954ecb59ab93afa390b58fc38057a0835c709d126413bd0de5e`.
+The proposed fixed pair is HMC Preview 16 with Lite Preview 3. Paired startup,
+standalone operation and visual device acceptance remain pending; passing host
+tests cannot establish visual compatibility.
+
+For both combinations, turn off Lite's lock-screen ordinary-notification effects
+when checking HMC coexistence. Upgrades preserve previous coverage until this
+new switch is explicitly changed. This does not disable Lite's independent
+unlocked-shade or heads-up settings.
 
 ## Focused paired acceptance
 

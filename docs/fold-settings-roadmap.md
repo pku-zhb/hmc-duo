@@ -25,7 +25,8 @@ The HMC side now separates default music material ownership, committed native
 material following and notification transition handback. See the
 [Preview 16 record](releases/preview-16.md) for source causes, supported music
 configurations and the focused paired checks. Lite has a separate implementation
-owner; its compatible fixed version and paired device acceptance remain pending.
+owner. The fixed candidate is HMC Preview 16 with Lite Preview 3; paired device
+acceptance remains pending. HMC passed 953 host tests and artifact checks.
 The owner deferred Preview 15 testing until this compatibility work is ready.
 
 ### Preview 15
