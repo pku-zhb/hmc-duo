@@ -11466,9 +11466,13 @@ public class Main extends XposedModule {
     }
 
     static int nextRailMusicPage() {
-        return RailMusicPagePolicy.next(RailMusicPagePolicy.current(sCoverMode,
+        return railMusicTapTarget(false);
+    }
+
+    private static int railMusicTapTarget(boolean expandedArtwork) {
+        return RailMusicPagePolicy.afterTap(RailMusicPagePolicy.current(sCoverMode,
                 LockLyrics.requestedLyricsPage(), FoldMusicRuntime.combinedRequested()),
-                LockLyrics.sEnabled, FoldMusicRuntime.supportsCombinedPage());
+                expandedArtwork, LockLyrics.sEnabled, FoldMusicRuntime.supportsCombinedPage());
     }
 
     static void cycleRailMusicPage() {
@@ -11679,6 +11683,14 @@ public class Main extends XposedModule {
         // A full-screen cover is itself the thing, all of it.
         if (!sCoverMode) return;
         if (LockLyrics.wantsCompactArtwork() || !CoverCardLayer.artworkAt(x, y)) return;
+        if (MiniPlayerRuntime.detachedRail()) {
+            // The rail has explicit clock/artwork/lyrics pages. The old compact-player path
+            // only hid this foreground and kept cover mode alive, leaving its blurred fill and
+            // the cycle button on the artwork page. Use the same complete scene exit as the
+            // player's clock action, including its wallpaper, auto-entry and restore state.
+            selectRailMusicPage(railMusicTapTarget(true));
+            return;
+        }
         if (!sCloseLyriclessCover && LockLyrics.sEnabled && !LockLyrics.hasLyrics()) {
             // Default behaviour: without a lyric page, retain the cover scene and compact
             // its artwork rather than treating a tap as a scene exit.

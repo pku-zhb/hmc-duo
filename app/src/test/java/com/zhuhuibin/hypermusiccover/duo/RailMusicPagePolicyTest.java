@@ -47,4 +47,39 @@ public class RailMusicPagePolicyTest {
         assertEquals(RailMusicPagePolicy.CLOCK, RailMusicPagePolicy.current(false, true, true));
     }
 
+    @Test public void openingThenTappingTheLargeArtworkRestoresClockBackgroundAndCoverAction() {
+        int page = RailMusicPagePolicy.afterTap(RailMusicPagePolicy.CLOCK, false, true, false);
+        assertEquals(RailMusicPagePolicy.ARTWORK, page);
+        assertTrue(ArtworkBackdropState.eligible(true, page != RailMusicPagePolicy.CLOCK,
+                true, true, false, true));
+
+        page = RailMusicPagePolicy.afterTap(page, true, true, false);
+        assertEquals(RailMusicPagePolicy.CLOCK, page);
+        assertFalse(ArtworkBackdropState.eligible(true, page != RailMusicPagePolicy.CLOCK,
+                true, true, false, true));
+        assertEquals(RailMusicPagePolicy.ARTWORK,
+                RailMusicPagePolicy.afterTap(page, false, true, false));
+    }
+
+    @Test public void largeArtworkDismissalDiffersFromThePlayerButtonsNextPage() {
+        assertEquals(RailMusicPagePolicy.LYRICS,
+                RailMusicPagePolicy.afterTap(RailMusicPagePolicy.ARTWORK, false, true, false));
+        assertEquals(RailMusicPagePolicy.CLOCK,
+                RailMusicPagePolicy.afterTap(RailMusicPagePolicy.ARTWORK, true, true, false));
+        // Missing/disabled lyrics must not preserve a hidden artwork scene over a blurred fill.
+        assertEquals(RailMusicPagePolicy.CLOCK,
+                RailMusicPagePolicy.afterTap(RailMusicPagePolicy.ARTWORK, true, false, false));
+    }
+
+    @Test public void dismissingCombinedArtworkClearsTheWholePageAndStaleTapsCannotReopenIt() {
+        int page = RailMusicPagePolicy.afterTap(RailMusicPagePolicy.ARTWORK_AND_LYRICS,
+                true, true, true);
+        assertEquals(RailMusicPagePolicy.CLOCK, page);
+        assertFalse(RailMusicPagePolicy.showsLyrics(page));
+        assertEquals(RailMusicPagePolicy.CLOCK,
+                RailMusicPagePolicy.afterTap(page, true, true, true));
+        assertEquals(RailMusicPagePolicy.ARTWORK,
+                RailMusicPagePolicy.afterTap(page, false, true, true));
+    }
+
 }
