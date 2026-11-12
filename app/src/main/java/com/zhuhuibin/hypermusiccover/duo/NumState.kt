@@ -174,8 +174,10 @@ internal object NumState {
                     if (inNumber != value) {
                         inNumber = value
                         trace(if (value) "stack folded" else "stack opened")
-                        listeners.forEach { runCatching { it(value) } }
                     }
+                    // A repeated NUMBER callback can complete an explicit return after the
+                    // previous AOD session already cached true. Reconcile publication anyway.
+                    listeners.forEach { runCatching { it(value) } }
                     result
                 }
             }

@@ -25,6 +25,14 @@ internal class RailContentGesture {
     /** True exactly once, when the original native recipient needs a CANCEL. */
     fun move(dx: Float, dy: Float, slop: Float, atListTop: Boolean): Boolean {
         if (nativeControl || claimed) return false
+        // A notification dismissal owns its entire horizontal stream, even when the thumb
+        // later wobbles upward. Empty rail gaps retain the diagonal unlock guard.
+        if (scrollableCard && abs(dx) > slop && abs(dx) >= abs(dy)) {
+            nativeControl = true
+            expansion.reset()
+            collapse.reset()
+            return false
+        }
         if (expansion.move(dx, dy, slop)) {
             collapse.reset()
             action = Action.EXPAND

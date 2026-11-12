@@ -1744,6 +1744,7 @@ public class Main extends XposedModule {
         try {
             Class<?> shade = Xp.findClass(
                     "com.android.systemui.shade.NotificationShadeWindowView", cl);
+            ShortcutGestureRuntime.installContentBoundary(cl);
             Xp.hookAll(shade, "dispatchTouchEvent", chain -> {
                 MotionEvent ev = null;
                 try {

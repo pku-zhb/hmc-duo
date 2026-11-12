@@ -26,6 +26,33 @@ for a compatibility comparison, and restored to preview 4 at the owner's request
 Preview 5 is the next host-built candidate. The owner explicitly requested no
 installation, phone debugging or restart for this iteration.
 
+### Preview 5 feedback and preview 6 work (2026-11-12)
+
+The owner accepted full-area downward collapse and immediate long-title avoidance.
+Undersized cards have not recurred; long-background session recovery remains untested.
+Black flashing and bottom-area horizontal input remain unresolved on the device.
+The page-cycle request means reusing the native artwork slot, not adding an adjacent
+button. Notification islands can also be absent after a collapse. HyperOS now needs
+a visible-item limit of 2/3/4/5 (default 3), top clearance and overflow navigation.
+
+The first host-validated input/notification changes are:
+
+- The inspected stock APK (`074486d6856c8eda2764d8864d99365e178d4a4758836e3c44152862ddc8b7e1`)
+  inlines a full-width `mTouchAtKeyguardBottomArea` intercept into
+  `NotificationPanelViewController.TouchHandler.onInterceptTouchEvent`. It starts
+  below the indication text and claims either axis after slop. Actual visible card
+  streams clear that flag and bypass the hidden number-footer interceptor, without
+  bypassing the rest of panel handling. Shortcut acquisition uses displayed icon
+  screen coordinates and its existing tolerance, latched for the full stream.
+- A horizontal notification dismissal keeps native ownership through later vertical
+  wobble, even with other islands folded. Empty-space diagonal protection remains.
+- A notification-return timeout no longer changes the user's collapsed choice to
+  expanded. A single bounded native settle attempt and final publication reconciliation
+  replace the premature cancellation. Repeated native NUMBER callbacks still publish.
+
+These are source-supported candidates, not device acceptance. No phone interaction,
+installation or restart is authorized for this iteration.
+
 ### Preview 4 feedback and preview 5 candidate (2026-11-12)
 
 The owner accepted the content expansion order, the filled gesture gap, notification

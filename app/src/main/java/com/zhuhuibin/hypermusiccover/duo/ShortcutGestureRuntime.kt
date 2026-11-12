@@ -19,6 +19,70 @@ internal object ShortcutGestureRuntime {
     private var failure = "none"
     private data class Gesture(val x: Float, val downTime: Long)
     private val mirrored = WeakHashMap<Any, Gesture>()
+    private val ownership = WeakHashMap<Any, ShortcutTouchOwnership>()
+    private val nativeEvents = WeakHashMap<Any, MotionEvent>()
+    private var rejectedStreams = 0
+    private var protectedBottomMoves = 0
+    private val contentStreams = WeakHashMap<Any, Long>()
+
+    /** Stock HyperOS treats everything below the indication text as the bottom area.
+     * Reflowed cards occupy that band, so clear only that legacy intercept flag for their
+     * streams. All other panel interception and the actual shortcut plugin remain native. */
+    @JvmStatic fun installContentBoundary(loader: ClassLoader) {
+        runCatching {
+            val count = Xp.findClass("com.miui.systemui.notification.view.NotificationNumStateAreaTouchHandler", loader)
+            val streams = WeakHashMap<Any, Long>()
+            Xp.hookAll(count, "onInterceptTouchEvent") { chain ->
+                val event = chain.args.firstOrNull() as? MotionEvent
+                val owner = chain.thisObject
+                if (event?.actionMasked == MotionEvent.ACTION_DOWN) {
+                    streams.remove(owner)
+                    if (eligible() && MiniPlayerRuntime.nativeContentAt(event.rawX, event.rawY))
+                        streams[owner] = event.downTime
+                }
+                if (event != null && streams[owner] == event.downTime && eligible()) {
+                    // The hidden native count footer must not own the card drawn in its band.
+                    Xp.setObjectField(owner, "isDownInNumStateArea", false)
+                    Xp.setObjectField(owner, "pendingClick", false)
+                    Xp.setObjectField(owner, "handledByNumState", null)
+                    null
+                } else chain.proceed()
+            }
+        }.onFailure { Xp.w("DuoShortcut: count area boundary unavailable: $it") }
+        runCatching {
+            val cls = Xp.findClass("com.android.systemui.shade.NotificationPanelViewController\$TouchHandler", loader)
+            Xp.hookAll(cls, "onInterceptTouchEvent") { chain ->
+                val event = chain.args.firstOrNull() as? MotionEvent
+                val handler = chain.thisObject
+                if (event?.actionMasked == MotionEvent.ACTION_DOWN) {
+                    contentStreams.remove(handler)
+                    if (eligible() && MiniPlayerRuntime.nativeContentAt(event.rawX, event.rawY))
+                        contentStreams[handler] = event.downTime
+                }
+                fun clearLegacyArea() {
+                    if (event == null || contentStreams[handler] != event.downTime || !eligible()) return
+                    runCatching {
+                        val panel = Xp.getObjectField(handler, "this\$0")
+                        val touch = Xp.getObjectField(panel, "mTouchHandlerInjector")
+                        val keyguard = Xp.getObjectField(touch, "keyguardPanelViewTouchHandlerInjector")
+                        val injector = Xp.getObjectField(keyguard, "keyguardPanelViewInjector")
+                        val bottom = Xp.callMethod(Xp.getObjectField(injector, "keyguardBottomAreaInjector\$delegate"), "getValue")
+                        if (Xp.getObjectField(bottom, "mTouchAtKeyguardBottomArea") == true) {
+                            Xp.setObjectField(bottom, "mTouchAtKeyguardBottomArea", false)
+                            protectedBottomMoves++
+                        }
+                    }.onFailure { failure = it.javaClass.simpleName }
+                }
+                clearLegacyArea()
+                val result = chain.proceed()
+                // DOWN computes the native flag inside the inlined interceptor.
+                if (event?.actionMasked == MotionEvent.ACTION_DOWN) clearLegacyArea()
+                if (event?.actionMasked == MotionEvent.ACTION_UP || event?.actionMasked == MotionEvent.ACTION_CANCEL)
+                    contentStreams.remove(handler)
+                result
+            }
+        }.onFailure { failure = it.javaClass.simpleName; Xp.w("DuoShortcut: content boundary unavailable: $it") }
+    }
     private var projected = 0
     private var assistedHits = 0
     private var peakDistance = 0f
@@ -51,19 +115,21 @@ internal object ShortcutGestureRuntime {
         runCatching {
             val cls = Xp.findClass("com.miui.keyguard.shortcuts.controller.ShortcutMoveController", loader)
             Xp.hookAll(cls, "isTouchOnIcon") { chain ->
-                val result = chain.proceed()
-                if (result == true) result else runCatching {
+                val observed = runCatching {
                     val icon = chain.args.getOrNull(0) as? View
                     val owner = chain.thisObject
+                    val event = nativeEvents[owner]
                     val left = Xp.getObjectField(owner, "leftIcon") as? View
                     val right = Xp.getObjectField(owner, "rightIcon") as? View
                     val other = if (icon === left) right else left
-                    if (icon != null && (icon === left || icon === right) && hitsShortcut(icon, other,
-                            (chain.args[1] as Number).toFloat(), (chain.args[2] as Number).toFloat())) {
-                        assistedHits++
-                        true
-                    } else result
-                }.getOrDefault(result)
+                    if (!eligible() || event == null || icon == null ||
+                        (icon !== left && icon !== right)) null
+                    else hitsShortcut(icon, other, event.rawX, event.rawY)
+                }.getOrNull()
+                // The OEM compares local event coordinates with screen icon coordinates.
+                // Keep one coordinate space and never union the old hit area with the new one.
+                if (observed == true) assistedHits++
+                observed ?: chain.proceed()
             }
             Xp.hookAll(cls, "initCommonTouchEvent") { chain ->
                 val result = chain.proceed()
@@ -94,6 +160,21 @@ internal object ShortcutGestureRuntime {
             }
             Xp.hookAll(cls, "onTouchEvent") { chain ->
                 val event = chain.args.firstOrNull() as? MotionEvent
+                val owner = chain.thisObject
+                if (event != null && eligible()) runCatching {
+                    if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+                        val left = Xp.getObjectField(owner, "leftIcon") as? View
+                        val right = Xp.getObjectField(owner, "rightIcon") as? View
+                        if (left != null && right != null) {
+                            val hit = hitsShortcut(left, right, event.rawX, event.rawY) ||
+                                hitsShortcut(right, left, event.rawX, event.rawY)
+                            ownership.getOrPut(owner) { ShortcutTouchOwnership() }.start(event.downTime, hit)
+                            if (!hit) rejectedStreams++
+                        }
+                    }
+                }.onFailure { failure = it.javaClass.simpleName }
+                if (event != null && ownership[owner]?.allows(event.downTime) == false)
+                    return@hookAll false
                 runCatching {
                     if (event?.actionMasked == MotionEvent.ACTION_DOWN) peakDistance = 0f
                     if (event?.actionMasked == MotionEvent.ACTION_UP) {
@@ -103,7 +184,8 @@ internal object ShortcutGestureRuntime {
                     }
                 }
                 // A diagnostic failure must never prevent native dispatch or cause a second dispatch.
-                val result = chain.proceed()
+                if (event != null) nativeEvents[owner] = event
+                val result = try { chain.proceed() } finally { nativeEvents.remove(owner) }
                 runCatching {
                     if (event != null && MiniPlayerRuntime.detachedRail()) {
                         when (event.actionMasked) {
@@ -134,6 +216,6 @@ internal object ShortcutGestureRuntime {
     }
 
     @JvmStatic fun describe() = "installed=${installed.isNotEmpty()} launch=native projected=$projected downs=$downs hits=$hits " +
-        "assisted=$assistedHits ups=$ups cancels=$cancels side=$side dx=${dx.toInt()} dy=${dy.toInt()} " +
+        "assisted=$assistedHits rejected=$rejectedStreams bottomProtected=$protectedBottomMoves ups=$ups cancels=$cancels side=$side dx=${dx.toInt()} dy=${dy.toInt()} " +
         "lastPeak=${lastPeak.toInt()} lastActive=$lastActive error=$failure"
 }
