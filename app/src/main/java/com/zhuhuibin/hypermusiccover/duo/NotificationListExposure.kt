@@ -8,10 +8,15 @@ internal class NotificationListExposure {
     private var retries = 0
     private var pileSince: Long? = null
     private var visibleSince: Long? = null
+    private var hasUsableList = false
+    private var nativeInteraction = false
     var captured = false
         private set
     val opening get() = requestedAt != null
     val holdsIsland get() = opening || captured
+
+    /** A real native gesture can leave NUMBER without sending enter/exitNumState again. */
+    fun interacted() { nativeInteraction = true }
 
     /** Gesture routing must keep the island until exposure has settled, even on a visible frame. */
     fun listPresented(state: String?, wantsList: Boolean?, rowsVisible: Boolean): Boolean =
@@ -20,6 +25,7 @@ internal class NotificationListExposure {
     fun reset() {
         requestedAt = null; retargeted = false; retries = 0
         pileSince = null; visibleSince = null; captured = false
+        hasUsableList = false; nativeInteraction = false
     }
     fun request(now: Long) { reset(); requestedAt = now }
     fun cancelOpen() { requestedAt = null; pileSince = null; visibleSince = null }
@@ -39,13 +45,18 @@ internal class NotificationListExposure {
         }
         if (listVisible) {
             pileSince = null
-            if (opening) {
+            if (!busy) hasUsableList = true
+            if (opening || nativeInteraction && (captured || collapsed)) {
                 // Focus/media rows can join the stack after the first list frame. Do not retire
                 // the bubble on that transient frame or during an unfinished native scroll.
                 if (busy) visibleSince = null
                 else {
                     val since = visibleSince ?: now.also { visibleSince = it }
-                    if (now - since >= 128L) { reset(); return Action.OPENED }
+                    if (now - since >= 128L) {
+                        reset()
+                        hasUsableList = true
+                        return Action.OPENED
+                    }
                 }
                 return Action.NONE
             }
@@ -66,9 +77,13 @@ internal class NotificationListExposure {
             }
             return Action.NONE
         }
-        // NUMBER during waking is deliberately ignored: it is not a new user fold choice.
-        // A settled partial pile, however, cannot stand for an expanded notification list.
-        if (!busy && state == "STACK" && (wantsList != false || !rowsVisible)) {
+        // The enum describes the shared media/focus/normal stack, not normal-row exposure.
+        // A mixed stack can settle in LIST with its normal rows hidden below focus cards,
+        // or in NUMBER without another enterNumState callback. Neither is an open list.
+        // A bare NUMBER at wake remains untouched until a list or a real gesture was seen.
+        val hiddenList = state == "STACK" || state == "LIST" ||
+            state == "NUMBER" && !collapsed && (hasUsableList || nativeInteraction)
+        if (!busy && hiddenList) {
             val since = pileSince ?: now.also { pileSince = it }
             if (!captured && now - since >= 400L) {
                 captured = true

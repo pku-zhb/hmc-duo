@@ -162,4 +162,56 @@ class NotificationListExposureTest {
         assertTrue(e.opening)
         assertFalse(e.captured)
     }
+
+    @Test fun sharedListEnumDoesNotHideANormalPileBehindReleasedMediaAndFocusCards() {
+        val e = NotificationListExposure()
+        assertEquals(NotificationListExposure.Action.NONE, e.sample(0, "LIST", true))
+        assertEquals(NotificationListExposure.Action.NONE, e.sample(100, "LIST", false, busy = true))
+        assertEquals(NotificationListExposure.Action.NONE, e.sample(500, "LIST", false))
+        assertEquals(NotificationListExposure.Action.CAPTURE, e.sample(900, "LIST", false))
+        assertTrue(e.holdsIsland)
+        assertFalse(e.listPresented("LIST", false, false))
+    }
+
+    @Test fun numberWithoutAnotherEnterCallbackStillReturnsPreviouslyOpenNormals() {
+        val e = NotificationListExposure()
+        e.sample(0, "LIST", true)
+        assertEquals(NotificationListExposure.Action.NONE, e.sample(100, "NUMBER"))
+        assertEquals(NotificationListExposure.Action.CAPTURE, e.sample(500, "NUMBER"))
+        assertTrue(e.holdsIsland)
+    }
+
+    @Test fun nativeGestureCanRecoverHiddenNumberEvenWithoutEarlierUsableListSample() {
+        val e = NotificationListExposure()
+        e.interacted()
+        assertEquals(NotificationListExposure.Action.NONE, e.sample(100, "NUMBER"))
+        assertEquals(NotificationListExposure.Action.CAPTURE, e.sample(500, "NUMBER"))
+    }
+
+    @Test fun settledNumberAlreadyOwnedByTheIslandDoesNotStartAnotherReturn() {
+        val e = NotificationListExposure()
+        e.interacted()
+        for (time in listOf(100L, 500L, 1000L))
+            assertEquals(NotificationListExposure.Action.NONE, e.sample(time, "NUMBER", collapsed = true))
+    }
+
+    @Test fun aNativeUpwardScrollCanReopenCapturedNotificationsWithoutAnotherBubbleTap() {
+        val e = NotificationListExposure()
+        e.failedOpen()
+        e.interacted()
+        assertEquals(NotificationListExposure.Action.NONE,
+            e.sample(100, "LIST", true, busy = true, collapsed = true))
+        assertEquals(NotificationListExposure.Action.NONE,
+            e.sample(500, "LIST", true, collapsed = true))
+        assertEquals(NotificationListExposure.Action.OPENED,
+            e.sample(628, "LIST", true, collapsed = true))
+        assertFalse(e.holdsIsland)
+    }
+
+    @Test fun wakeGeometryCannotReplaceTheSavedCollapsedChoice() {
+        val e = NotificationListExposure()
+        for (time in listOf(100L, 500L, 1000L))
+            assertEquals(NotificationListExposure.Action.NONE,
+                e.sample(time, "LIST", true, collapsed = true))
+    }
 }

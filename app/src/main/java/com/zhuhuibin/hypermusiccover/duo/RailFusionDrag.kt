@@ -58,6 +58,8 @@ internal object RailFusionDrag {
 
     private fun smooth(value: Float): Float = value * value * (3f - 2f * value)
 
-    fun settleDuration(from: Float, to: Float): Long =
-        (RailFusionMotion.DURATION_MS * abs(to - from)).toLong().coerceIn(90L, RailFusionMotion.DURATION_MS)
+    fun settleDuration(from: Float, to: Float, hyperOs: Boolean = false): Long {
+        val duration = if (hyperOs) RailFusionMotion.HYPEROS_DURATION_MS else RailFusionMotion.DURATION_MS
+        return (duration * abs(to - from)).toLong().coerceIn(90L, duration)
+    }
 }

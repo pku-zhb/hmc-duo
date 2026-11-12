@@ -735,7 +735,8 @@ internal class MiniPlayerView(context: Context) : FrameLayout(context) {
         if (!railFusion) return
         val box = frame.primary
         val xy = IntArray(2).also { (parent as? View)?.getLocationOnScreen(it) }
-        setMorphFrame(CoverMorphMotion.Box(box.x + xy[0], box.y + xy[1], box.w, box.h), box.w / 2f, 0f)
+        setMorphFrame(CoverMorphMotion.Box(box.x + xy[0], box.y + xy[1], box.w, box.h), box.w / 2f,
+            frame.primaryMaterial)
         content.translationY = 0f
         content.alpha = 1f
         content.scaleX = 1f

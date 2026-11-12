@@ -7,6 +7,7 @@ import kotlin.math.min
 /** Two native glass surfaces exchange roles; their icons never fade during a two-seat switch. */
 internal object RailFusionMotion {
     const val DURATION_MS = 420L
+    const val HYPEROS_DURATION_MS = 520L
     data class Box(val x: Float, val y: Float, val w: Float, val h: Float) {
         val cx get() = x + w / 2f
         val cy get() = y + h / 2f
@@ -14,7 +15,8 @@ internal object RailFusionMotion {
     }
     data class Frame(val incoming: Boolean, val primary: Box, val seats: Map<String, Box>,
         val companionMaterial: Float, val detail: Float, val icon: Box, val iconAlpha: Float,
-        val surface: RailSurfaceContour.Shape, val seatAlpha: Map<String, Float> = emptyMap())
+        val surface: RailSurfaceContour.Shape, val seatAlpha: Map<String, Float> = emptyMap(),
+        val primaryMaterial: Float = 0f)
 
     class Plan internal constructor(val from: String, val to: String,
         val before: Map<String, Box>, val after: Map<String, Box>, val joined: Boolean,

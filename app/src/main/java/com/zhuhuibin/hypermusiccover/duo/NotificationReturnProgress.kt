@@ -1,7 +1,7 @@
 package com.zhuhuibin.hypermusiccover.duo
 
 /** Native folding may finish in one traversal; the new bubble still needs a visible birth. */
-internal class NotificationReturnProgress(private val initialFade: Float?) {
+internal class NotificationReturnProgress(private val initialFade: Float?, private val minimumMs: Long = 240L) {
     var progress = 0f
         private set
     var completed = false
@@ -17,7 +17,7 @@ internal class NotificationReturnProgress(private val initialFade: Float?) {
             maxOf(normalizedFade ?: 0f, scroll?.takeIf { it.isFinite() }?.coerceIn(0f, 1f) ?: 0f)
         // Native motion remains the source. Only an instantaneous/very fast completion is
         // spread over this short visible interval; normal longer folds are not retimed.
-        val visibleLimit = (elapsedMs.coerceAtLeast(0L) / 240f).coerceIn(0f, 1f)
+        val visibleLimit = RailTransitionTiming.birthLimit(elapsedMs, minimumMs)
         progress = maxOf(progress, minOf(nativeProgress, visibleLimit))
         completed = nativeDone && progress >= .999f
         return progress

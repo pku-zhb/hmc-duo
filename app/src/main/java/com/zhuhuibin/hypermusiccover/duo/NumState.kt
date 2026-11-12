@@ -25,6 +25,8 @@ internal object NumState {
     private val artworkScrollStates = java.util.WeakHashMap<Any, ArtworkScrollState>()
     private val presentation = NotificationFoldState()
     private val exposure = NotificationListExposure()
+    private val openingProgress = NotificationOpeningProgress()
+    private var openingVisualComplete = false
     private var exposureQueued = false
     private var exposureUntil = 0L
 
@@ -37,6 +39,27 @@ internal object NumState {
 
     fun notificationListVisible(): Boolean = exposure.listPresented(
         state(), shouldClickToList(), MiniPlayerRuntime.notificationRowsVisible())
+
+    /** Pending verification owns a gesture, but its visual follows the actual native scroll. */
+    fun notificationIslandAlpha(): Float = if (exposure.opening)
+        openingProgress.alpha(collapseVisualProgress(), position()) else if (openingVisualComplete) 0f else 1f
+
+    fun notificationOpeningFinished(): Boolean = openingVisualComplete
+
+    fun notificationOpening(): Boolean = exposure.opening
+
+    /** A hidden native pile is still the next category to close until its island owns it. */
+    fun notificationNeedsCollapse(): Boolean = folding && MiniPlayerRuntime.detachedRail() &&
+        LockIslands.foldsToCount() && (exposure.opening || !representedByIsland())
+
+    fun observeNativeTouch(event: android.view.MotionEvent) {
+        if (!folding || !MiniPlayerRuntime.detachedRail() || !Main.screenOnCached() ||
+            !Main.onKeyguardNow() || Main.bouncerShown() || MiniPlayerScene.aodActive ||
+            MiniPlayerScene.keyguardGoingAway) return
+        if (event.actionMasked == android.view.MotionEvent.ACTION_MOVE) exposure.interacted()
+        if (event.actionMasked == android.view.MotionEvent.ACTION_UP ||
+            event.actionMasked == android.view.MotionEvent.ACTION_CANCEL) checkExposureSoon()
+    }
 
     fun requestList(why: String): Boolean {
         // Repeated empty-space swipes while opening are consumed without restarting the scroll.
@@ -70,21 +93,26 @@ internal object NumState {
                 Main.onKeyguardNow() && !Main.bouncerShown() && !MiniPlayerScene.aodActive &&
                 !MiniPlayerScene.keyguardGoingAway && LockIslands.foldsToCount()
             val now = SystemClock.uptimeMillis()
+            if (!active) openingVisualComplete = false
             val nativeState = state()
             val before = exposure.holdsIsland
             when (exposure.observe(now, active, busy(), nativeState, shouldClickToList(),
                     active && MiniPlayerRuntime.notificationRowsVisible(), presentation.collapsed)) {
                 NotificationListExposure.Action.OPENED -> {
+                    openingVisualComplete = true
                     choosePresentation(false)
                     trace("rail list confirmed visible")
                 }
                 NotificationListExposure.Action.RETARGET_LIST -> goTo("LIST", why = "rail list layout settled")
                 NotificationListExposure.Action.RETRY_LIST -> goTo("LIST", why = "rail list remeasure")
                 NotificationListExposure.Action.CAPTURE -> {
+                    openingVisualComplete = false
+                    MiniPlayerRuntime.beginNativeNotificationReturn()
                     choosePresentation(true)
                     goTo("NUMBER", why = "rail captured hidden native pile")
                 }
                 NotificationListExposure.Action.RETAIN -> {
+                    openingVisualComplete = false
                     exposureUntil = now
                     trace("rail visible list did not settle; kept retryable island")
                 }
@@ -107,6 +135,7 @@ internal object NumState {
     fun beginLockSession() {
         presentation.beginSession()
         exposure.reset()
+        openingVisualComplete = false
     }
 
     /** The saved lock-screen choice, independent of the rows' transient sleep/wake visibility. */
@@ -119,7 +148,7 @@ internal object NumState {
 
     fun representedByIsland(): Boolean =
         (MiniPlayerRuntime.detachedRail() && exposure.holdsIsland) || presentation.representedByIsland(
-            inNumber ?: (state() == "NUMBER"), MiniPlayerRuntime.detachedRail())
+            state()?.let { it == "NUMBER" } ?: (inNumber == true), MiniPlayerRuntime.detachedRail())
 
     /** Native AOD geometry callbacks must not call this: only explicit presentation actions do. */
     fun choosePresentation(collapsed: Boolean) {
@@ -358,7 +387,13 @@ internal object NumState {
         val factory = Xp.getObjectField(Xp.getObjectField(model, "\$\$delegate_0"), "strategyFactory")
         val number = Xp.callMethod(Xp.getObjectField(factory, "numberStrategy"), "get")
         val foldedTop = (Xp.callMethod(number, "calculateTargetYPosition", info) as Number).toFloat()
-        choosePresentation(kotlin.math.abs(target - foldedTop) < 1f)
+        exposure.interacted()
+        val folded = kotlin.math.abs(target - foldedTop) < 1f
+        if (folded && MiniPlayerRuntime.detachedRail()) {
+            openingVisualComplete = false
+            MiniPlayerRuntime.beginNativeNotificationReturn()
+        }
+        choosePresentation(folded)
         checkExposureSoon()
     }
 
@@ -551,13 +586,19 @@ internal object NumState {
     fun goTo(state: String, anim: Boolean = true, why: String): String = runCatching {
         val model = model() ?: return "no model"
         val stack = MiniPlayerRuntime.stackForProbe() ?: return "no stack"
-        if (state == "NUMBER") exposure.cancelOpen()
+        if (state == "NUMBER") { exposure.cancelOpen(); openingVisualComplete = false }
         val railList = state == "LIST" && MiniPlayerRuntime.detachedRail()
-        if (railList && !exposure.opening) exposure.request(SystemClock.uptimeMillis())
+        val firstRequest = railList && !exposure.opening
+        if (firstRequest) {
+            exposure.request(SystemClock.uptimeMillis())
+            openingVisualComplete = false
+        }
         val y = scrollFor(model, state)
         val refactor = Xp.callMethod(Xp.getObjectField(model, "notifContainerRefactor"), "get")
         val scroller = Xp.callMethod(refactor, "getOverScroller")
         val cur = (Xp.callMethod(refactor, "getOwnScrollY") as Number).toInt()
+        if (firstRequest) openingProgress.begin(collapseVisualProgress(), position() ?: cur, y)
+        else if (railList) openingProgress.retarget(y)
         val injector = Xp.getObjectField(Xp.getObjectField(stack, "mController"), "mNsslControllerInjector")
         val done = if (!anim || cur == y) {
             Xp.callMethod(scroller, "abortAnimation")

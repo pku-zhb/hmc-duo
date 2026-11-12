@@ -977,6 +977,7 @@ internal object LockIslands {
 
     /** Observe the whole shade window so a gesture starting on the media card is included. */
     fun notificationArtworkTouch(event: android.view.MotionEvent) {
+        NumState.observeNativeTouch(event)
         val action = event.actionMasked
         if (action == android.view.MotionEvent.ACTION_UP || action == android.view.MotionEvent.ACTION_CANCEL) {
             if (action == android.view.MotionEvent.ACTION_UP) artworkGestureDirection.updateTouch(event.rawY)

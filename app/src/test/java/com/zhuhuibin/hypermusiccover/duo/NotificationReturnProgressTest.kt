@@ -38,4 +38,15 @@ class NotificationReturnProgressTest {
         assertEquals(1f, motion.update(500, null, null, false, true), 0f)
         assertTrue(motion.completed)
     }
+
+    @Test fun hyperOsHasALongerVisibleBirthWithoutRetimingSlowNativeMotion() {
+        val motion = NotificationReturnProgress(0f, RailTransitionTiming.minimumBirth(false))
+        assertEquals(.5f, motion.update(180, 1f, 1f, false, true), .001f)
+        assertFalse(motion.completed)
+        assertEquals(1f, motion.update(360, 1f, 1f, false, true), 0f)
+        assertTrue(motion.completed)
+        val slow = NotificationReturnProgress(0f, RailTransitionTiming.minimumBirth(false))
+        assertEquals(.5f, slow.update(600, .5f, .3f, true, false), .001f)
+        assertFalse(slow.completed)
+    }
 }
