@@ -1069,6 +1069,7 @@ public class Main extends XposedModule {
         PassBlurScaleFix.install();
         // The mini player hangs off the shortcut row, not the clock container.
         MiniPlayerRuntime.install(cl);
+        RailShortcutRuntime.install(cl);
         MediaCardRuntime.install(cl);
         RailStackBounds.install(cl);
         IslandAudioVisualizer.install(cl);

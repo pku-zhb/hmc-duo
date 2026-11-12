@@ -17,7 +17,6 @@ final class RightRailLayout {
     // Duo owns these dp values. No MiDuo view, margin or measured width is an input.
     static final float RIGHT_EDGE_DP = 16f;
     static final float CONTENT_RESERVE_DP = 75f;
-    static final float SHORTCUT_RESERVE_DP = 133.25f;
     static final float TOP_CONTROL_RESERVE_DP = 72f;
     static final float CAPSULE_LENGTH_DP = 221f;
 
@@ -34,7 +33,9 @@ final class RightRailLayout {
         float left = right - thickness;
         float contentRight = width - rightInset - CONTENT_RESERVE_DP * density;
         float companionTop = topInset + TOP_CONTROL_RESERVE_DP * density;
-        float limit = height - Math.max(bottomInset, SHORTCUT_RESERVE_DP * density) - indicatorExtent;
+        RailShortcutLayout shortcuts = RailShortcutLayout.plan(width, height, density, rightInset, bottomInset);
+        if (shortcuts == null) return null;
+        float limit = shortcuts.capsuleBottom - indicatorExtent;
         float length = Math.min(CAPSULE_LENGTH_DP * density, limit - companionTop - thickness - gap);
         float ceiling = topInset + gap + thickness + gap;
         float center = Math.max(ceiling + length / 2,
@@ -47,8 +48,8 @@ final class RightRailLayout {
         float centerX = (left + right) / 2;
         // Only the X reference is used by the native shortcut AOD inset. The slot itself
         // follows the keyguard root, never a measured or animated shortcut pair.
-        float controlSpan = 54.5f * density;
-        float controlY = height - 69.875f * density;
+        float controlSpan = shortcuts.camera.top - shortcuts.torch.top;
+        float controlY = (shortcuts.camera.top + shortcuts.torch.bottom) / 2f;
         return new Plan(new FoldMusicLayout.Box(left, top, right, bottom),
                 new FoldMusicLayout.Box(left, top - gap - thickness, right, top - gap),
                 new FoldMusicLayout.Box(leftInset, topInset, contentRight, height - bottomInset),
