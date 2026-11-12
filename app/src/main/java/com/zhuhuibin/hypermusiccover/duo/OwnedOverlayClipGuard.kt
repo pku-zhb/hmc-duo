@@ -39,6 +39,7 @@ internal class OwnedOverlayClipLeases<T : Any, C : Any>(
     }
 
     fun restoreAll() {
+        if (held.isEmpty()) return
         val snapshot = held.entries.map { it.key to it.value.original }
         held.clear()
         for ((target, original) in snapshot) {

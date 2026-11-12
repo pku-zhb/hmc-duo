@@ -2397,6 +2397,7 @@ private class MiniPlayerController(
             clockTopAsked = top
             Main.reassertClockRoom()
         }
+        updateRailExpansionPops()
         updateVisibility()
         if (player?.visibility == View.VISIBLE) {
             position()
@@ -2429,6 +2430,7 @@ private class MiniPlayerController(
         player?.let(credentialOverlays::suppress)
         smallIsland?.let(credentialOverlays::suppress)
         railBubbles.values.forEach { credentialOverlays.suppress(it.view) }
+        railExpansionPops.values.forEach { credentialOverlays.suppress(it.view) }
         railGlass?.let(credentialOverlays::suppress)
         gooGlass?.let(credentialOverlays::suppress)
         mergeGlass?.let(credentialOverlays::suppress)
@@ -2503,7 +2505,7 @@ private class MiniPlayerController(
         // is and under it: the row goes as it comes, on its own fade, and comes back as it goes.
         val editShown = editButtonShown(row)
         fade *= 1f - editShown
-        view.yieldTouches = editShown > 0.01f
+        view.yieldTouches = editShown > 0.01f || Main.bouncerShown() || railExpansionHides(selectedIsland)
         val matrix = followRelative
         // With a shortcut switched off the row rides on the one left, or on the row's own frame
         // with neither; it used to take only the keyguard's zoom then, and stood still while
@@ -2618,7 +2620,8 @@ private class MiniPlayerController(
         // Nor is it shown with another island's picture still in it, waiting to be bound.
         val notificationFade = if (selectedIsland == STACK_ISLAND && MiniPlayerRuntime.detachedRail())
             NumState.notificationIslandAlpha() else 1f
-        val pillFade = if (pillHeld() || exchangeHoldsPill() || pillUnbound) 0f else fade * notificationFade
+        val pillFade = if (pillHeld() || exchangeHoldsPill() || pillUnbound ||
+            railExpansionHides(selectedIsland)) 0f else fade * notificationFade
         followPillFade = pillFade
         if (kotlin.math.abs(view.transitionAlpha - pillFade) > 0.002f) view.transitionAlpha = pillFade
     }
@@ -2758,6 +2761,149 @@ private class MiniPlayerController(
         val previous = FloatArray(9)
     }
     private val railBubbles = LinkedHashMap<String, RailBubble>()
+    private class RailExpansionPop(val view: View, source: View, val revision: Long) {
+        val left = source.left
+        val top = source.top
+        val width = source.width
+        val height = source.height
+        val x = source.translationX
+        val y = source.translationY
+        val scaleX = source.scaleX
+        val scaleY = source.scaleY
+        val alpha = source.alpha * source.transitionAlpha
+        val matrix = source.animationMatrix?.let(::Matrix)
+        var progress = 0f
+        var animator: android.animation.ValueAnimator? = null
+    }
+    private val railExpansionPops = LinkedHashMap<String, RailExpansionPop>()
+    private var railNotificationPopPending = false
+
+    private fun railExpansionHides(key: String?): Boolean = key != null &&
+        (key in railExpansionPops || key == STACK_ISLAND && railNotificationPopPending)
+
+    /** An independent native-material view survives the rail rebinding to its next category. */
+    private fun startRailExpansionPop(key: String) {
+        if (!MiniPlayerRuntime.detachedRail() || colorOs() || Main.bouncerShown() || MiniPlayerScene.aodActive ||
+            !android.animation.ValueAnimator.areAnimatorsEnabled()) return
+        val source = (if (key == selectedIsland) player else railBubbles[key]?.view)
+            ?.takeIf { it.isShown && it.width > 1 && it.height > 1 && it.alpha * it.transitionAlpha > .01f }
+            ?: return
+        val music = controller?.takeIf(::isUsable)
+        val note = if (key == MUSIC_ISLAND) null else LockIslands.noteFor(key)
+        if (key == MUSIC_ISLAND && music == null || key != MUSIC_ISLAND && note == null) return
+        finishRailExpansionPop(key)
+        val copy: View = if (source is MiniPlayerView) MiniPlayerView(context) else ShortcutDisc(context)
+        val pop = RailExpansionPop(copy, source, Main.screenGeometry().revision)
+        railExpansionPops[key] = pop
+        host.addView(copy, lockScreenLayerIndex(), ViewGroup.LayoutParams(pop.width, pop.height))
+        when (copy) {
+            is MiniPlayerView -> {
+                copy.setVertical(source is MiniPlayerView && source.vertical)
+                if (music != null && key == MUSIC_ISLAND) bindMusic(copy, music, config)
+                else if (note != null) bindNote(copy, note, config)
+                stylePillFace(copy)
+                copy.setInteractionsEnabled(false)
+                copy.yieldTouches = true
+            }
+            is ShortcutDisc -> {
+                copy.yieldTouches = true
+                copy.setShape(pop.width, pop.height)
+                copy.setIconBare(key != MUSIC_ISLAND)
+                val moving = focusLottie(copy, note?.anim)
+                copy.setLive(liveArt(copy, note?.live))
+                val picture = if (key == MUSIC_ISLAND) music?.let { musicCover(metadataOf(it)) }
+                    ?: thumbShown ?: cachedCover else moving ?: note?.icon
+                copy.setIcon(when (picture) {
+                    is Bitmap -> android.graphics.drawable.BitmapDrawable(context.resources, picture)
+                    is android.graphics.drawable.Drawable -> picture
+                    else -> null
+                })
+                copy.dress(MiniPlayerRuntime.materialGeneration) { MiniPlayerRuntime.material(it, loader) }
+            }
+        }
+        copy.isEnabled = false
+        copy.isClickable = false
+        copy.isFocusable = false
+        copy.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
+        copy.measure(View.MeasureSpec.makeMeasureSpec(pop.width, View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(pop.height, View.MeasureSpec.EXACTLY))
+        copy.layout(pop.left, pop.top, pop.left + pop.width, pop.top + pop.height)
+        copy.pivotX = source.pivotX
+        copy.pivotY = source.pivotY
+        copy.translationZ = source.translationZ + 1f
+        copy.setAnimationMatrix(pop.matrix)
+        applyRailExpansionPop(pop)
+        if (key == STACK_ISLAND) railNotificationPopPending = true
+        // No second copy of the glass while the native notification list is being verified.
+        source.transitionAlpha = 0f
+        pop.animator = android.animation.ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = RailExpansionPopMotion.DURATION_MS
+            interpolator = android.view.animation.LinearInterpolator()
+            addUpdateListener {
+                if (railExpansionPops[key] !== pop) return@addUpdateListener
+                pop.progress = it.animatedValue as Float
+                applyRailExpansionPop(pop)
+            }
+            addListener(object : android.animation.AnimatorListenerAdapter() {
+                override fun onAnimationEnd(animation: android.animation.Animator) {
+                    if (railExpansionPops[key] === pop) finishRailExpansionPop(key, keepNotificationPending = true)
+                }
+            })
+            start()
+        }
+    }
+
+    private fun applyRailExpansionPop(pop: RailExpansionPop) {
+        val frame = RailExpansionPopMotion.frame(pop.progress)
+        pop.view.apply {
+            // ConstraintLayout can traverse while the new card enters; keep the old seat.
+            setLeftTopRightBottom(pop.left, pop.top, pop.left + pop.width, pop.top + pop.height)
+            translationX = pop.x
+            translationY = pop.y
+            scaleX = pop.scaleX * frame.scale
+            scaleY = pop.scaleY * frame.scale
+            alpha = pop.alpha * frame.alpha
+        }
+    }
+
+    private fun updateRailExpansionPops() {
+        if (railExpansionPops.isEmpty() && !railNotificationPopPending) return
+        if (!Main.keyguardLocked() || MiniPlayerScene.keyguardGoingAway || Main.bouncerShown() ||
+            MiniPlayerScene.aodActive || !Main.screenOnCached() || !MiniPlayerRuntime.detachedRail() || colorOs() ||
+            !config.optBoolean(MiniPlayerConfig.ENABLED)) {
+            clearRailExpansionPops()
+            return
+        }
+        if (railNotificationPopPending && !NumState.notificationOpening()) {
+            railNotificationPopPending = false
+            if (!NumState.notificationOpeningFinished() && !LockIslands.isReleased(STACK_ISLAND))
+                finishRailExpansionPop(STACK_ISLAND)
+        }
+        val revision = Main.screenGeometry().revision
+        for ((key, pop) in railExpansionPops.toMap()) {
+            if (pop.revision != revision) finishRailExpansionPop(key)
+            else applyRailExpansionPop(pop)
+        }
+    }
+
+    private fun finishRailExpansionPop(key: String, keepNotificationPending: Boolean = false) {
+        if (key == STACK_ISLAND && !keepNotificationPending) railNotificationPopPending = false
+        val pop = railExpansionPops.remove(key) ?: return
+        pop.animator?.removeAllUpdateListeners()
+        pop.animator?.removeAllListeners()
+        pop.animator?.cancel()
+        when (val view = pop.view) {
+            is MiniPlayerView -> { showTimer(view, null); showFocusAnim(view, null, null) }
+            is ShortcutDisc -> { view.setLive(null); view.setIcon(null); focusLottie(view, null); liveArt(view, null) }
+        }
+        host.removeView(pop.view)
+    }
+
+    private fun clearRailExpansionPops() {
+        railNotificationPopPending = false
+        for (key in railExpansionPops.keys.toList()) finishRailExpansionPop(key)
+    }
+
     private var railBubblesShown = false
     private var railPosition: android.animation.ValueAnimator? = null
     private var railPositionX = Float.NaN
@@ -2867,13 +3013,16 @@ private class MiniPlayerController(
         val v = bubble.view
         val motion = railFusion
         val returning = railReturn
-        val key = if (motion != null || returning != null) railBubbles.entries.firstOrNull { it.value === bubble }?.key else null
+        val key = railBubbles.entries.firstOrNull { it.value === bubble }?.key
         val moving = key?.let { motion?.frame?.seats?.get(it) ?: returning?.frame?.seats?.get(it) }
         val box = moving?.let { android.graphics.RectF(it.x, it.y, it.x + it.w, it.y + it.h) } ?: rest
         val seatAlpha = motion?.frame?.seatAlpha?.get(key) ?: returning?.frame?.seatAlpha?.get(key) ?: 1f
         val shown = railBubblesShown && box != null && seatAlpha > .001f && ((motion == null && returning == null) || key != selectedIsland)
         v.visibility = if (shown) View.VISIBLE else View.GONE
-        v.isEnabled = shown && Main.screenOnCached() && !MiniPlayerScene.aodActive && !Main.bouncerShown()
+        val popping = railExpansionHides(key)
+        v.yieldTouches = popping || Main.bouncerShown()
+        v.isEnabled = shown && !popping && Main.screenOnCached() && !MiniPlayerScene.aodActive && !Main.bouncerShown()
+        if (popping) v.transitionAlpha = 0f
         v.translationZ = if (motion != null || returning != null) (player?.translationZ ?: 0f) + 1f else 0f
         val companion = motion?.takeUnless { it.plan.windowed }?.let { if (it.frame.incoming) it.plan.from else it.plan.to }
         v.setMaterialAlpha(if (key == companion && motion != null ||
@@ -2924,7 +3073,8 @@ private class MiniPlayerController(
                 bubble.values.copyInto(bubble.previous)
                 v.setAnimationMatrix(if (bubble.matrix.isIdentity) null else bubble.matrix)
             }
-            val itemFade = fade * if (key == STACK_ISLAND) NumState.notificationIslandAlpha() else 1f
+            val itemFade = if (railExpansionHides(key)) 0f else
+                fade * if (key == STACK_ISLAND) NumState.notificationIslandAlpha() else 1f
             if (abs(v.transitionAlpha - itemFade) > .002f) v.transitionAlpha = itemFade
         }
     }
@@ -8069,6 +8219,7 @@ private class MiniPlayerController(
     private var railReturn: RailReturn? = null
 
     private fun beginRailReturn(key: String): Boolean {
+        finishRailExpansionPop(key)
         finishRailFusion()
         if (railReturn != null || key in islandKeys ||
             !android.animation.ValueAnimator.areAnimatorsEnabled()) return false
@@ -8660,6 +8811,7 @@ private class MiniPlayerController(
             // stay unchanged while the real header is being rebound, so no swipe reaches unlock.
             return
         }
+        startRailExpansionPop(key)
         if (key != STACK_ISLAND) railOpening[key] = android.os.SystemClock.uptimeMillis()
         if (key == MUSIC_ISLAND) finishRailMediaExit(commit = false)
         railClosing.remove(key)
@@ -12497,6 +12649,7 @@ private class MiniPlayerController(
         "exitPillHeld=$railExitPillWasVisible exitHiddenBeforeRestore=$lastRailExitHiddenBeforeRestore returnOwned=${railCollapsedToken != null}"
 
     fun onKeyguardExit() {
+        clearRailExpansionPops()
         MiniPlayerRuntime.cancelMusicExpansion()
         exitSurfacesHidden = true
         railDragHeld = false
@@ -12528,6 +12681,7 @@ private class MiniPlayerController(
     }
 
     fun destroy() {
+        clearRailExpansionPops()
         railDragHeld = false
         finishRailFusion(commit = false, refreshNow = false)
         finishNativeRailNote(false)
@@ -14353,6 +14507,9 @@ private class MiniPlayerController(
 
     private fun updateVisibility() { android.os.Trace.beginSection("MC updateVisibility"); try {
         val view = player
+        // A clipped/disabled child can still consume DOWN; credentials own this whole stream.
+        view?.yieldTouches = Main.bouncerShown() || railExpansionHides(selectedIsland) || editButtonUp()
+        smallIsland?.yieldTouches = Main.bouncerShown()
         // Spread out as the stack's list, the row, the small island and the media card are the
         // spread's (endSpread hands them back).
         if (spread != null) {
@@ -14520,11 +14677,11 @@ private class MiniPlayerController(
                 // the AOD with the row - and goes back then; waited out, it just goes.
                 // Half there is enough: coming back on the wake's fade, it goes back as it fades in.
                 val seen = pillSeen()
-                val notificationHandedOff = MiniPlayerRuntime.detachedRail() && islandKeys.isEmpty() &&
-                    NumState.notificationOpeningFinished() && !pillShowsMusic
-                val shrinkOut = rowGone && seen && !notificationHandedOff
+                val expansionHandedOff = MiniPlayerRuntime.detachedRail() && islandKeys.isEmpty() &&
+                    (railExpansionPops.isNotEmpty() || NumState.notificationOpeningFinished() && !pillShowsMusic)
+                val shrinkOut = rowGone && seen && !expansionHandedOff
                 val now = android.os.SystemClock.uptimeMillis()
-                val waitBack = rowGone && !seen && !leaving() && !notificationHandedOff &&
+                val waitBack = rowGone && !seen && !leaving() && !expansionHandedOff &&
                     (backWaitSince == 0L || now - backWaitSince < BACK_WAIT_MS)
                 if (waitBack && backWaitSince == 0L) {
                     backWaitSince = now
@@ -14557,7 +14714,7 @@ private class MiniPlayerController(
                 backWaitSince = 0L
             }
             view.setInteractionsEnabled(canShow() && !controlCenterOpen && !MiniPlayerScene.aodActive && !leaving() &&
-                backWaitSince == 0L)
+                backWaitSince == 0L && !railExpansionHides(selectedIsland))
             if (view.visibility == View.VISIBLE && !leaving() && backWaitSince == 0L && islandKeys.isNotEmpty()) {
                 lastShownKeys = islandKeys
             }

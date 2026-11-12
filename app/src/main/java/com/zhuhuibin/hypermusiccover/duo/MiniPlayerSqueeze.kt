@@ -269,6 +269,12 @@ internal class ShortcutDisc(context: Context) : FrameLayout(context) {
         }
     }
 
+    /** A short-lived exit copy must not let a live artwork child intercept the next gesture. */
+    var yieldTouches = false
+
+    override fun dispatchTouchEvent(event: MotionEvent): Boolean =
+        if (yieldTouches) false else super.dispatchTouchEvent(event)
+
     override fun onTouchEvent(event: MotionEvent): Boolean = false
 
     companion object {
