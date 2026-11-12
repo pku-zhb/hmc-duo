@@ -13,6 +13,8 @@ final class MusicPageActionDrawable extends Drawable {
     private final LyricsSheetDrawable lyrics = new LyricsSheetDrawable();
     private final Path mountain = new Path();
     private int page = RailMusicPagePolicy.ARTWORK;
+    private int lyricsAvailability = LyricsButtonPolicy.AVAILABLE;
+    private int alpha = 255;
     MusicPageActionDrawable() {
         paint.setColor(0xFFFFFFFF);
         paint.setStrokeWidth(1.8f);
@@ -27,9 +29,17 @@ final class MusicPageActionDrawable extends Drawable {
         this.page = page;
         invalidateSelf();
     }
+    void setLyricsAvailability(int availability) {
+        if (lyricsAvailability == availability) return;
+        lyricsAvailability = availability;
+        invalidateSelf();
+    }
     @Override public void draw(Canvas canvas) {
+        int availability = LyricsButtonPolicy.actionAvailability(page, lyricsAvailability);
         if (page == RailMusicPagePolicy.LYRICS) {
-            lyrics.setBounds(getBounds()); lyrics.draw(canvas); return;
+            lyrics.setAlpha(availability == LyricsButtonPolicy.AVAILABLE ? alpha : Math.round(alpha * .42f));
+            lyrics.setBounds(getBounds()); lyrics.draw(canvas);
+            if (availability == LyricsButtonPolicy.AVAILABLE) return;
         }
         float size = Math.min(getBounds().width(), getBounds().height());
         if (size <= 0f) return;
@@ -49,14 +59,23 @@ final class MusicPageActionDrawable extends Drawable {
             canvas.drawLine(14f, 10f, 22f, 10f, paint);
             canvas.drawLine(14f, 14f, 20f, 14f, paint);
             canvas.drawLine(14f, 18f, 22f, 18f, paint);
-        } else {
+        } else if (page != RailMusicPagePolicy.LYRICS) {
             canvas.drawRoundRect(2.5f, 3.5f, 21.5f, 20.5f, 2.8f, 2.8f, paint);
             canvas.drawCircle(16f, 8f, 1.5f, paint);
             canvas.drawPath(mountain, paint);
         }
+        if (availability == LyricsButtonPolicy.UNAVAILABLE) {
+            // A diagonal strike distinguishes a completed miss from a still-loading lyric.
+            canvas.drawLine(3f, 3f, 21f, 21f, paint);
+        } else if (availability == LyricsButtonPolicy.LOADING) {
+            // Static pending dots add no frame loop to the lock screen or AOD.
+            paint.setStyle(Paint.Style.FILL);
+            for (int x = 8; x <= 16; x += 4) canvas.drawCircle(x, 21f, 1.1f, paint);
+            paint.setStyle(Paint.Style.STROKE);
+        }
         canvas.restoreToCount(save);
     }
-    @Override public void setAlpha(int alpha) { paint.setAlpha(alpha); lyrics.setAlpha(alpha); invalidateSelf(); }
+    @Override public void setAlpha(int alpha) { this.alpha = alpha; paint.setAlpha(alpha); lyrics.setAlpha(alpha); invalidateSelf(); }
     @Override public void setColorFilter(ColorFilter filter) { paint.setColorFilter(filter); lyrics.setColorFilter(filter); invalidateSelf(); }
     @Override public int getOpacity() { return PixelFormat.TRANSLUCENT; }
 }
