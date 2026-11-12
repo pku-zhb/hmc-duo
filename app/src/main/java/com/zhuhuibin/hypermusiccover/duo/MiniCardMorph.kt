@@ -68,7 +68,7 @@ internal class MiniCardMorph(
     private val nativeBox: (() -> CoverMorphMotion.Box?)? = null,
     /** Notification edges follow their vertical travel even while gathering is staged. */
     private val widthAtY: ((Float) -> Float)? = null,
-) : Choreographer.FrameCallback {
+) : Choreographer.FrameCallback, View.OnAttachStateChangeListener {
     class Landing(val art: View?, val title: View?, val text: View?, val radius: Float,
                   val artRadius: Float, val media: Boolean = false, val summary: Boolean = false) {
         companion object {
@@ -104,11 +104,28 @@ internal class MiniCardMorph(
         val clip = v.clipToOutline
     }
 
+    /** Native notification state can change while the list or heads-up pipeline is running. */
+    private class NotificationState(v: View) {
+        val visibility = NotificationPropertyLease({ v.visibility }, { v.visibility = it })
+        val alpha = NotificationPropertyLease({ v.transitionAlpha }, { v.transitionAlpha = it })
+        val outline = NotificationPropertyLease({ v.outlineProvider }, { v.outlineProvider = it })
+        val clip = NotificationPropertyLease({ v.clipToOutline }, { v.clipToOutline = it })
+        val matrix = NotificationPropertyLease({ v.animationMatrix }, { v.setAnimationMatrix(it) },
+            { it?.let(::Matrix) })
+
+        fun restore() {
+            listOf(matrix, outline, clip, alpha, visibility).forEach {
+                runCatching { it.restore() }.onFailure { error -> Xp.w("MCNotif: row handback failed: $error") }
+            }
+        }
+    }
+
     /** One mini player element and, when it has one, the card element it lands on. */
     private class Piece(val view: View, val native: View?, val text: Boolean, val art: Boolean) {
         val baseTx = view.translationX
         val baseTy = view.translationY
         val nativeTransitionAlpha = native?.transitionAlpha ?: 1f
+        var nativeAlphaLease: NotificationPropertyLease<Float>? = null
         var paired = false
         /** A line's own colour and words, given back when the morph ends. */
         val ownColor = (view as? TextView)?.currentTextColor ?: 0
@@ -120,6 +137,8 @@ internal class MiniCardMorph(
 
     private val motion = CoverMorphMotion()
     private val saved = Saved(header)
+    private val notificationRow = !landing.media && header.javaClass.name.contains("ExpandableNotificationRow")
+    private val notificationState = if (notificationRow) NotificationState(header) else null
     private val nativeRadius = landing.radius
     private val nativeArtRadius = landing.artRadius
     private val summaryFace = landing.summary && style === ColorOsPillMorph
@@ -157,17 +176,33 @@ internal class MiniCardMorph(
     private val placedOem = Matrix()
     private var observed: View? = null
     private val preDraw = ViewTreeObserver.OnPreDrawListener { android.os.Trace.beginSection("MC cardMorphPreDraw"); try {
+        if (running && notificationRow && !NotificationTransitionTarget.eligible(header)) {
+            lastCancel = "notification target left its lock-screen scene"
+            finish(false)
+        }
         val box = placedBox
         if (running && box != null && header.matrix != placedOem) placeHeader(box, placedScale)
         true
     } finally { android.os.Trace.endSection() } }
 
     private fun observe(on: Boolean) {
+        header.removeOnAttachStateChangeListener(this)
+        mini.removeOnAttachStateChangeListener(this)
         observed?.viewTreeObserver?.takeIf { it.isAlive }?.removeOnPreDrawListener(preDraw)
         observed = null
         if (!on) return
         header.viewTreeObserver.addOnPreDrawListener(preDraw)
+        header.addOnAttachStateChangeListener(this)
+        mini.addOnAttachStateChangeListener(this)
         observed = header
+    }
+
+    override fun onViewAttachedToWindow(v: View) = Unit
+    override fun onViewDetachedFromWindow(v: View) {
+        if (running) {
+            lastCancel = "morph target detached"
+            finish(false)
+        }
     }
 
     /** The pill's artwork as this frame drew it, on screen. */
@@ -402,7 +437,8 @@ internal class MiniCardMorph(
         if (!running) return
         // Asleep, the lock screen gone: every frame. Its own lock screen's, not the clock
         // container's the cover morph asks after (Main.islandMorphStillEligible).
-        if (!Main.islandMorphStillEligible(mini)) {
+        if (!Main.islandMorphStillEligible(mini) ||
+            notificationRow && !NotificationTransitionTarget.eligible(header)) {
             lastCancel = Main.morphGateWhy(mini)
             finish(false)
             return
@@ -442,19 +478,27 @@ internal class MiniCardMorph(
      */
     private fun measure(): Boolean {
         if (!header.isAttachedToWindow || header.width <= 0 || header.height <= 0) return false
+        if (notificationRow && !NotificationTransitionTarget.eligible(header)) return false
         focusFades.remove(header)?.cancel()
         cardContent = contentViews(header)
         cardContentAlpha = cardContent.map { it.alpha }
+        cardContentAlphaLeases = if (notificationRow) cardContent.map { v ->
+            NotificationPropertyLease({ v.alpha }, { v.alpha = it })
+        } else emptyList()
         pieces.forEach { piece ->
             val n = piece.native
             piece.paired = n != null && n.isAttachedToWindow && n.visibility == View.VISIBLE
                 && n.alpha > 0.01f && n.width > 0 && n.height > 0 && isInside(n, header)
                 && (!piece.text || n is TextView && piece.view is TextView)
+            if (notificationRow && piece.paired && piece.text && n != null) {
+                piece.nativeAlphaLease = NotificationPropertyLease({ n.transitionAlpha }, { n.transitionAlpha = it })
+            }
         }
         return true
     }
 
     private fun apply(): Boolean {
+        if (notificationRow && !NotificationTransitionTarget.eligible(header)) return false
         val miniRest = traced("MC m.rest") { restBox?.invoke() ?: mini.restBoxOnScreen() } ?: return false
         miniEndDrawn = miniRest
         val nativeRest = traced("MC m.native") { headerRestBox() } ?: return false
@@ -490,23 +534,31 @@ internal class MiniCardMorph(
         // The card, at the container's width and cut to its height. s is in the card's own
         // pixels, before the stack's transform.
         val s = box.w / header.width
-        if (header.visibility != View.VISIBLE) header.visibility = View.VISIBLE
+        if (notificationState != null) notificationState.visibility.set(View.VISIBLE)
+        else if (header.visibility != View.VISIBLE) header.visibility = View.VISIBLE
         traced("MC m.place") { placeHeader(box, s) }
         clipW = header.width.toFloat()
         clipH = min(drawnHeight(), box.h / s)
         clipR = radius / s
         summaryBackdrop?.apply(header, 0f, 0f, clipW, clipH, clipR,
             ColorOsNotificationMotion.nativeIn(c))
-        if (header.outlineProvider !== clipOutline) header.outlineProvider = clipOutline
-        if (!header.clipToOutline) header.clipToOutline = true
+        if (notificationState != null) {
+            notificationState.outline.set(clipOutline)
+            notificationState.clip.set(true)
+        } else {
+            if (header.outlineProvider !== clipOutline) header.outlineProvider = clipOutline
+            if (!header.clipToOutline) header.clipToOutline = true
+        }
         header.invalidateOutline()
         // Led by the notification list: the capsule is the first card, so the hand-over from the
         // pill's face to the card's is done by halfway and the list's own blur clears both. On the
         // whole way the pill's blurred face stood till 0.9, then the card snapped in (2026-10-22).
         val f = style.faceProgress(c, spreadLed)
         val materialOut = if (summaryFace) ColorOsNotificationMotion.materialOut(c) else style.materialOut(f)
-        header.transitionAlpha = saved.transitionAlpha *
+        val nativeAlpha = (notificationState?.alpha?.baseline ?: saved.transitionAlpha) *
             if (summaryFace) ColorOsNotificationMotion.nativeIn(c) else style.nativeIn(f)
+        if (notificationState != null) notificationState.alpha.set(nativeAlpha)
+        else header.transitionAlpha = nativeAlpha
 
         // Both ends' whole content in and out of focus, the glass of neither: the pill's going
         // out as it heads for the card, the card's coming in once the pill's glass leaves it.
@@ -524,7 +576,9 @@ internal class MiniCardMorph(
         val foldingSummary = summaryFace && !toNative
         val foldBlur = 2f * mini.resources.displayMetrics.density * ColorOsNotificationMotion.foldBlur(c)
         if (foldingSummary) cardContent.forEachIndexed { i, v ->
-            v.alpha = cardContentAlpha[i] * ColorOsNotificationMotion.foldContentAlpha(c)
+            val lease = cardContentAlphaLeases.getOrNull(i)
+            val alpha = (lease?.baseline ?: cardContentAlpha[i]) * ColorOsNotificationMotion.foldContentAlpha(c)
+            if (lease != null) lease.set(alpha) else v.alpha = alpha
             cardContentFaded = true
         }
         blurCard(if (foldingSummary) foldBlur / max(s, 0.05f)
@@ -597,7 +651,10 @@ internal class MiniCardMorph(
                         // Under the pill's line fading off it, the card's is whole well before the
                         // pill's is gone: two equal lines at a and 1 - a composite to 1 - a + a*a,
                         // and the time dipped to three quarters on every crossing (2026-09-26).
-                        n.transitionAlpha = piece.nativeTransitionAlpha * min(1f, style.nativeTextLead * (1f - style.pairedOut(f)))
+                        val alpha = (piece.nativeAlphaLease?.baseline ?: piece.nativeTransitionAlpha) *
+                            min(1f, style.nativeTextLead * (1f - style.pairedOut(f)))
+                        if (piece.nativeAlphaLease != null) piece.nativeAlphaLease!!.set(alpha)
+                        else n.transitionAlpha = alpha
                         // The card's colour and words by the time the two lines meet: a focus row's
                         // grey under the pill's white, and a timer's two clocks a second apart,
                         // crossed over on every open and close - a flash each time (2026-09-26).
@@ -716,6 +773,7 @@ internal class MiniCardMorph(
     /** The card's template: its content views, beside which its glass background is drawn. */
     private var cardContent: List<View> = emptyList()
     private var cardContentAlpha: List<Float> = emptyList()
+    private var cardContentAlphaLeases: List<NotificationPropertyLease<Float>> = emptyList()
     private var cardContentFaded = false
     private val mediaCard = landing.media
     /** The radius last written; none yet, so the first is always written. */
@@ -768,7 +826,10 @@ internal class MiniCardMorph(
         cardContent.forEachIndexed { i, v ->
             if (blurOwners[v].let { it == null || it === this }) {
                 runCatching { v.setRenderEffect(null) }
-                if (cardContentFaded) v.alpha = cardContentAlpha[i]
+                if (cardContentFaded) {
+                    val lease = cardContentAlphaLeases.getOrNull(i)
+                    if (lease != null) lease.restore() else v.alpha = cardContentAlpha[i]
+                }
                 blurOwners.remove(v)
             }
         }
@@ -781,7 +842,7 @@ internal class MiniCardMorph(
     }
 
     private fun restore() {
-        summaryBackdrop?.clear()
+        val materialRows = summaryBackdrop?.clear(rebind = false).orEmpty()
         clearBlur()
         mini.setMorphContentBlur(0f)
         pieces.forEach { piece ->
@@ -792,18 +853,25 @@ internal class MiniCardMorph(
             v.translationX = piece.baseTx
             v.translationY = piece.baseTy
             v.alpha = 1f
-            if (piece.paired && piece.text) piece.native?.transitionAlpha = piece.nativeTransitionAlpha
+            if (piece.paired && piece.text) {
+                if (piece.nativeAlphaLease != null) piece.nativeAlphaLease!!.restore()
+                else piece.native?.transitionAlpha = piece.nativeTransitionAlpha
+            }
             (v as? TextView)?.let { tv ->
                 if (tv.currentTextColor != piece.ownColor) tv.setTextColor(piece.ownColor)
                 if (piece.tookText) tv.text = piece.ownText
             }
         }
         mini.endMorph()
-        header.setAnimationMatrix(null)
-        if (header.outlineProvider === clipOutline) header.outlineProvider = saved.outline
-        header.clipToOutline = saved.clip
-        header.transitionAlpha = saved.transitionAlpha
-        header.visibility = saved.visibility
+        if (notificationState != null) notificationState.restore()
+        else {
+            header.setAnimationMatrix(null)
+            if (header.outlineProvider === clipOutline) header.outlineProvider = saved.outline
+            header.clipToOutline = saved.clip
+            header.transitionAlpha = saved.transitionAlpha
+            header.visibility = saved.visibility
+        }
+        materialRows.forEach { NativeNotificationMaterial.restore(it) }
     }
 
     /**
@@ -865,7 +933,8 @@ internal class MiniCardMorph(
             val inverse = Matrix()
             if (oemMatrix.invert(inverse)) morphMatrix.preConcat(inverse)
         }
-        header.setAnimationMatrix(morphMatrix)
+        if (notificationState != null) notificationState.matrix.set(morphMatrix)
+        else header.setAnimationMatrix(morphMatrix)
     }
 
     /** Layout position inside the mini player; its own pieces carry no parent transform. */

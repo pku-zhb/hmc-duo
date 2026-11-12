@@ -105,6 +105,7 @@ object MiniPlayerRuntime {
         loader = classLoader
         if (hooksInstalled) return
         hooksInstalled = true
+        NativeGlassRelay.install()
         NativeNotificationMaterial.install(classLoader)
         runCatching {
             val cls = Xp.findClass(
@@ -186,18 +187,18 @@ object MiniPlayerRuntime {
                 if (clipping != null && chain.args.firstOrNull() == View.INVISIBLE) {
                     // Retain an already animated row until its native hide has faded out.
                     clipping.nativeVisible = false
-                    null
+                    if (v != null && NotificationTransitionTarget.eligible(v)) null else chain.proceed()
                 } else if (v != null && chain.args.firstOrNull() == View.INVISIBLE && spreadForced.containsKey(v)) {
                     // What the stack wants, kept: it hides the rows past its list's end.
                     stackWantsHidden[v] = android.os.SystemClock.uptimeMillis()
-                    null
+                    if (NotificationTransitionTarget.eligible(v)) null else chain.proceed()
                 } else {
                     if (v != null && chain.args.firstOrNull() == View.VISIBLE) {
                         stackWantsHidden.remove(v)
                         clipping?.nativeVisible = true
                         // Hidden in the same call the stack shows it: a frame later it had been
                         // drawn once already (/1cc/ blinking, 2026-10-26).
-                        spreadLateRow?.invoke(v)
+                        if (NotificationTransitionTarget.eligible(v)) spreadLateRow?.invoke(v)
                     }
                     chain.proceed()
                 }
@@ -210,7 +211,8 @@ object MiniPlayerRuntime {
             val rowClass = Xp.findClass("com.android.systemui.statusbar.notification.row.ExpandableNotificationRow", classLoader)
             val owner = rowClass.getMethod(name, Int::class.javaPrimitiveType).declaringClass
             Xp.hookAll(owner, name) { chain ->
-                val state = (chain.thisObject as? View)?.let { spreadNativeClips[it] }
+                val row = chain.thisObject as? View
+                val state = row?.let { spreadNativeClips[it] }
                 if (state != null && !spreadWritingClip) {
                     val amount = (chain.args.firstOrNull() as? Number)?.toInt() ?: 0
                     when (index) {
@@ -218,7 +220,7 @@ object MiniPlayerRuntime {
                         1 -> state.nativeBottom = amount
                         else -> state.nativeExtBottom = amount
                     }
-                    null
+                    if (row != null && NotificationTransitionTarget.eligible(row)) null else chain.proceed()
                 } else chain.proceed()
             }
         }.onFailure { Xp.w("MCMini: spread clip hold unavailable ($name): $it") }
@@ -373,6 +375,7 @@ object MiniPlayerRuntime {
         MiniPlayerMaterialState.styleKey(cardEffect, materialGeneration)
     /** The last recipe's values, for telling a new one from the same one again. */
     private var materialSignature: Any? = null
+    private var nativeRecipeSignature: Any? = null
     private var materialRepeats = 0
 
     /** Effects run on the main thread only; this counts how deep inside one another they are. */
@@ -419,16 +422,21 @@ object MiniPlayerRuntime {
                 Xp.hookAll(cls, "apply") { chain ->
                     val target = chain.args.firstOrNull() as? View
                     val card = Main.miniPlayerMediaHeader()
-                    val mine = effectDepth == 0 && target != null && (card == null || target === card)
+                    val candidateBg = target?.let { holderMediaBg(it) ?: Main.miniPlayerMediaBg(it) }
+                    val mine = effectDepth == 0 && target != null && target === card &&
+                        NativeGlassRelay.nativePlayerBackground(candidateBg)
                     if (mine) {
                         // The holder's own mediaBg, the view the effect dresses: looked up by
                         // name it was often not found yet, and Soft Glass was never recorded.
-                        recordTarget = holderMediaBg(target) ?: Main.miniPlayerMediaBg(target)
+                        recordTarget = candidateBg
                         recording = ArrayList()
                     }
                     effectDepth++
                     val result = try {
                         chain.proceed()
+                    } catch (error: Throwable) {
+                        if (mine) { recording = null; recordTarget = null }
+                        throw error
                     } finally {
                         effectDepth--
                     }
@@ -448,13 +456,20 @@ object MiniPlayerRuntime {
                         val bg = recordTarget
                         recording = null
                         recordTarget = null
-                        val signature = materialSignature(cls.name, recorded!!, bg?.background)
-                        if (signature != materialSignature) {
-                            materialSignature = signature
-                            cardRecipe = recorded
-                            cardBackground = bg?.background?.constantState
+                        val signature = materialSignature(cls.name, recorded!!, bg?.background, bg)
+                        // The native choice must stay current even when Lite's final values
+                        // normalize two different native inputs to the same follow profile.
+                        cardRecipe = recorded
+                        cardBackground = bg?.background?.constantState
+                        val nativeSignature = materialSignature(cls.name, recorded, bg?.background, bg,
+                            finalMaterial = false)
+                        if (nativeSignature != nativeRecipeSignature) {
+                            nativeRecipeSignature = nativeSignature
                             runCatching { keepRecipe(target.context, recorded, bg?.background) }
                                 .onFailure { Xp.log("MCMini: recipe not kept: $it") }
+                        }
+                        if (signature != materialSignature) {
+                            materialSignature = signature
                             if (cardEffect != cls.simpleName) Xp.log("MCMini: card material -> ${cls.simpleName}")
                             cardEffect = cls.simpleName
                             materialGeneration++
@@ -494,11 +509,12 @@ object MiniPlayerRuntime {
                         if (at < 0) return@intercept chain.proceed()
                         recordDepth++
                         try {
-                            chain.proceed()
+                            chain.proceed().also {
+                                // Keep successful OEM baseline calls, independently of final readback.
+                                list.add(Recorded(m, Array(args.size) { i -> copyArray(args[i]) }, at))
+                            }
                         } finally {
                             recordDepth--
-                            // Copied: the OEM hands the same array to the next dressing, changed.
-                            list.add(Recorded(m, Array(args.size) { i -> copyArray(args[i]) }, at))
                         }
                     }
                 }
@@ -527,7 +543,8 @@ object MiniPlayerRuntime {
 
     /** A recipe's values: the effect, the background, and every call with its arguments. */
     private fun materialSignature(effect: String, calls: List<Recorded>,
-                                  bg: android.graphics.drawable.Drawable?): Any {
+                                  bg: android.graphics.drawable.Drawable?, source: View?,
+                                  finalMaterial: Boolean = true): Any {
         val background: Any? = when (bg) {
             null -> null
             is GradientDrawable -> listOf(bg.javaClass.name, bg.color?.defaultColor, bg.color?.isStateful,
@@ -536,10 +553,14 @@ object MiniPlayerRuntime {
             is android.graphics.drawable.ColorDrawable -> listOf(bg.javaClass.name, bg.color)
             else -> bg.constantState ?: bg
         }
+        val follows = finalMaterial && Main.sFollowNativeMaterial
+        val glass = if (follows) NativeGlassRelay.committedGlass(source) else null
+        val blur = if (follows) NativeGlassRelay.committedBlur(source) else null
+        val backdrop = if (follows) NativeGlassRelay.committedBackground(source) else null
         return listOf(effect, background, calls.map { call ->
-            listOf(call.method, call.viewAt, call.args.mapIndexed { i, arg ->
-                if (i == call.viewAt || arg is Context) null else MiniPlayerMaterialState.snapshot(arg)
-            })
+            val args = call.args.map { if (it is Context) null else it }.toTypedArray()
+            listOf(call.method, call.viewAt, MiniPlayerMaterialState.committedSignatureArgs(
+                call.method.name, args, call.viewAt, glass, blur, backdrop))
         })
     }
 
@@ -2229,6 +2250,7 @@ object MiniPlayerRuntime {
             val util = Class.forName("com.android.systemui.statusbar.notification.utils.NotificationUtil",
                 false, classLoader)
             (view.parent as? View)?.let { container -> run {
+                NativeGlassRelay.registerBlurContainer(container)
                 // Blur mode 1, the notification container radius, and through the window.
                 util.getMethod("applyContainerViewBlur", Context::class.java, View::class.java,
                     Int::class.javaPrimitiveType, Int::class.javaPrimitiveType,
@@ -2388,6 +2410,7 @@ private class MiniPlayerController(
         if (!LockscreenSurfacePolicy.visible(Main.keyguardLocked(), MiniPlayerScene.keyguardGoingAway)) {
             if (!exitSurfacesHidden) onKeyguardExit()
         } else exitSurfacesHidden = false
+        releaseInvalidNotificationTransitions()
         holdKept()
         holdRows()
         // The rows can settle after the stack last told the clock where they are - a row let out
@@ -5028,7 +5051,7 @@ private class MiniPlayerController(
         /** Where the card stood when the finger took it, on screen: what the pull is measured from. */
         var cardTop = Float.NaN
         /** Rows moved by the fold, to be given their own place back. */
-        val folded = java.util.WeakHashMap<View, Boolean>()
+        val folded = java.util.WeakHashMap<View, NotificationPropertyLease<Matrix?>>()
     }
 
     private var group: Group? = null
@@ -5401,7 +5424,8 @@ private class MiniPlayerController(
             smallGrow.target = 1f
         }
         restoreSmallIslandShape()
-        for (row in g.folded.keys) row.setAnimationMatrix(null)
+        g.folded.values.forEach { it.restore() }
+        g.folded.clear()
         for (key in rowKeys()) {
             val (row, top) = findRow(key) ?: continue
             if (toNative) {
@@ -5424,6 +5448,7 @@ private class MiniPlayerController(
      * still shows of them for a moment is not drawn.
      */
     private fun holdRows() {
+        if (!NotificationTransitionTarget.sceneEligible()) return
         val g = group
         val holding = rowsHeld()
         if (!holding && android.os.SystemClock.uptimeMillis() > rowsHeldUntil) return
@@ -5444,7 +5469,7 @@ private class MiniPlayerController(
             hideRow(row)
             val folds = g != null && key != g.other
             val ta = if (folds) (hiddenRows[row] ?: 1f) * g.foldAlpha.value.coerceIn(0f, 1f) else 0f
-            if (kotlin.math.abs(row.transitionAlpha - ta) > 0.002f) row.transitionAlpha = ta
+            setHiddenRowAlpha(row, ta)
             if (folds) pile += row
         }
         if (g != null && pile.isNotEmpty()) stackRows(g, pile)
@@ -5488,8 +5513,7 @@ private class MiniPlayerController(
             val m = Matrix()
             m.setScale(scale, scale, row.width / 2f, row.translationY + h)
             m.postTranslate(0f, dy)
-            row.setAnimationMatrix(m)
-            g.folded[row] = true
+            g.folded.getOrPut(row) { notificationTransform(row) }.set(m)
         }
     }
 
@@ -5533,6 +5557,9 @@ private class MiniPlayerController(
 
     /** The stack island's other rows the pile has moved: their matrix and alpha are ours. */
     private val pileRows = HashSet<View>()
+    private val pileTransforms = java.util.WeakHashMap<View, NotificationPropertyLease<Matrix?>>()
+    private fun notificationTransform(row: View) = NotificationPropertyLease<Matrix?>(
+        { row.animationMatrix }, { row.setAnimationMatrix(it) }, { it?.let(::Matrix) })
 
     /** One of those rows on its way out from under the island: its own spring, 0 there, 1 in the stack. */
     private class PileRow(val row: View) {
@@ -5570,6 +5597,10 @@ private class MiniPlayerController(
      * progress with none of their own, and came up alone at the card's place before the card.
      */
     private fun pileStack(progress: Float, from: CoverMorphMotion.Box?) = traced("MC pileLookup") {
+        if (!NotificationTransitionTarget.sceneEligible()) {
+            finishPile(true)
+            return@traced
+        }
         Choreographer.getInstance().removeFrameCallback(pileSettle)
         if (from != null) pileFrom = from
         pileAt = progress
@@ -5592,7 +5623,7 @@ private class MiniPlayerController(
         val keep = index[lead] ?: return@traced
         val rows = LockIslands.stackMembers.asSequence().filter { it != lead }
             .mapNotNull { index[it] }
-            .filter { it !== keep && !isInside(keep, it) }.distinct().toList()
+            .filter { it !== keep && !isInside(keep, it) && NotificationTransitionTarget.eligible(it) }.distinct().toList()
         if (pileTraceNext) trace("pile p=${"%.2f".format(progress)} lead=${shortKey(lead)} keep=${shortName(keep)}" +
             "@${(keep.translationY).toInt()} members=${LockIslands.stackMembers.joinToString(",") { shortKey(it) }} " +
             "rows=${rows.joinToString(",") { shortName(it) + "@" + it.translationY.toInt() }} " +
@@ -5648,6 +5679,10 @@ private class MiniPlayerController(
 
     /** Every row's spring a frame on, toward its turn behind the lead, and drawn there. */
     private fun stepPiles(): Boolean {
+        if (!NotificationTransitionTarget.sceneEligible() || piles.values.any { !NotificationTransitionTarget.eligible(it.row) }) {
+            finishPile(true)
+            return false
+        }
         val traceIt = pileTraceNext
         pileTraceNext = false
         val now = System.nanoTime()
@@ -5671,7 +5706,7 @@ private class MiniPlayerController(
             val u = pile.out.value
             val base = hiddenRows[row] ?: 1f
             val ta = base * MiniCardMorph.smooth(PILE_IN_FROM, PILE_IN_TO, u)
-            if (kotlin.math.abs(row.transitionAlpha - ta) > 0.002f) row.transitionAlpha = ta
+            setHiddenRowAlpha(row, ta)
             // Where the stack draws it: its own place and scale in the pile, on its render node.
             val ty = runCatching { (Xp.callMethod(row, "getSuperTranslationY") as Number).toFloat() }
                 .getOrDefault(row.translationY)
@@ -5697,7 +5732,7 @@ private class MiniPlayerController(
                 m.setScale(k, k, mx, my)
                 m.postTranslate(box.x - native.x, box.y - native.y)
             }
-            row.setAnimationMatrix(m)
+            pileTransforms.getOrPut(row) { notificationTransform(row) }.set(m)
             if (traceIt) trace("  pile ${shortName(row)} #${pile.turn} u=${"%.2f".format(u)}>" +
                 "${"%.2f".format(pile.out.target)} ta=${"%.2f".format(ta)} at=${native.y.toInt()} " +
                 "s=${"%.3f".format(s)} from=${island?.let { "${it.cx().toInt()},${it.cy().toInt()} w${it.w.toInt()}" }}")
@@ -5766,14 +5801,16 @@ private class MiniPlayerController(
         pileMoving = false
         pileFoundAt = 0L
         for (row in pileRows) {
-            row.setAnimationMatrix(null)
+            pileTransforms.remove(row)?.restore()
             if (toRow) showRow(row)
             else {
-                row.transitionAlpha = 0f
                 hideRowUntilGone(row, STACK_ISLAND)
+                setHiddenRowAlpha(row, 0f)
             }
         }
         pileRows.clear()
+        pileTransforms.values.forEach { it.restore() }
+        pileTransforms.clear()
         piles.clear()
         pileLast = 0L
         pileFrom = null
@@ -7105,7 +7142,9 @@ private class MiniPlayerController(
      */
     private fun pinCard(native: View, leaving: Collection<String>, from: Float? = null) {
         unpinCard()
+        if (isNotificationRow(native) && !NotificationTransitionTarget.eligible(native)) return
         pinned = WeakReference(native)
+        if (isNotificationRow(native)) pinnedTransform = notificationTransform(native)
         pinnedLeaving = leaving
         pinnedSince = android.os.SystemClock.uptimeMillis()
         // Where the morph let go of it, in the stack's translation.
@@ -7160,7 +7199,11 @@ private class MiniPlayerController(
         Choreographer.getInstance().removeFrameCallback(pinFrame)
         pinObserved?.get()?.viewTreeObserver?.takeIf { it.isAlive }?.removeOnPreDrawListener(pinPreDraw)
         pinObserved = null
-        if (!keep) v?.setAnimationMatrix(null)
+        // The next notification morph already saved its visual origin. Do not let it
+        // acquire our temporary pin matrix as its native baseline, even on a kept handoff.
+        if (pinnedTransform != null) pinnedTransform?.restore()
+        else if (!keep) v?.setAnimationMatrix(null)
+        pinnedTransform = null
         pinnedDy = 0f
         pinnedAt = null
     }
@@ -7170,8 +7213,10 @@ private class MiniPlayerController(
      * a card about to come down, for the frames before its morph takes it.
      */
     private fun freezeCard(v: View, at: Float) {
+        if (isNotificationRow(v) && !NotificationTransitionTarget.eligible(v)) { unpinCard(); return }
         unpinCard(keep = true)
         pinned = WeakReference(v)
+        if (isNotificationRow(v)) pinnedTransform = notificationTransform(v)
         pinnedLeaving = emptyList()
         pinnedAt = at
         pinnedSince = android.os.SystemClock.uptimeMillis()
@@ -7188,12 +7233,13 @@ private class MiniPlayerController(
      */
     private val pinPreDraw = android.view.ViewTreeObserver.OnPreDrawListener { android.os.Trace.beginSection("MC pinPreDraw"); try {
         val v = pinned?.get()
-        if (v != null) {
+        if (v != null && isNotificationRow(v) && !NotificationTransitionTarget.eligible(v)) unpinCard()
+        else if (v != null) {
             val dy = (pinnedAt ?: pinY.value) - v.translationY
             if (kotlin.math.abs(dy - pinnedDy) > 0.01f) {
                 pinnedDy = dy
                 pinMatrix.setTranslate(0f, dy)
-                v.setAnimationMatrix(pinMatrix)
+                if (pinnedTransform != null) pinnedTransform?.set(pinMatrix) else v.setAnimationMatrix(pinMatrix)
             }
         }
         true
@@ -7249,6 +7295,8 @@ private class MiniPlayerController(
     private var pinnedDy = 0f
 
     private val pinMatrix = Matrix()
+    private var pinnedTransform: NotificationPropertyLease<Matrix?>? = null
+    private fun isNotificationRow(view: View) = view.javaClass.name.contains("ExpandableNotificationRow")
 
     /**
      * A landed card, held: it goes on its own spring toward where it is to be - the estimate
@@ -7287,6 +7335,7 @@ private class MiniPlayerController(
     private val pinFrame = object : Choreographer.FrameCallback {
         override fun doFrame(frameTimeNanos: Long) { android.os.Trace.beginSection("MC pinFrame"); try {
             val v = pinned?.get() ?: return
+            if (isNotificationRow(v) && !NotificationTransitionTarget.eligible(v)) { unpinCard(); return }
             val at = pinnedAt
             val now = android.os.SystemClock.uptimeMillis()
             val dy = if (at != null) at - v.translationY else landingDy(v, now)
@@ -7301,7 +7350,7 @@ private class MiniPlayerController(
             }
             pinnedDy = dy
             pinMatrix.setTranslate(0f, dy)
-            v.setAnimationMatrix(pinMatrix)
+            if (pinnedTransform != null) pinnedTransform?.set(pinMatrix) else v.setAnimationMatrix(pinMatrix)
             Choreographer.getInstance().postFrameCallback(this)
         } finally { android.os.Trace.endSection() } }
     }
@@ -7453,7 +7502,7 @@ private class MiniPlayerController(
             }
         }
         if (kept.isEmpty()) return
-        val stale = kept.filter { (_, k) -> !k.row.isAttachedToWindow || now - k.since > KEPT_MAX_MS || !Main.keyguardLocked() }
+        val stale = kept.filter { (_, k) -> !NotificationTransitionTarget.eligible(k.row) || now - k.since > KEPT_MAX_MS }
         for (key in stale.keys) {
             trace("kept ${shortKey(key)} dropped: attached=${stale[key]?.row?.isAttachedToWindow}")
             letGo(key)
@@ -8364,6 +8413,7 @@ private class MiniPlayerController(
     }
 
     private fun observeNotificationReturn() {
+        if (!NotificationTransitionTarget.sceneEligible()) return
         val motion = railReturn?.takeIf { it.nativeNotifications } ?: return
         val busy = NumState.busy()
         motion.observedBusy = motion.observedBusy || busy
@@ -8406,19 +8456,58 @@ private class MiniPlayerController(
         val matrix = Matrix()
         val inverse = Matrix()
         val location = IntArray(2)
+        val opacity = NotificationPropertyLease({ row.transitionAlpha }, { row.transitionAlpha = it })
+        val transform = NotificationPropertyLease({ row.animationMatrix }, { row.setAnimationMatrix(it) },
+            { it?.let(::Matrix) })
     }
     private var railNoteExit: RailNoteExit? = null
     private var nativeRailNote: Pair<String, View>? = null
 
+    /** Retire visual work at a scene/role boundary without changing saved collapsed choices. */
+    private fun releaseInvalidNotificationTransitions(force: Boolean = false) {
+        val scene = !force && NotificationTransitionTarget.sceneEligible() && !destroyed
+        group?.folded?.let { held ->
+            for (row in held.keys.toList()) if (!scene || !NotificationTransitionTarget.eligible(row))
+                held.remove(row)?.restore()
+        }
+        if ((piles.isNotEmpty() || pileRows.isNotEmpty()) &&
+            (!scene || piles.keys.any { !NotificationTransitionTarget.eligible(it) })) finishPile(true)
+        pinned?.get()?.takeIf { isNotificationRow(it) && (!scene || !NotificationTransitionTarget.eligible(it)) }
+            ?.let { unpinCard() }
+        if (!scene || nativeRailNote?.second?.let { !NotificationTransitionTarget.eligible(it) } == true)
+            finishNativeRailNote(false, preserveChoice = true)
+        if (!scene || railNoteExit?.row?.let { !NotificationTransitionTarget.eligible(it) } == true)
+            finishRailNoteExit(false, refreshNow = false)
+        val s = spread
+        if (s != null && (!scene || spreadCards.keys.any { !NotificationTransitionTarget.eligible(it) } ||
+                s.leadRow?.let { !NotificationTransitionTarget.eligible(it) } == true))
+            endSpread(folded = false, why = "notification scene or role changed")
+        for (row in hiddenRows.keys.toList()) if (!scene || !row.isAttachedToWindow ||
+                row.javaClass.name.contains("ExpandableNotificationRow") && !NotificationTransitionTarget.ordinary(row)) {
+            unholdFolded(row)
+            showRow(row)
+        }
+        for (row in spreadLateFades.keys.toList()) if (!scene || !NotificationTransitionTarget.eligible(row))
+            finishLateRowFade(row)
+        if (!scene) {
+            railReturn?.takeIf { it.plan.key != MUSIC_ISLAND }?.let {
+                finishRailReturn(it.plan.key, it.plan.key in islandKeys, refreshNow = false)
+            }
+            handler.removeCallbacks(releaseFoldedRows)
+            foldHidden.toList().forEach(::unholdFolded)
+        }
+    }
+
     private fun beginRailNoteExit(key: String): Boolean {
-        val row = findRow(key)?.first?.takeIf { it.isAttachedToWindow && it.isShown && it.height > 0 } ?: return false
+        val row = findRow(key)?.first?.takeIf { NotificationTransitionTarget.eligible(it) && it.isShown && it.height > 0 } ?: return false
         if (nativeRailNote != null || railNoteExit != null) return false
         val observing = NativeNotificationReturn.begin(key, row,
             onProgress = { progress -> setRailReturnProgress(key, progress) },
             onFinished = { commit ->
                 if (nativeRailNote?.first == key) {
                     nativeRailNote = null
-                    if (commit) markReturning(key) else LockIslands.release(key)
+                    if (commit) markReturning(key)
+                    else if (NotificationTransitionTarget.eligible(row)) LockIslands.release(key)
                     railClosing.remove(key)
                     finishNativeRailReturn(key, commit)
                 }
@@ -8426,6 +8515,11 @@ private class MiniPlayerController(
             onUnavailable = {
                 if (nativeRailNote?.first == key) {
                     nativeRailNote = null
+                    if (!NotificationTransitionTarget.eligible(row)) {
+                        railClosing.remove(key)
+                        finishRailReturn(key, key in islandKeys, refreshNow = false)
+                        return@begin
+                    }
                     LockIslands.release(key)
                     if (!beginFallbackRailNoteExit(key)) {
                         LockIslands.recapture(key)
@@ -8443,18 +8537,20 @@ private class MiniPlayerController(
         return true
     }
 
-    private fun finishNativeRailNote(commit: Boolean) {
+    private fun finishNativeRailNote(commit: Boolean, preserveChoice: Boolean = false) {
         val observation = nativeRailNote ?: return
         nativeRailNote = null
         NativeNotificationReturn.cancel(observation.second)
-        if (commit) { LockIslands.recapture(observation.first); markReturning(observation.first) }
-        else LockIslands.release(observation.first)
+        if (!preserveChoice) {
+            if (commit) { LockIslands.recapture(observation.first); markReturning(observation.first) }
+            else LockIslands.release(observation.first)
+        }
         railClosing.remove(observation.first)
         finishRailReturn(observation.first, commit, refreshNow = false)
     }
 
     private fun beginFallbackRailNoteExit(key: String): Boolean {
-        val row = findRow(key)?.first?.takeIf { it.isAttachedToWindow && it.isShown && it.height > 0 } ?: return false
+        val row = findRow(key)?.first?.takeIf { NotificationTransitionTarget.eligible(it) && it.isShown && it.height > 0 } ?: return false
         if (railNoteExit != null) return false
         val parent = row.parent as? View ?: return false
         val location = IntArray(2).also(parent::getLocationOnScreen)
@@ -8475,9 +8571,8 @@ private class MiniPlayerController(
             interpolator = android.view.animation.LinearInterpolator()
             addUpdateListener {
                 if (railNoteExit !== exit) return@addUpdateListener
-                if (!Main.keyguardLocked() || MiniPlayerScene.keyguardGoingAway || MiniPlayerScene.aodActive ||
-                    !Main.screenOn() || !row.isAttachedToWindow || exit.revision != Main.screenGeometry().revision)
-                    finishRailNoteExit(true)
+                if (!NotificationTransitionTarget.eligible(row) || exit.revision != Main.screenGeometry().revision)
+                    finishRailNoteExit(false)
                 else {
                     exit.progress = it.animatedValue as Float
                     applyRailNoteExitFrame()
@@ -8497,14 +8592,18 @@ private class MiniPlayerController(
     private fun applyRailNoteExitFrame() {
         val exit = railNoteExit ?: return
         val row = exit.row
+        if (!NotificationTransitionTarget.eligible(row)) {
+            finishRailNoteExit(false, refreshNow = false)
+            return
+        }
         val parent = row.parent as? View ?: return
         parent.getLocationOnScreen(exit.location)
         exit.matrix.set(exit.base)
         exit.matrix.postTranslate(exit.x - (exit.location[0] - parent.scrollX + row.left),
             exit.y - (exit.location[1] - parent.scrollY + row.top) + exit.distance * RailCardExitMotion.progress(exit.progress))
         if (!row.matrix.isIdentity && row.matrix.invert(exit.inverse)) exit.matrix.preConcat(exit.inverse)
-        row.setAnimationMatrix(exit.matrix)
-        row.transitionAlpha = exit.alpha * RailCardExitMotion.alpha(exit.progress)
+        exit.transform.set(exit.matrix)
+        exit.opacity.set(exit.alpha * RailCardExitMotion.alpha(exit.progress))
         setRailReturnProgress(exit.key, RailCardExitMotion.progress(exit.progress))
     }
 
@@ -8512,9 +8611,9 @@ private class MiniPlayerController(
         val exit = railNoteExit ?: return
         railNoteExit = null
         exit.animator?.removeAllUpdateListeners(); exit.animator?.removeAllListeners(); exit.animator?.cancel()
-        exit.row.transitionAlpha = exit.alpha
+        exit.opacity.restore()
         if (commit) hideRowUntilGone(exit.row, exit.key)
-        exit.row.setAnimationMatrix(exit.saved)
+        exit.transform.restore()
         if (commit) {
             LockIslands.recapture(exit.key)
             markReturning(exit.key)
@@ -9243,8 +9342,10 @@ private class MiniPlayerController(
     private val spreadFrame = object : Choreographer.FrameCallback {
         override fun doFrame(frameTimeNanos: Long) { android.os.Trace.beginSection("MC spread"); try {
             val s = spread ?: return
-            if (destroyed || !Main.keyguardLocked() || MiniPlayerScene.keyguardGoingAway) {
-                endSpread(folded = s.progress < 0.5f, why = "lock screen gone")
+            if (destroyed || !NotificationTransitionTarget.sceneEligible() ||
+                spreadCards.keys.any { !NotificationTransitionTarget.eligible(it) } ||
+                s.leadRow?.let { !NotificationTransitionTarget.eligible(it) } == true) {
+                endSpread(folded = false, why = "notification scene or role changed")
                 return
             }
             // A first downward swipe can land on the native pile; only the next folds to the pill.
@@ -9398,6 +9499,7 @@ private class MiniPlayerController(
             val row = stack.getChildAt(i)
             if (row.visibility != View.VISIBLE || row.height <= 0 || row in morphing) continue
             if (!row.javaClass.name.endsWith("ExpandableNotificationRow")) continue
+            if (!NotificationTransitionTarget.eligible(row)) continue
             (row.parent as? View)?.getLocationOnScreen(xy)
             rows += row to xy[1] + row.top + row.translationY
         }
@@ -9420,7 +9522,7 @@ private class MiniPlayerController(
         val row = stack?.let { st ->
             (0 until st.childCount).map(st::getChildAt).firstOrNull {
                 it.javaClass.name.endsWith("ExpandableNotificationRow") && it.visibility == View.VISIBLE &&
-                    it.height > 0 && it !in morphing
+                    it.height > 0 && it !in morphing && NotificationTransitionTarget.eligible(it)
             }
         }
         if (row == null) {
@@ -9431,7 +9533,6 @@ private class MiniPlayerController(
         pill.alpha = 1f
         unholdFolded(row)
         showRow(row)
-        NativeNotificationMaterial.restore(row)
         val home = s.home
         if (toCards && s.footerBottom == null) s.footerBottom = NumState.bottomOnKeyguard()
             ?.takeIf { home != null && it < home.y + home.h }
@@ -9677,6 +9778,16 @@ private class MiniPlayerController(
 
     private val spreadRear = java.util.WeakHashMap<View, ColorOsRearCardMotion>()
     private val spreadBackdrops = NotificationBackdropMorph()
+
+    private class SpreadRowPose(val row: View) {
+        val opacity = NotificationPropertyLease({ row.transitionAlpha }, { row.transitionAlpha = it })
+        val transform = NotificationPropertyLease({ row.animationMatrix }, { row.setAnimationMatrix(it) },
+            { it?.let(::Matrix) })
+        val elevation = NotificationPropertyLease({ row.elevation }, { row.elevation = it })
+        fun restore() { transform.restore(); opacity.restore(); elevation.restore() }
+    }
+    private val spreadRowPoses = java.util.WeakHashMap<View, SpreadRowPose>()
+    private fun spreadPose(row: View) = spreadRowPoses.getOrPut(row) { SpreadRowPose(row) }
     private val spreadOpeningViewport = java.util.Collections.newSetFromMap(java.util.WeakHashMap<View, Boolean>())
     /** The list open and the stack's own places read: the rear cards go to those from ours. */
     private val spreadReal = Jelly(SPREAD_HANDOFF_RESPONSE, 0.999f)
@@ -9813,6 +9924,7 @@ private class MiniPlayerController(
         for (i in 0 until stack.childCount) {
             val row = stack.getChildAt(i)
             if (!row.javaClass.name.endsWith("ExpandableNotificationRow")) continue
+            if (!NotificationTransitionTarget.eligible(row)) continue
             // Native NUMBER/STACK visibility is not the opening list's viewport. Prepare only
             // rows whose unstacked destination fits the screen, before they first draw there.
             if (openingPull && row.height > 0 && (row !in hiddenRows || row in foldHidden) &&
@@ -9821,7 +9933,7 @@ private class MiniPlayerController(
                 spreadOpeningViewport += row
                 unholdFolded(row)
                 if (row.visibility == View.INVISIBLE && showBudget-- > 0) {
-                    row.transitionAlpha = 0f
+                    spreadPose(row).opacity.set(0f)
                     MiniPlayerRuntime.showSpreadRow(row)
                     keepSpreadShown(stack)
                 }
@@ -9844,7 +9956,7 @@ private class MiniPlayerController(
                 // Not laid out yet: kept unseen till a frame here places it. Shown by the stack's
                 // layout first, it was drawn whole at its list place for a frame (LSPosed's
                 // notifications flashing on the pull, the user, 2026-10-25).
-                if (row !in hiddenRows && row.transitionAlpha != 0f) row.transitionAlpha = 0f
+                if (row !in hiddenRows) spreadPose(row).opacity.set(0f)
                 spreadCards[row] = true
                 continue
             }
@@ -10051,7 +10163,7 @@ private class MiniPlayerController(
             // By elevation, which HyperOS leaves alone: its translationZ it sets back every frame,
             // and each set rebuilt the row's outline twice a frame (simpleperf, 2026-10-26).
             val z = -(i + 1).toFloat() - 100f - row.translationZ
-            if (kotlin.math.abs(row.elevation - z) > 0.01f) row.elevation = z
+            spreadPose(row).elevation.set(z)
             // The window: the row's top part, centred across, put on (cx, cy) through the row's
             // own transform - the stack scales its rows as it piles them (recording 2026-10-25).
             clipSpreadRow(row)
@@ -10090,7 +10202,7 @@ private class MiniPlayerController(
             spreadDst.set(cx - winW / 2f - ox, cy - winH / 2f - oy, cx + winW / 2f - ox, cy + winH / 2f - oy)
             spreadMatrix.setRectToRect(spreadSrc, spreadDst, Matrix.ScaleToFit.FILL)
             // Unchanged, not set again: the pile held still redrew the lock screen every frame.
-            if (row.animationMatrix != spreadMatrix) row.setAnimationMatrix(spreadMatrix)
+            spreadPose(row).transform.set(spreadMatrix)
             // Behind the capsule's glass they showed through it (the user, 2026-10-21): gone in
             // the last of the way, tucked in behind it.
             if (row !in hiddenRows) {
@@ -10110,7 +10222,7 @@ private class MiniPlayerController(
                     (if (footerFold && target <= 0f) 0f else 1f) *
                     (if (i < 2) 1f else 1f - pile) * (1f - footHidden) * handedBack *
                     (MiniPlayerRuntime.spreadNativeClips[row]?.visibilityAmount ?: 1f)
-                if (kotlin.math.abs(row.transitionAlpha - a) > 0.002f) row.transitionAlpha = a
+                spreadPose(row).opacity.set(a)
             }
             spreadBackdrops.apply(row, l, 0f, lw, clippedHeight, r,
                 if (clippedHeight > 0f) row.transitionAlpha else 0f)
@@ -10138,6 +10250,8 @@ private class MiniPlayerController(
     private val lateRowHider: (View) -> Unit = ::hideLateRow
 
     private fun hideLateRow(row: View) {
+        if (!NotificationTransitionTarget.eligible(row)) return
+        finishLateRowFade(row)
         if (row in spreadRear || row in hiddenRows) return
         if (spread?.rearHandoff?.scrolling == true) {
             showScrolledRow(row)
@@ -10146,12 +10260,13 @@ private class MiniPlayerController(
         // The second pull deliberately reveals more rows. spreadCardsTo gives each its own
         // growth on this frame, instead of withholding it until every other spring settles.
         if (spread?.openedFromPile == true) return
-        if (row.transitionAlpha != 0f) row.transitionAlpha = 0f
+        spreadPose(row).opacity.set(0f)
         spreadLate += row
     }
 
     /** A viewport entry during user scrolling keeps the native row's geometry and clipping. */
     private fun showScrolledRow(row: View) {
+        if (!NotificationTransitionTarget.eligible(row)) return
         if (row in spreadRear || row in hiddenRows) return
         spreadLate.remove(row)
         // Older rear cards still have negative elevations until their hand-off finishes.
@@ -10160,9 +10275,9 @@ private class MiniPlayerController(
         if (spreadRear.isNotEmpty()) {
             if (row !in spreadZOf) spreadZOf[row] = row.elevation
             val z = -(spreadRear.size + 1f) - 100f - row.translationZ
-            if (kotlin.math.abs(row.elevation - z) > 0.01f) row.elevation = z
+            spreadPose(row).elevation.set(z)
         }
-        if (row.transitionAlpha != 1f) row.transitionAlpha = 1f
+        spreadPose(row).opacity.restore()
     }
 
     /** Rows past the stack's pile shown for the spread (spreadCardsTo), hidden again on a fold. */
@@ -10170,6 +10285,9 @@ private class MiniPlayerController(
 
     private class SpreadContent(val view: View) {
         val matrix = view.animationMatrix?.let(::Matrix)
+        var effectApplied = false
+        val transform = NotificationPropertyLease({ view.animationMatrix }, { view.setAnimationMatrix(it) },
+            { it?.let(::Matrix) })
     }
     private val spreadContent = java.util.WeakHashMap<View, List<SpreadContent>>()
     private val spreadContentMatrix = Matrix()
@@ -10190,14 +10308,16 @@ private class MiniPlayerController(
             spreadContentMatrix.setScale(scale, scale, row.width / 2f - child.left, 0f)
             spreadContentMatrix.postTranslate(0f, top - child.top * (1f - scale))
             saved.matrix?.let { spreadContentMatrix.preConcat(it) }
-            if (child.animationMatrix != spreadContentMatrix) child.setAnimationMatrix(spreadContentMatrix)
+            saved.transform.set(spreadContentMatrix)
         }
     }
     private var spreadShownStack: WeakReference<ViewGroup>? = null
 
     /** Each draw: the stack's layout put them back INVISIBLE, shown again before it is drawn. */
     private val spreadKeepShown = android.view.ViewTreeObserver.OnPreDrawListener {
-        for (row in spreadForced.keys) if (row.visibility == View.INVISIBLE) MiniPlayerRuntime.showSpreadRow(row)
+        releaseInvalidNotificationTransitions()
+        for (row in spreadForced.keys) if (row.visibility == View.INVISIBLE && NotificationTransitionTarget.eligible(row))
+            MiniPlayerRuntime.showSpreadRow(row)
         // Native animations update rows after Choreographer; pose them last on both legs.
         val s = spread
         // applySpread poses the media card too; only otherwise is it posed here.
@@ -10345,10 +10465,6 @@ private class MiniPlayerController(
 
     private fun clipSpreadRow(row: View) {
         if (row in spreadClipOf) return
-        // A retained row can outlive native AOD/material updates while the capsule owns it.
-        // Reapply the actual OEM effect before borrowing its outline, including its original
-        // dark/light/glass theme; pill blur settings must never become a notification style.
-        NativeNotificationMaterial.restore(row)
         fun clip(name: String) = runCatching {
             (Xp.callMethod(row, name) as Number).toInt()
         }.getOrDefault(0)
@@ -10390,12 +10506,19 @@ private class MiniPlayerController(
         val effect = if (blur < 0.5f) null else spreadEffects.getOrPut(blur.roundToInt()) {
             android.graphics.RenderEffect.createBlurEffect(blur, blur, android.graphics.Shader.TileMode.DECAL)
         }
-        for (saved in spreadContent[row].orEmpty()) saved.view.setRenderEffect(effect)
+        for (saved in spreadContent[row].orEmpty()) {
+            if (effect != null || saved.effectApplied) {
+                saved.view.setRenderEffect(effect)
+                saved.effectApplied = effect != null
+            }
+        }
     }
 
     private fun restoreClip(row: View, saved: Pair<android.view.ViewOutlineProvider?, Boolean>) {
-        row.outlineProvider = saved.first
-        row.clipToOutline = saved.second
+        if (row.outlineProvider === spreadOutline) {
+            row.outlineProvider = saved.first
+            if (row.clipToOutline) row.clipToOutline = saved.second
+        }
     }
 
     /** At the spread's end the cards are where it left them (an end): given back. */
@@ -10432,42 +10555,79 @@ private class MiniPlayerController(
         spreadPastEnd.clear()
         MiniPlayerRuntime.stackWantsHidden.clear()
         clearColorOsSpread(keepVisible)
-        if (opened) {
-            rows.filter { it.visibility == View.VISIBLE && it !in hiddenRows }
-                .forEach { NativeNotificationMaterial.restore(it) }
-            return
-        }
+        if (opened) return
         // Folded: given their alpha back while the stack still laid them out above the capsule,
         // the cards behind flashed there (the second one, filmed 2026-10-22). Hidden till the
         // stack has put them away; a new spread takes them back at once (spreadCardsTo).
-        for (row in rows) if (row !in hiddenRows) holdFolded(row)
+        for (row in rows) if (row !in hiddenRows && NotificationTransitionTarget.eligible(row)) holdFolded(row)
     }
 
     /** Cards hidden by a fold till the stack has put them away. */
     private val foldHidden = java.util.Collections.newSetFromMap(java.util.WeakHashMap<View, Boolean>())
+    private val foldReleaseTasks = java.util.WeakHashMap<View, Runnable>()
+    private val releaseFoldedRows = Runnable { if (spread == null) foldHidden.toList().forEach(::unholdFolded) }
 
     /** The stack opened (its own pull, say) before they were given back: given back now. */
     private val showFoldedOnOpen: (Boolean) -> Unit = { folded ->
         // Not in a spread of our own: spreadCardsTo gives them back on its frame there.
-        if (!folded) handler.post { if (spread == null) foldHidden.toList().forEach(::unholdFolded) }
+        handler.removeCallbacks(releaseFoldedRows)
+        if (!folded) handler.post(releaseFoldedRows)
     }
 
     private fun holdFolded(row: View) {
+        if (!NotificationTransitionTarget.eligible(row)) return
+        foldReleaseTasks.remove(row)?.let(handler::removeCallbacks)
         hideRow(row)
         foldHidden += row
         NumState.addListener(showFoldedOnOpen)
-        handler.postDelayed({ unholdFolded(row) }, ROW_GONE_MS)
+        val release = Runnable { unholdFolded(row) }
+        foldReleaseTasks[row] = release
+        handler.postDelayed(release, ROW_GONE_MS)
     }
 
     private fun unholdFolded(row: View) {
+        foldReleaseTasks.remove(row)?.let(handler::removeCallbacks)
         if (foldHidden.remove(row)) showRow(row)
+        if (foldHidden.isEmpty()) NumState.removeListener(showFoldedOnOpen)
+    }
+
+    private class LateRowFade(val pose: SpreadRowPose) {
+        var animator: android.animation.ValueAnimator? = null
+    }
+    private val spreadLateFades = java.util.WeakHashMap<View, LateRowFade>()
+
+    private fun finishLateRowFade(row: View) {
+        val fade = spreadLateFades.remove(row) ?: return
+        fade.animator?.let { it.removeAllUpdateListeners(); it.removeAllListeners(); it.cancel() }
+        fade.pose.restore()
+        NativeNotificationMaterial.restore(row)
+    }
+
+    private fun fadeLateRow(row: View, pose: SpreadRowPose) {
+        finishLateRowFade(row)
+        if (!NotificationTransitionTarget.eligible(row) || destroyed) { pose.restore(); return }
+        val fade = LateRowFade(pose)
+        spreadLateFades[row] = fade
+        val end = pose.opacity.baseline
+        fade.animator = android.animation.ValueAnimator.ofFloat(row.transitionAlpha, end).apply {
+            duration = 160L
+            addUpdateListener {
+                if (spreadLateFades[row] !== fade) return@addUpdateListener
+                if (!NotificationTransitionTarget.eligible(row) || destroyed) finishLateRowFade(row)
+                else pose.opacity.set(it.animatedValue as Float)
+            }
+            addListener(object : android.animation.AnimatorListenerAdapter() {
+                override fun onAnimationEnd(animation: android.animation.Animator) { finishLateRowFade(row) }
+            })
+        }
+        fade.animator?.start()
     }
 
     private fun clearColorOsSpread(keepVisible: Set<View> = emptySet()) {
-        spreadBackdrops.clear()
+        val materialRows = spreadBackdrops.clear(rebind = false)
         for (contents in spreadContent.values) for (saved in contents) {
-            saved.view.setRenderEffect(null)
-            saved.view.setAnimationMatrix(saved.matrix)
+            if (saved.effectApplied) saved.view.setRenderEffect(null)
+            saved.transform.restore()
         }
         spreadContent.clear()
         spreadEffects.clear()
@@ -10475,21 +10635,11 @@ private class MiniPlayerController(
         MiniPlayerRuntime.spreadLateRow = null
         // Still up once the stack has settled: faded in; one it hides meanwhile never shows.
         for (row in spreadLate.toList()) if (row !in spreadCards && row !in hiddenRows)
-            android.animation.ValueAnimator.ofFloat(row.transitionAlpha, 1f).apply {
-                duration = 160L
-                addUpdateListener { a -> row.transitionAlpha = a.animatedValue as Float }
-                start()
-            }
+            spreadRowPoses.remove(row)?.let { fadeLateRow(row, it) }
         spreadLate.clear()
-        for (row in spreadCards.keys.toList()) {
-            row.setAnimationMatrix(null)
-            row.setRenderEffect(null)
-            if (row !in hiddenRows) row.transitionAlpha = 1f
-        }
         // Native viewport entries can have only their order held, without a spread matrix.
-        for ((row, z) in spreadZOf) row.elevation = z
-        // The first card too, blurred with them but never one of spreadCards.
-        for (row in spreadBlurOf.keys) row.setRenderEffect(null)
+        spreadRowPoses.values.forEach { it.restore() }
+        spreadRowPoses.clear()
         for ((row, saved) in spreadClipOf) restoreClip(row, saved)
         spreadClipOf.clear()
         for ((row, state) in MiniPlayerRuntime.spreadNativeClips.toMap()) {
@@ -10518,6 +10668,8 @@ private class MiniPlayerController(
         spreadLast = 0L
         spreadPillGone.value = 0f
         player?.setContentBlur(0f)
+        // Native binding runs after all HMC geometry has been handed back, once per dirty row.
+        materialRows.forEach { NativeNotificationMaterial.restore(it) }
     }
 
     private fun fadeSeat(seat: Int, a: Float) {
@@ -10934,12 +11086,9 @@ private class MiniPlayerController(
             Main.fullAodOn(), android.os.SystemClock.uptimeMillis())
         railDragHeld = false
         finishRailFusion()
-        finishNativeRailNote(true)
-        finishRailNoteExit(true)
-        railReturn?.let { finishRailReturn(it.plan.key, it.plan.key in islandKeys) }
         rememberLockPresentation()
-        // Give the open rows back before HyperOS starts its own AOD fold, as for a media swipe.
-        if (colorOs() && spread != null) endSpread(folded = false, why = "native AOD handoff")
+        releaseInvalidNotificationTransitions(force = true)
+        railReturn?.let { finishRailReturn(it.plan.key, it.plan.key in islandKeys) }
     }
 
     /**
@@ -11939,11 +12088,12 @@ private class MiniPlayerController(
     private fun findRow(key: String): Pair<View, View>? {
         if (key == STACK_ISLAND) return findRow(stackLead() ?: return null)
         // Given back early and drawn on as a transient view: no longer among the stack's rows.
-        kept[key]?.row?.takeIf { it.isAttachedToWindow }?.let { return it to it }
+        kept[key]?.row?.takeIf { it.isAttachedToWindow && NotificationTransitionTarget.ordinary(it) }?.let { return it to it }
         val stack = notificationStack() ?: return null
         for (i in 0 until stack.childCount) {
             val child = stack.getChildAt(i)
             if (!child.javaClass.name.contains("ExpandableNotificationRow")) continue
+            if (!NotificationTransitionTarget.ordinary(child)) continue
             if (rowKey(child) == key) return child to child
             // One app, one row, as the stack groups them: a notification in a group is found as
             // the group's row, never its own child row. A child is not even drawn with the group
@@ -12001,18 +12151,30 @@ private class MiniPlayerController(
 
     /** Rows this controller has made invisible (transitionAlpha 0), and what they had. */
     private val hiddenRows = java.util.WeakHashMap<View, Float>()
+    private val hiddenRowOpacity = java.util.WeakHashMap<View, NotificationPropertyLease<Float>>()
+    private val hiddenRowReleaseTasks = java.util.WeakHashMap<View, Runnable>()
+
+    private fun setHiddenRowAlpha(row: View, alpha: Float) {
+        val lease = hiddenRowOpacity[row] ?: return
+        hiddenRows[row] = lease.baseline
+        lease.set(alpha)
+    }
 
     private fun hideRow(row: View) {
+        if (row.javaClass.name.contains("ExpandableNotificationRow") && !NotificationTransitionTarget.eligible(row)) return
+        hiddenRowReleaseTasks.remove(row)?.let(handler::removeCallbacks)
         if (row in hiddenRows) return
         trace("hide ${shortName(row)}")
         hiddenRows[row] = row.transitionAlpha
-        row.transitionAlpha = 0f
+        hiddenRowOpacity[row] = NotificationPropertyLease({ row.transitionAlpha }, { row.transitionAlpha = it })
+        setHiddenRowAlpha(row, 0f)
     }
 
     private fun showRow(row: View) {
+        hiddenRowReleaseTasks.remove(row)?.let(handler::removeCallbacks)
         val was = hiddenRows.remove(row) ?: return
         trace("show ${shortName(row)} ta=$was")
-        row.transitionAlpha = was
+        hiddenRowOpacity.remove(row)?.restore()
     }
 
     /**
@@ -12024,11 +12186,16 @@ private class MiniPlayerController(
      */
     private fun hideRowUntilGone(row: View, key: String) {
         hideRow(row)
-        handler.postDelayed({
+        if (row !in hiddenRows) return
+        hiddenRowReleaseTasks.remove(row)?.let(handler::removeCallbacks)
+        val release = Runnable {
+            hiddenRowReleaseTasks.remove(row)
             // Released again meanwhile and waiting to be morphed: that morph gives it back.
             // Held for the media card's morph meanwhile: that morph's end gives it back.
             if (rowWaitKey != key && !(noteMorphKey == key && morph != null) && !rowsHeld()) showRow(row)
-        }, ROW_GONE_MS)
+        }
+        hiddenRowReleaseTasks[row] = release
+        handler.postDelayed(release, ROW_GONE_MS)
     }
 
     /** A row's alpha as drawn: its own and every ancestor's up to the window. */
@@ -12654,8 +12821,7 @@ private class MiniPlayerController(
         exitSurfacesHidden = true
         railDragHeld = false
         finishRailFusion(refreshNow = false)
-        finishNativeRailNote(true)
-        finishRailNoteExit(true)
+        releaseInvalidNotificationTransitions(force = true)
         railReturn?.let { finishRailReturn(it.plan.key, it.plan.key in islandKeys, refreshNow = false) }
         setRailBubblesShown(false)
         railOpening.clear()
@@ -12682,10 +12848,13 @@ private class MiniPlayerController(
 
     fun destroy() {
         clearRailExpansionPops()
+        destroyed = true
         railDragHeld = false
         finishRailFusion(commit = false, refreshNow = false)
-        finishNativeRailNote(false)
-        finishRailNoteExit(false, refreshNow = false)
+        releaseInvalidNotificationTransitions(force = true)
+        clearColorOsSpread()
+        spreadLateFades.keys.toList().forEach(::finishLateRowFade)
+        NumState.removeListener(showFoldedOnOpen)
         railReturn?.let { finishRailReturn(it.plan.key, false, refreshNow = false) }
         handler.removeCallbacks(rememberPresentation)
         railPosition?.cancel()
@@ -13333,6 +13502,7 @@ private class MiniPlayerController(
     }
 
     fun refresh() {
+        if (destroyed) return
         if (Looper.myLooper() != Looper.getMainLooper()) { scheduleRefresh(); return }
         runCatching { refreshUnsafe(); scheduleRememberPresentation() }.onFailure { Xp.w("MCMini: refresh failed: $it") }
     }

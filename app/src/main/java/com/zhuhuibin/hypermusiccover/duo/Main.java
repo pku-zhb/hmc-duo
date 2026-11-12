@@ -1101,12 +1101,9 @@ public class Main extends XposedModule {
                 captureScreenSize(sContainer);
                 LockScreenRailRuntime.attach(sContainer);
                 FoldMusicRuntime.attach(sContainer);
-                // The clock container attach is the first reliably-fired event after both
-                // modules' onPackageLoaded, so arming the HyperLight counter-hook here - not
-                // from setGlassColor, which this build never calls on the all_in_one clock -
-                // guarantees it registers after HyperLight's own View.setMiGlass hook.
+                // Clock glyph protection is separate from the media relay, which is installed
+                // during runtime setup and observes the actual RenderNode commit boundary.
                 armMiGlassGuard();
-                NativeGlassRelay.install();
                 Xp.log(TAG + "clock container attached: " + sContainer);
                 try {
                     registerReceiver(sContainer.getContext().getApplicationContext());
