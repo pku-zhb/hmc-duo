@@ -2754,7 +2754,7 @@ private class MiniPlayerController(
 
     private fun drawRailSurface(shape: RailSurfaceContour.Shape) {
         val bounds = shape.bounds
-        val glass = railGlass ?: GooGlass(context).also {
+        val glass = railGlass ?: GooGlass(context, roundedCarrier = true).also {
             railGlass = it
             host.addView(it, lockScreenLayerIndex(), ViewGroup.LayoutParams(1, 1))
         }
@@ -2767,7 +2767,7 @@ private class MiniPlayerController(
                 View.MeasureSpec.makeMeasureSpec(h, View.MeasureSpec.EXACTLY))
         if (glass.width != w || glass.height != h || glass.isLayoutRequested) glass.layout(0, 0, w, h)
         railSurfacePath.update(shape)
-        glass.setPath(railSurfacePath.path, bounds.x, bounds.y)
+        glass.setPath(railSurfacePath.path, bounds.x, bounds.y, shape.boxes.minOf { it.w } / 2f)
         glass.dress(MiniPlayerRuntime.materialGeneration) { MiniPlayerRuntime.material(it, loader) }
         glass.translationX = bounds.x - glass.left
         glass.translationY = bounds.y - glass.top
@@ -8229,7 +8229,8 @@ private class MiniPlayerController(
 
     fun railDismissState(): String = "want=${wantsCardSwipe()} music=${musicCarded(controller?.takeIf(::isUsable))} " +
         "mediaExit=${railMediaExiting()} pendingNotes=${railClosing.count { it != MUSIC_ISLAND }} " +
-        "last=$lastRailCollapse bubbles=${railBubbles.size} overflow=$railOverflow scroll=[$lastScrollRead]"
+        "last=$lastRailCollapse bubbles=${railBubbles.size} overflow=$railOverflow scroll=[$lastScrollRead] " +
+        "fusionGlass=[${railGlass?.describe() ?: "not created"}]"
 
     private fun railNotificationsOpen(): Boolean {
         if (!Main.keyguardLocked() || !Main.onKeyguardNow() || MiniPlayerScene.aodActive) return false
