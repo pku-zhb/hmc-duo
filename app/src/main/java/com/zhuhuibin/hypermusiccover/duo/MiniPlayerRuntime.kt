@@ -2939,6 +2939,14 @@ private class MiniPlayerController(
         railDragHeld = railReturn == null
         if (!railDragHeld) return
         railDragPending = null
+        if (colorOs()) {
+            railPosition?.cancel(); railPosition = null
+            if (gooActive) {
+                islandDragging = false
+                gooDrag(0f)
+            }
+            return
+        }
         player?.holdNudge()
         railBoundaryBaseY = player?.nudgeY ?: 0f
         railFusion?.let {
@@ -2963,6 +2971,11 @@ private class MiniPlayerController(
 
     fun dragRail(dx: Float, dy: Float) {
         if (!railDragHeld) return
+        if (colorOs()) {
+            if (islandKeys.size >= 2 && (gooActive || abs(dy) >= abs(dx))) gooDrag(dy)
+            else nudgeRailBoundary(dy)
+            return
+        }
         var motion = railFusion
         val along = if (motion != null || abs(dy) >= abs(dx)) dy else 0f
         if (motion == null && along != 0f) {
@@ -2999,6 +3012,16 @@ private class MiniPlayerController(
     fun releaseRailDrag(dx: Float, dy: Float, vy: Float, cancelled: Boolean) {
         if (!railDragHeld) return
         railDragHeld = false
+        if (colorOs()) {
+            if (gooActive) {
+                if (cancelled || abs(dx) > abs(dy)) {
+                    islandDragging = false; gooHeld = false
+                    gooP.velocity = 0f; gooP.target = 0f
+                    gooRun()
+                } else gooLetGo(vy)
+            } else player?.springNudgeBack(0f, if (cancelled) 0f else vy)
+            return
+        }
         val motion = railFusion
         if (motion == null) {
             player?.springNudgeBack(0f, if (cancelled) 0f else vy)
@@ -3213,19 +3236,17 @@ private class MiniPlayerController(
             resetIslandDrag()
             return
         }
+        if (colorOs()) {
+            if (!gooActive) switchGoo(next)
+            return
+        }
         if (player?.vertical == true) {
-            // The old ColorOS liquid switch shrinks WIDTH to HEIGHT, making a 149x608
-            // rail become 608x608. Keep the frame upright while changing its content.
             endSwap()
             endRow()
             resetIslandDrag()
             clearSmallNudge()
             val nextKey = adjacentRailIsland(next) ?: return
             switchRailIsland(nextKey)
-            return
-        }
-        if (colorOs()) {
-            if (!gooActive) switchGoo(next)
             return
         }
         val oldBig = selectedIsland
@@ -4274,6 +4295,7 @@ private class MiniPlayerController(
         if (view.layoutParams.width != w || view.layoutParams.height != h) {
             view.layoutParams = view.layoutParams.apply { width = w; height = h }
         }
+        view.setVertical(player?.vertical == true)
         val music = controller?.takeIf(::isUsable)
         val note = if (key == MUSIC_ISLAND) null
             else LockIslands.notes.firstOrNull { it.key == key } ?: LockIslands.noteFor(key)
@@ -5868,6 +5890,28 @@ private class MiniPlayerController(
     private var gooHeld = false
     private var gooNext = true
     private var gooRest: CoverMorphMotion.Box? = null
+    private var gooAxis: ColorOsPillAxis? = null
+    private var gooGeometryRevision = -1L
+    private val gooScreenPath = Path()
+    private val gooAxisMatrix = Matrix()
+
+    private fun beginGooAxis(screen: CoverMorphMotion.Box): CoverMorphMotion.Box {
+        val axis = ColorOsPillAxis(player?.vertical == true, screen)
+        gooAxis = axis
+        gooGeometryRevision = Main.screenGeometry().revision
+        return axis.logical
+    }
+
+    private fun gooScreen(box: CoverMorphMotion.Box): CoverMorphMotion.Box =
+        gooAxis?.toScreen(box) ?: box
+
+    private fun gooScreenPath(path: Path): Path {
+        val axis = gooAxis?.takeIf { gooActive && it.vertical } ?: return path
+        gooScreenPath.set(path)
+        gooAxisMatrix.setRotate(90f, axis.screen.cx(), axis.screen.cy())
+        gooScreenPath.transform(gooAxisMatrix)
+        return gooScreenPath
+    }
 
     /**
      * The finger's dx at which the island now in the capsule took it: a whole switch done under
@@ -5899,7 +5943,7 @@ private class MiniPlayerController(
 
     /** The shared glass as [path] (screen pixels), laid over a band twice the capsule's height. */
     private fun showGoo(path: Path, rest: CoverMorphMotion.Box) {
-        placeGlass(glassView(merge = false), path, rest)
+        placeGlass(glassView(merge = false), gooScreenPath(path), if (gooActive) gooScreen(rest) else rest)
     }
 
     /**
@@ -5908,7 +5952,7 @@ private class MiniPlayerController(
      */
     private fun showMerge(path: Path, rest: CoverMorphMotion.Box, alpha: Float) {
         mergeAlpha = alpha
-        placeGlass(glassView(merge = true), path, rest)
+        placeGlass(glassView(merge = true), gooScreenPath(path), if (gooActive) gooScreen(rest) else rest)
     }
 
     private fun hideMerge() {
@@ -6053,7 +6097,7 @@ private class MiniPlayerController(
                 gooHeld = true
                 gooBase = dx - gooP.value * gooSpan(rest) * if (gooNext) -1f else 1f
             } else {
-                gooRest = view.restBoxOnScreen() ?: return
+                gooRest = beginGooAxis(view.restBoxOnScreen() ?: return)
                 gooActive = true
                 gooHeld = true
                 gooBase = 0f
@@ -6091,7 +6135,7 @@ private class MiniPlayerController(
     /** The next island (or the one before it) takes the capsule, run by the spring alone. */
     private fun switchGoo(next: Boolean) {
         val rest = player?.restBoxOnScreen() ?: return
-        gooRest = rest
+        gooRest = beginGooAxis(rest)
         gooActive = true
         gooHeld = false
         gooNext = next
@@ -6161,7 +6205,7 @@ private class MiniPlayerController(
         // The pill keeps its own glass (Soft Glass draws its rim from the view's own rounded
         // frame; the shared glass, one wide view cut by a path, came out a plain blur until the
         // pill settled, 2026-10-20). The shared glass only draws what no view covers.
-        view.setMorphFrame(f.old, f.old.h / 2f, 1f)
+        view.setMorphFrame(gooScreen(f.old), f.old.h / 2f, 1f)
         gooShrink(view, f.old, rest)
         val (oldSharp, _) = ColorOsPill.oldContent(p)
         view.setContentAlpha(1f)
@@ -6180,7 +6224,9 @@ private class MiniPlayerController(
         // which read as cut off rather than drawn in (filmed 2026-10-20).
         val scale = (old.w / rest.w).coerceIn(0.2f, 1f)
         // The hiding end's centre, the way the finger went: the left end on a swipe left.
-        view.setContentScale(scale, if (toLeft) old.h / 2f else old.w - old.h / 2f)
+        val pivot = if (toLeft) old.h / 2f else old.w - old.h / 2f
+        if (gooAxis?.vertical == true) view.setContentScale(scale, old.h / 2f, pivot)
+        else view.setContentScale(scale, pivot)
     }
 
     /** The two ears about [rest], scaled as ColorOS scales its ear views through a switch. */
@@ -6208,13 +6254,13 @@ private class MiniPlayerController(
                 if (it.visibility == View.VISIBLE) it.visibility = View.INVISIBLE
             } else {
                 if (it.visibility != View.VISIBLE) it.visibility = View.VISIBLE
-                it.setMorphFrame(f.old, minOf(f.old.w, f.old.h) / 2f, 1f - join)
+                it.setMorphFrame(gooScreen(f.old), minOf(f.old.w, f.old.h) / 2f, 1f - join)
                 gooShrink(it, f.old, g.rest)
                 it.setContentBlur((1f - oldSharp) * blur)
                 it.setContentAlpha(oldSeen)
             }
         }
-        view.setMorphFrame(f.new, f.new.h / 2f, 1f - join)
+        view.setMorphFrame(gooScreen(f.new), f.new.h / 2f, 1f - join)
         // Grown in from the side it arrives on: left at the leaving island's scale, it shrank,
         // then jumped back to full size when the switch ended (2026-10-20).
         gooShrink(view, f.new, g.rest, toLeft = !gooNext)
@@ -6244,7 +6290,8 @@ private class MiniPlayerController(
         val next = gooNext
         val oldKey = selectedIsland?.takeIf { it in keys } ?: keys[0]
         val at = keys.indexOf(oldKey).coerceAtLeast(0)
-        val newKey = keys[(at + if (next) 1 else keys.size - 1) % keys.size]
+        val forward = if (gooAxis?.vertical == true) !next else next
+        val newKey = keys[(at + if (forward) 1 else keys.size - 1) % keys.size]
         val oldFrom = ColorOsPill.frame(rest, ColorOsPill.roundAt(rest, gooStroke()), next, gooGap(),
             gooOut(), gooStroke()).old
         aloneFirst = null
@@ -6258,9 +6305,9 @@ private class MiniPlayerController(
             if (swap != null) endSwap()
         } finally { gooBeginning = false }
         endRow()
-        startGhost(oldKey, oldFrom)
+        startGhost(oldKey, gooScreen(oldFrom))
         ghostPill?.let {
-            it.setMorphFrame(oldFrom, oldFrom.h / 2f, 1f)
+            it.setMorphFrame(gooScreen(oldFrom), oldFrom.h / 2f, 1f)
         }
         view.beginMorph(layoutOnly = true)
         goo = GooSwitch(next, oldKey, rest)
@@ -6331,7 +6378,11 @@ private class MiniPlayerController(
             it.setContentAlpha(1f)
             it.setContentBlur(0f)
         }
-        if (wasActive) schedulePosition()
+        gooAxis = null
+        if (wasActive) {
+            railPositionX = Float.NaN; railPositionY = Float.NaN
+            schedulePosition()
+        }
         placeHints()
     }
 
@@ -13130,6 +13181,10 @@ private class MiniPlayerController(
             islandKeys = RailIslandStrip.order(islandKeys, islandOrder, STACK_ISLAND, MUSIC_ISLAND)
         }
         if (railFusion?.let { it.keys != islandKeys } == true) finishRailFusion(refreshNow = false)
+        if (gooActive && (!colorOs() || islandKeys.size < 2 || !Main.screenOnCached() ||
+                MiniPlayerScene.aodActive || MiniPlayerScene.keyguardGoingAway ||
+                gooGeometryRevision != Main.screenGeometry().revision ||
+                goo?.let { it.oldKey !in islandKeys } == true)) endGoo()
         // Islands out as their cards keep their places too, for when they come back.
         var order = islandKeys
         // A new island in the row comes up beside the first, swiped alone or not.
@@ -14588,6 +14643,7 @@ private class MiniPlayerController(
     }
 
     private fun position() {
+        if (gooActive) return
         if (railReturn != null) { applyRailReturnFrame(); return }
         if (railFusion != null) { applyRailFusionFrame(); return }
         updateNotificationCompacting()
