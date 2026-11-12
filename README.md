@@ -16,11 +16,14 @@ General device compatibility is not a goal.
   MiDuo's shortcut column; swipe to switch or tap a bubble to open its card.
   HyperOS switches stop at the first and last item. Its capsule keeps its length
   while following a drag into the next bubble, then separates with a spring release.
-- A fixed player control cycles artwork, lyrics and the native lock-screen clock;
-  its icon shows the next action, and the native thumbnail keeps its place.
-- Upward swipes in the clock/content area, including the gap beside the right
-  controls, expand music, live cards, then notifications. Swipe-to-unlock follows
-  when all available content is open; shortcut and capsule gestures keep their own targets.
+  Set a total visible limit of 2/3/4/5 (default 3); swipe to reach overflow items.
+- The native artwork slot cycles between its thumbnail, lyrics and clock actions.
+  Its contents show the next action without adding a button or moving the text.
+- Upward swipes in the clock/empty band above the first visible card expand music,
+  live cards, then notifications; downward swipes there return content to the rail.
+  Swipe-to-unlock follows when all available content is open. Cards and list gaps
+  keep native scrolling, dismissal, taps, long presses and media controls; shortcuts
+  and capsules keep their own targets.
 - Select which categories collapse on lock, or keep the last lock-screen state.
   Inner landscape has separate category defaults and a cover/lyrics two-column layout.
 - Native player, clock and notification reflow with AOD/wake handling.
