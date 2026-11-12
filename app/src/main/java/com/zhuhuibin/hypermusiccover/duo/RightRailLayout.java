@@ -65,20 +65,27 @@ final class RightRailLayout {
         }
     }
 
-    /** Upright artwork/text/buttons in a tall capsule, with natural text wrapping. */
+    /** Keep a short summary and the primary action until the capsule is almost a circle. */
     static VerticalFace face(float width, float height, float density, boolean second) {
         if (!FoldMusicLayout.finite(width, height, density) || density <= 0 || width < 40 * density
-                || height < 140 * density || height < width * 1.6f) return null;
-        float gap = 6 * density, edge = 8 * density;
-        float icon = Math.min(34 * density, width - 2 * edge);
-        float button = Math.min(36 * density, width - 2 * edge);
+                || height < width * 1.8f) return null;
+        boolean compact = height < 140 * density;
+        // At two circle-lengths there is still room for two vertical text cells. Scale the
+        // ornaments and padding first, rather than dropping every detail at a fixed 140 dp.
+        // The secondary action yields to the summary; it remains available in the open card.
+        if (compact && second) return null;
+        float room = compact ? Math.max(0f, Math.min(1f,
+                (height - width * 2f) / Math.max(density, 140 * density - width * 2f))) : 1f;
+        float gap = (2 + 4 * room) * density, edge = (2 + 6 * room) * density;
+        float icon = Math.min((compact ? 22 + 12 * room : 34) * density, width - 2 * edge);
+        float button = Math.min((compact ? 24 + 12 * room : 36) * density, width - 2 * edge);
         float actionTop = height - edge - button;
         float secondTop = second ? actionTop - button - gap : actionTop;
         FoldMusicLayout.Box art = new FoldMusicLayout.Box((width - icon) / 2, edge,
                 (width + icon) / 2, edge + icon);
         FoldMusicLayout.Box text = new FoldMusicLayout.Box(edge, art.bottom + gap,
                 width - edge, secondTop - gap);
-        if (text.height() < 28 * density) return null;
+        if (text.height() < (compact ? 26 : 28) * density) return null;
         FoldMusicLayout.Box action = new FoldMusicLayout.Box((width - button) / 2, actionTop,
                 (width + button) / 2, actionTop + button);
         FoldMusicLayout.Box other = new FoldMusicLayout.Box(action.left, secondTop,

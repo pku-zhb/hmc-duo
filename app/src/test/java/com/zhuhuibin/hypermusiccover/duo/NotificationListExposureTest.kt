@@ -214,4 +214,50 @@ class NotificationListExposureTest {
             assertEquals(NotificationListExposure.Action.NONE,
                 e.sample(time, "LIST", true, collapsed = true))
     }
+
+    @Test fun reversingAnOpeningWithANativeCollapseCancelsEveryDelayedListRetry() {
+        val e = NotificationListExposure()
+        e.request(0)
+        e.interacted()
+        assertEquals(NotificationListExposure.Action.RETARGET_LIST, e.sample(200, "NUMBER"))
+        e.cancelOpen() // Latest HANDS_UP target is NUMBER, before native rows finish fading.
+        for (time in listOf(300L, 450L, 700L, 1400L, 2600L)) {
+            assertEquals(NotificationListExposure.Action.NONE,
+                e.sample(time, "LIST", true, collapsed = true))
+            assertFalse(e.opening)
+        }
+        assertEquals(NotificationListExposure.Action.NONE, e.sample(3000, "NUMBER", collapsed = true))
+    }
+
+    @Test fun anOldNativeGestureCannotReopenAClosedCategoryWhenAnotherCardChangesTheStack() {
+        val e = NotificationListExposure()
+        e.interacted()
+        e.sample(0, "LIST", true)
+        // The settled expanded list consumes its gesture; later geometry is not a new choice.
+        assertEquals(NotificationListExposure.Action.NONE, e.sample(500, "LIST", true, collapsed = true))
+        assertEquals(NotificationListExposure.Action.NONE, e.sample(1000, "LIST", true, collapsed = true))
+        e.interacted()
+        assertEquals(NotificationListExposure.Action.NONE, e.sample(1200, "LIST", true, collapsed = true))
+        assertEquals(NotificationListExposure.Action.OPENED, e.sample(1328, "LIST", true, collapsed = true))
+    }
+
+    @Test fun repeatedInterruptedOpensRemainRetryableWithoutKeepingOlderIntent() {
+        val e = NotificationListExposure()
+        repeat(20) { turn ->
+            val now = turn * 3000L
+            e.request(now)
+            e.interacted()
+            e.sample(now + 100, "LIST", true, busy = true)
+            e.cancelOpen()
+            assertEquals(NotificationListExposure.Action.NONE,
+                e.sample(now + 800, "LIST", true, collapsed = true))
+            assertEquals(NotificationListExposure.Action.NONE,
+                e.sample(now + 1000, "LIST", true, collapsed = true))
+            e.request(now + 1500)
+            assertTrue(e.holdsIsland)
+            assertEquals(NotificationListExposure.Action.NONE, e.sample(now + 1700, "LIST", true))
+            assertEquals(NotificationListExposure.Action.OPENED, e.sample(now + 1828, "LIST", true))
+            assertFalse(e.holdsIsland)
+        }
+    }
 }

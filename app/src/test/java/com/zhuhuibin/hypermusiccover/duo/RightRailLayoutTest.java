@@ -64,4 +64,40 @@ public class RightRailLayoutTest {
         assertNull(RightRailLayout.face(54, 140, 1, true));
         assertNotNull(RightRailLayout.face(54, 140, 1, false));
     }
+
+    @Test public void twoAndThreeSeatCapsulesRetainTextAndThePrimaryAction() {
+        for (float density : new float[]{1f, 1.5f, 2.75f, 3f}) {
+            // Actual five/six-item outer-screen layouts leave about three/two circle lengths.
+            for (float height : new float[]{139.4773f, 87.4773f}) {
+                RightRailLayout.VerticalFace face = RightRailLayout.face(
+                        46 * density, height * density, density, false);
+                assertNotNull(face);
+                assertTrue(face.artwork.bottom < face.text.top);
+                assertTrue(face.text.height() >= 32 * density);
+                assertTrue(face.text.bottom < face.action.top);
+                assertTrue(face.action.bottom < height * density);
+                assertTrue(face.action.width() >= 24 * density);
+            }
+        }
+    }
+
+    @Test public void onlyAnAlmostRoundSeatDropsItsDetails() {
+        assertNull(RightRailLayout.face(46, 46, 1, false));
+        assertNull(RightRailLayout.face(46, 60, 1, false));
+        assertNotNull(RightRailLayout.face(46, 92, 1, false));
+        assertNotNull(RightRailLayout.face(46, 138, 1, false));
+    }
+
+    @Test public void shortCapsulesPrioritizeSummaryOverAnExtraActionWithoutOverlap() {
+        assertNull(RightRailLayout.face(46, 92, 1, true));
+        assertNotNull(RightRailLayout.face(46, 92, 1, false));
+        for (int height = 83; height <= 221; height++) {
+            RightRailLayout.VerticalFace face = RightRailLayout.face(46, height, 1, false);
+            assertNotNull(face);
+            assertTrue(face.artwork.left >= 0 && face.artwork.right <= 46);
+            assertTrue(face.artwork.bottom < face.text.top);
+            assertTrue(face.text.bottom < face.action.top);
+            assertTrue(face.action.bottom <= height);
+        }
+    }
 }

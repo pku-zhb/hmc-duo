@@ -28,7 +28,12 @@ internal class NotificationListExposure {
         hasUsableList = false; nativeInteraction = false
     }
     fun request(now: Long) { reset(); requestedAt = now }
-    fun cancelOpen() { requestedAt = null; pileSince = null; visibleSince = null }
+    fun cancelOpen() {
+        requestedAt = null; pileSince = null; visibleSince = null
+        // A previous gesture must not reopen a later explicit collapse when another card
+        // changes the shared stack geometry. Only a new native gesture can reverse it.
+        nativeInteraction = false
+    }
     fun failedOpen() { cancelOpen(); captured = true }
 
     fun observe(now: Long, active: Boolean, busy: Boolean, state: String?,
@@ -60,7 +65,10 @@ internal class NotificationListExposure {
                 }
                 return Action.NONE
             }
-            if (!collapsed && !busy) captured = false
+            if (!collapsed && !busy) {
+                captured = false
+                nativeInteraction = false
+            }
             return Action.NONE
         }
         visibleSince = null
