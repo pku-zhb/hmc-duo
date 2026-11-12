@@ -15,6 +15,9 @@ not the destination for project links, updates or bug reports.
   APK is not a verified release upgrade.
 - Separate device reports, source reasoning and host test results. Passing JVM
   tests or installed hooks do not establish correct phone behavior.
+- End each preview with a short acceptance list for that preview's changes only.
+  Do not ask the owner to repeat previously accepted features unless a specific
+  regression or changed dependency makes a targeted check necessary.
 - Source work and host builds do not authorize phone installation, restarts or
   live setting changes. Follow the conversation's current device authorization.
 - Ask the owner and receive explicit confirmation immediately before every APK
