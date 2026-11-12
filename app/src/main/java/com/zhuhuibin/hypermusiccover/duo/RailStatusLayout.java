@@ -16,5 +16,21 @@ final class RailStatusLayout {
         float left = Math.round(centerX - CENTER_X * scale), top = Math.round(safeTop + TOP_DP * density);
         return new FoldMusicLayout.Box(left, top, left + WIDTH * scale, top + HEIGHT * scale);
     }
+
+    static final class Offset {
+        final float x, y;
+        Offset(float x, float y) { this.x = x; this.y = y; }
+    }
+
+    /** Invert only a horizontal window-space correction, retaining native Y and scale. */
+    static Offset pinX(float canonicalX, float drawnX, float a, float b, float c, float d) {
+        if (!FoldMusicLayout.finite(canonicalX, drawnX, a, b, c, d)) return null;
+        double determinant = (double) a * d - (double) b * c;
+        if (Math.abs(determinant) < 0.000001) return null;
+        double dx = (double) canonicalX - drawnX;
+        float x = (float) (d * dx / determinant);
+        float y = (float) (-c * dx / determinant);
+        return FoldMusicLayout.finite(x, y) ? new Offset(x, y) : null;
+    }
     private RailStatusLayout() {}
 }

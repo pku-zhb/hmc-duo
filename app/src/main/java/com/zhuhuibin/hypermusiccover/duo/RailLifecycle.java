@@ -15,4 +15,12 @@ final class RailLifecycle {
         return reusable && (!screenOn || aod || Float.isFinite(rootScaleX)
                 && Math.abs(rootScaleX - 1f) > .001f);
     }
+
+    /** Keep the whole column pinned through wake; unrelated awake animations do not arm it. */
+    static boolean holdColumnX(boolean previous, boolean active, boolean leaving,
+                               boolean screenOn, boolean aod, boolean frozen) {
+        if (!active || leaving) return false;
+        if (aod || !screenOn) return true;
+        return previous && frozen;
+    }
 }

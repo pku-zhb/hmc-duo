@@ -2652,9 +2652,9 @@ private class MiniPlayerController(
         if (!LockScreenRailRuntime.active() || MiniPlayerScene.keyguardGoingAway) {
             restoreRailAodInset(); return
         }
-        if (MiniPlayerScene.aodActive || !Main.screenOnCached()) railButtonsDozing = true
-        else if (!LockScreenRailRuntime.holdGeometry()) { restoreRailAodInset(); return }
-        if (!railButtonsDozing || !LockScreenRailRuntime.controlReference(host, railReference)) return
+        railButtonsDozing = LockScreenRailRuntime.holdRailX()
+        if (!railButtonsDozing) { restoreRailAodInset(); return }
+        if (!LockScreenRailRuntime.controlReference(host, railReference)) return
         followHost.reset(); host.transformMatrixToGlobal(followHost)
         if (!followHost.invert(hostInverse)) return
         for (side in 0..1) {

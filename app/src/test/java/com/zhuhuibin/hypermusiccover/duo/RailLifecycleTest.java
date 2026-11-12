@@ -29,4 +29,26 @@ public class RailLifecycleTest {
         assertFalse(RailLifecycle.freeze(true, true, false, 1f));
         assertFalse(RailLifecycle.freeze(false, false, true, .95f));
     }
+
+    @Test public void columnPinSurvivesEveryWakeFrameWithoutAnyVisibleCapsule() {
+        boolean pinned = RailLifecycle.holdColumnX(false, true, false, false, false, true);
+        assertTrue(pinned);
+        for (float scale : new float[]{.95f, .97f, .99f}) {
+            pinned = RailLifecycle.holdColumnX(pinned, true, false, true, false,
+                    RailLifecycle.freeze(true, true, false, scale));
+            assertTrue(pinned);
+        }
+        pinned = RailLifecycle.holdColumnX(pinned, true, false, true, false,
+                RailLifecycle.freeze(true, true, false, 1f));
+        assertFalse(pinned);
+        // An ordinary lock-screen animation must not imitate an AOD transition.
+        assertFalse(RailLifecycle.holdColumnX(false, true, false, true, false, true));
+    }
+
+    @Test public void unlockDisableBouncerAndGeometryReplacementReleaseTheOldColumn() {
+        assertFalse(RailLifecycle.holdColumnX(true, false, false, false, true, true));
+        assertFalse(RailLifecycle.holdColumnX(true, true, true, false, true, true));
+        // A new display may arm its own AOD anchor, independently of the discarded plan.
+        assertTrue(RailLifecycle.holdColumnX(false, true, false, false, true, true));
+    }
 }

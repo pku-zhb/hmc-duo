@@ -20,6 +20,7 @@ final class LockScreenRailRuntime {
     private static volatile boolean sessionEligible;
     private static volatile int notificationFloor;
     private static View keyguardCanvas;
+    private static boolean railXPinned;
     private static long planRevision = -1;
     private static int planWidth, planHeight;
     private static final IdentityHashMap<View, ControlOffset> clockOffsets = new IdentityHashMap<>();
@@ -75,6 +76,7 @@ final class LockScreenRailRuntime {
         restore();
         root = null;
         keyguardCanvas = null;
+        railXPinned = false;
         RailStatusRuntime.detach();
     }
 
@@ -82,6 +84,7 @@ final class LockScreenRailRuntime {
         RailStatusRuntime.hide();
         restore();
         plan = null;
+        railXPinned = false;
         if (root != null) root.invalidate();
         MiniPlayerRuntime.refresh();
     }
@@ -96,17 +99,22 @@ final class LockScreenRailRuntime {
         sessionEligible = root != null && RailLifecycle.eligible(Main.sRightRail,
                 Main.keyguardLocked(), Main.bouncerShown());
         if (!sessionEligible) {
+            railXPinned = false;
             RailStatusRuntime.hide();
             plan = null;
             restore();
             note(Main.sRightRail ? "outside lock screen" : "disabled");
             return;
         }
-        if (MiniPlayerScene.INSTANCE.getKeyguardGoingAway()) { RailStatusRuntime.hide(); return; }
+        if (MiniPlayerScene.INSTANCE.getKeyguardGoingAway()) {
+            railXPinned = false;
+            RailStatusRuntime.hide(); return;
+        }
         if (revision != Main.screenGeometry().revision || planWidth != root.getWidth()
                 || planHeight != root.getHeight()) {
             restore();
             plan = null;
+            railXPinned = false;
             revision = Main.screenGeometry().revision;
             planWidth = root.getWidth(); planHeight = root.getHeight();
         }
@@ -169,6 +177,14 @@ final class LockScreenRailRuntime {
         return RailLifecycle.freeze(RailLifecycle.retain(sessionEligible, plan != null,
                         planRevision, Main.screenGeometry().revision), Main.screenOnCached(),
                 MiniPlayerScene.INSTANCE.getAodActive(), scale);
+    }
+
+    /** Status, capsules and shortcut compensation share one AOD/wake ownership latch. */
+    static boolean holdRailX() {
+        railXPinned = RailLifecycle.holdColumnX(railXPinned, active(),
+                MiniPlayerScene.INSTANCE.getKeyguardGoingAway(), Main.screenOnCached(),
+                MiniPlayerScene.INSTANCE.getAodActive(), holdGeometry());
+        return railXPinned;
     }
 
     static boolean controlReference(View host, float[] out) {
