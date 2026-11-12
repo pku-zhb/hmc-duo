@@ -92,6 +92,7 @@ final class LockScreenLayoutDiagnostics {
         out.put("visibility", v.getVisibility());
         out.put("shown", v.isShown());
         out.put("attached", v.isAttachedToWindow());
+        out.put("layoutRequested", v.isLayoutRequested());
         out.put("alpha", v.getAlpha());
         out.put("scaleX", v.getScaleX()); out.put("scaleY", v.getScaleY());
         out.put("translationX", v.getTranslationX()); out.put("translationY", v.getTranslationY());
