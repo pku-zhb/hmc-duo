@@ -30,6 +30,34 @@ continuing phone access for this investigation until explicitly revoked, preferr
 logs and state over screenshots. Whole-phone reboot is prohibited; only relevant
 scope restarts are allowed. Delivery remains archive-only.
 
+### Current feature backlog and preview 10 acceptance (2026-11-12)
+
+The owner accepted the three-in-one status cluster. Shortcut backgrounds still
+disappear on entry to AOD and during the sleep/wake fade. The preview-10 startup
+material repair did not address all visibility gates: a live full-screen-AOD probe
+has no capsule (`row=0`, no pill), two attached native-material discs, hold=false,
+and `keyguard_bottom_area.transitionAlpha=0`. This is independent of material
+initialization. Fixing that visibility transition is the current bug work.
+
+The actual feature backlog, separate from historical preview acceptance lists:
+
+| Feature | Remaining work |
+| --- | --- |
+| Full-screen artwork | Replace the enforced square-only scene with accepted clock, notification, lyrics and AOD geometry. |
+| Background and wallpaper switching | Separate native-backdrop policy from artwork geometry; restore blur, dim and animated backgrounds with a supported wallpaper handoff. |
+| Music waveform | Restore the hidden entry only after capture, permission and AOD lifecycle validation. |
+| HyperCanvas / StandBy | Migrate the extension provider's Enhanced-only host identity and signature contract together with its build. |
+| Signed release and automatic updates | Define the production signing/upgrade/release policy before enabling the disabled updater. |
+
+The old horizontal demonstration remains a lower-priority design task. Inner
+portrait/landscape code exists; the owner deferred device acceptance rather than
+implementation. The long-paused music-session fix exists but has no explicit
+long-duration device acceptance. Independent Gaussian blur, perpetual notification
+marquee, A/B iPhone gestures, donation controls and date-adjacent status text were
+intentionally retired/hidden; they are not unfinished features to restore by default.
+Historical Fold `OPEN` headings below are records of those builds, not the current
+Duo backlog.
+
 ### Preview 9 regression repair (2026-11-12)
 
 The owner reported missing shortcut backgrounds until the first capsule action,

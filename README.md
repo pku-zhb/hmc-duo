@@ -98,8 +98,9 @@ release identity changes independently reviewable. Report bugs in
 [Duo Issues](https://github.com/pku-zhb/hypermusiccover-duo/issues) with device,
 OS/module version, display form and reproduction steps.
 
-Prepare previews in the background, but obtain a fresh owner confirmation before
-each phone installation. The owner performs all phone UI interactions and restarts.
+Follow the owner's current device authorization when preparing and testing previews.
+Prefer state/log diagnostics over screenshots. Never reboot the whole phone;
+only restart an authorized scope when a new module build needs to be loaded.
 
 ## Attribution and licence
 
