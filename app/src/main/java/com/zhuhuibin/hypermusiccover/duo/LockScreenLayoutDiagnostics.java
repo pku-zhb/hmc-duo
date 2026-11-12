@@ -16,9 +16,12 @@ final class LockScreenLayoutDiagnostics {
             out.put("cachedWindow", new JSONArray(new int[]{g.width, g.height}));
             out.put("revision", g.revision);
             out.put("runtimeVersion", BuildConfig.VERSION_CODE);
+            out.put("uptimeMillis", android.os.SystemClock.uptimeMillis());
             out.put("linkedCardAnimations", !MiniPlayerRuntime.detachedRail());
             out.put("screenOn", Main.screenOnCached());
             out.put("aod", MiniPlayerScene.INSTANCE.getAodActive());
+            out.put("fullScreenAod", MiniPlayerScene.INSTANCE.getFullScreenAodActive());
+            out.put("customAod", MiniPlayerScene.INSTANCE.getCustomAodActive());
             out.put("keyguardVisible", Main.onKeyguardNow());
             out.put("bouncer", Main.bouncerShown());
             out.put("locked", Main.keyguardLocked());
@@ -113,9 +116,14 @@ final class LockScreenLayoutDiagnostics {
         }
         JSONArray parents = new JSONArray();
         View parent = v.getParent() instanceof View ? (View) v.getParent() : null;
-        for (int i = 0; i < 4 && parent != null; i++) {
+        for (int i = 0; i < 8 && parent != null; i++) {
             JSONObject item = new JSONObject();
             item.put("class", parent.getClass().getName());
+            try { item.put("id", parent.getResources().getResourceEntryName(parent.getId())); }
+            catch (Exception ignored) {}
+            item.put("visibility", parent.getVisibility());
+            item.put("alpha", parent.getAlpha());
+            item.put("transitionAlpha", parent.getTransitionAlpha());
             item.put("width", parent.getWidth()); item.put("height", parent.getHeight());
             if (parent instanceof ViewGroup) item.put("clipsChildren", ((ViewGroup) parent).getClipChildren());
             parents.put(item);

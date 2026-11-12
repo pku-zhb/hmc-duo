@@ -10585,6 +10585,11 @@ private class MiniPlayerController(
     private fun listPulled(): Boolean = stackDragged() || kotlin.math.abs(NumState.overScroll()) > 0.5f
 
     fun prepareForSleep() {
+        // The OEM fades the shortcut branch before setIsDozing reports AOD. Prepare only
+        // this short entry interval, using its supported full-screen mode once per event.
+        // Actual ownership still requires a locked screen and wanted discs on every frame.
+        shortcutAodEntry.prepare(Main.sRightRail && config.getBoolean(MiniPlayerConfig.ENABLED) &&
+            Main.fullAodOn(), android.os.SystemClock.uptimeMillis())
         railDragHeld = false
         finishRailFusion()
         finishNativeRailNote(true)
@@ -11866,9 +11871,8 @@ private class MiniPlayerController(
     private var discsWanted = false
 
     /**
-     * There is a row - an island, or one out as its row - and so something for the full-screen
-     * AOD to keep the buttons for (holdButtonsThroughDoze). With none, the doze takes the buttons
-     * and their discs out as it always has.
+     * The legacy horizontal row keeps its buttons only while an island or expanded row exists.
+     * Standalone rail shortcuts instead follow discsWanted, including an empty lock screen.
      */
     private var rowWanted = false
 
@@ -12021,19 +12025,25 @@ private class MiniPlayerController(
     private var holdButtons = false
     private var holdSince = 0L
     private var backSince = 0L
+    private val shortcutAodEntry = LockscreenSurfacePolicy.AodEntry()
 
     private fun holdButtonsThroughDoze() {
         val root = followRoot?.get()
         val now = android.os.SystemClock.uptimeMillis()
+        // Once dozing is reported, the authoritative full/custom distinction takes over.
+        shortcutAodEntry.observe(MiniPlayerScene.aodActive, MiniPlayerScene.keyguardGoingAway, Main.bouncerShown())
         // Never overwrite the native unlock fade with the AOD's alpha hold.
         if (!LockscreenSurfacePolicy.holdButtons(Main.keyguardLocked(),
-                MiniPlayerScene.keyguardGoingAway, Main.bouncerShown(), MiniPlayerScene.customAodActive)) {
+                MiniPlayerScene.keyguardGoingAway, Main.bouncerShown(), MiniPlayerScene.customAodActive) ||
+            Main.sRightRail && !discsWanted) {
             holdButtons = false
             rowHeldOff = false
             backSince = 0L
             return
         }
-        if (MiniPlayerScene.fullScreenAodActive && rowWanted && root != null) {
+        val enteringFullAod = shortcutAodEntry.active(now)
+        if (root != null && LockscreenSurfacePolicy.startButtonHold(Main.sRightRail,
+                discsWanted, rowWanted, MiniPlayerScene.fullScreenAodActive, enteringFullAod)) {
             holdButtons = true
             holdSince = now
         }
@@ -12060,7 +12070,7 @@ private class MiniPlayerController(
                 v = v.parent as? View
             }
         }
-        if (MiniPlayerScene.aodActive) {
+        if (MiniPlayerScene.aodActive || enteringFullAod) {
             backSince = 0L
             return
         }
@@ -12094,6 +12104,7 @@ private class MiniPlayerController(
      * the pad is put away.
      */
     private fun letGoOfButtons(why: String) {
+        if (!MiniPlayerScene.aodActive) shortcutAodEntry.cancel()
         if (MiniPlayerScene.aodActive || !holdButtons && !rowHeldOff) return
         holdButtons = false
         backSince = 0L
@@ -12311,6 +12322,7 @@ private class MiniPlayerController(
         holdButtons = false
         rowHeldOff = false
         backSince = 0L
+        shortcutAodEntry.cancel()
         discsWanted = false
         rowWanted = false
         finishRailMediaExit(commit = true)
