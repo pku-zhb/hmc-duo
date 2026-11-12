@@ -14,6 +14,10 @@ not the destination for project links, updates or bug reports.
   report delivery only after the CLI confirms success. Use the owner's configured
   version archive, preserve versioned filenames and verify archive copies against
   the retained APK under `releases/local/`.
+- Also deliver each APK to the phone's system Download directory (`/sdcard/Download`)
+  when the device is reachable, retaining its versioned filename and verifying the
+  copied hash. If unavailable, report that delivery is pending. File delivery does
+  not authorize installation or scope reload; obtain installation confirmation.
 - Use `tools/build.sh` for local Gradle tasks. Builds, test reports and temporary
   files belong on the mounted Harbor DevCache volume. Never create a missing mount.
 - Keep signing material outside source control and synced storage. A debug-signed
