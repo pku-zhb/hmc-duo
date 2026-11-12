@@ -16,14 +16,19 @@ General device compatibility is not a goal.
   MiDuo's shortcut column; swipe to switch or tap a bubble to open its card.
   HyperOS switches stop at the first and last item. Its capsule keeps its length
   while following a drag into the next bubble, then separates with a spring release.
-  Set a total visible limit of 2/3/4/5 (default 3); swipe to reach overflow items.
+  All items are shown when they fit. More than three shorten the capsule, down to
+  a circle; if circles still cannot fit, items are hidden from the top. Hidden items
+  remain available through left-side expansion. ColorOS uses its original liquid
+  switching choreography, mapped onto the vertical axis.
 - The native artwork slot cycles between its thumbnail, lyrics and clock actions.
   Its contents show the next action without adding a button or moving the text.
-- Upward swipes in the clock/empty band above the first visible card expand music,
-  live cards, then notifications; downward swipes there return content to the rail.
-  Swipe-to-unlock follows when all available content is open. Cards and list gaps
-  keep native scrolling, dismissal, taps, long presses and media controls; shortcuts
-  and capsules keep their own targets.
+- Upward swipes anywhere without a card expand music, live cards, then notifications;
+  downward swipes in empty space return content to the rail. When all cards are
+  collapsed, the whole left content area is available. Swipe-to-unlock follows when
+  all available content is open. Gestures starting on actual visible cards keep
+  native scrolling, dismissal, taps, long presses and media controls; shortcuts
+  and capsules keep their own targets. Notification bubbles remain until ordinary
+  rows are visibly open; a settled hidden native pile returns to a bubble.
 - Select which categories collapse on lock, or keep the last lock-screen state.
   Inner landscape has separate category defaults and a cover/lyrics two-column layout.
 - Native player, clock and notification reflow with AOD/wake handling.

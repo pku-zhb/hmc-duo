@@ -23,9 +23,83 @@ package was 20003 while the SystemUI probe still reported 20002, with its proces
 unchanged; the owner subsequently supplied preview-3 feedback. Preview 4 was then
 installed after fresh explicit confirmation, temporarily replaced with preview 3
 for a compatibility comparison, and restored to preview 4 at the owner's request.
-The owner subsequently supplied preview-5 device feedback. Preview 6 is the next
-host-built candidate; installation still requires fresh confirmation. No phone
-interaction, debugging or restart is part of this iteration.
+The owner subsequently supplied preview-5 and preview-6 device feedback. Preview 7
+is the current host-built candidate; installation still requires fresh confirmation.
+No phone interaction, transfer, debugging or restart is part of this iteration.
+
+### Preview 6 feedback and preview 7 candidate (2026-11-12)
+
+The owner accepted the native card/media interaction fixes, the page-cycle control,
+rail spring motion and improved material retention. The independent notification
+visibility/retention options appear stable in recent use. The previous clock-band
+interpretation and configurable island-count limit are superseded by this iteration.
+
+- Empty space is decided at DOWN against actual visible, transformed native card
+  rectangles, including ExpandableView's actual height and top/bottom drawing clips.
+  Empty space above, between and below cards belongs to sequential expansion/collapse.
+  With all content folded, the whole left content area is available. Streams starting
+  on a card remain native even when the finger later leaves its rectangle. Native
+  shortcuts, fingerprint and rail elements retain their existing targets.
+- A notification open request keeps its bubble until ordinary rows are actually
+  visible in LIST, or the native single-card STACK that explicitly needs no list click.
+  The inspected native `notifStackStateToEvent(LIST)` can select SHOW_STACK while
+  its full-AOD notification flag is set. A target scroll alone is therefore insufficient.
+  The existing `_onClicked` / `shouldNotifClickToList` route finishes an intermediate
+  pile with one native click, followed by at most two remeasured scroll attempts.
+  An unsuccessful open retains its representative and folds safely after 2.4 seconds.
+  A partial hidden pile that stays idle for 400 ms is captured as a bubble. Transient
+  NUMBER during AOD/wake does not overwrite an expanded entry choice.
+- The 2/3/4/5 setting is removed, including imported old values. HyperOS fits all
+  categories first, shortening the primary capsule above three items and using an
+  upright icon-only face when text/buttons no longer fit. After the capsule reaches
+  circle size, overflow is dropped from the top; selection stays among visible seats.
+  The full category list remains available to left-side sequential expansion.
+  At five or more seats the gap is 6 dp, so circle capacity is floor((height + 6 dp)
+  / (diameter + 6 dp)). A 370 dp viewport with a 46 dp diameter holds seven; an eighth
+  hides the top item. Capacity is computed from the measured safe strip, including
+  the unchanged MiDuo top-control and native-shortcut clearance, not hard-coded to seven.
+- ColorOS vertical switching now runs the original ColorOsPill geometry, content
+  blur/visibility, brackets, continuous drag and release spring. Only geometry is
+  rotated onto the rail axis; icons and text remain upright. Axis tests check both
+  directions, every progress sample, and unchanged horizontal behavior.
+- HyperOS fusion/split keeps its rounded native material carrier. A translucent
+  contour bevel now follows the actual union path, with lighting based on its normals,
+  including the concave neck. It fades out where the native rounded rim already
+  exists. The fill remains the native material; this is contour lighting, not a
+  claim that the vendor SDF can refract an arbitrary concave path. Device appearance
+  remains to be assessed.
+
+Preview 7 host validation: all 770 tests in 131 suites pass, with zero
+failures, errors or skips. Debug and Release builds, R8 and release vital lint pass.
+The retained release APK is `4,177,853` bytes with package
+`com.zhuhuibin.hypermusiccover.duo`, version `20007` / `0.2.0-preview.7`.
+Its v2 signature verifies and its certificate matches retained preview 6. This is
+still the local debug signing identity, not a production release key.
+
+Artifact: `releases/local/hypermusiccover-duo-0.2.0-preview.7.apk`, SHA-256
+`22e9beb7be44b6731ac2eb68810305c1d55b957944469d60f9384dec68512918`.
+The identical final APK is in the owner's `00 Temp`; both copies pass ZIP CRC
+verification and match the signed build byte for byte. Publication is atomic, with
+staging outside synced storage. Build logs and verification receipts remain in
+`/tmp`, not the reading inbox. No phone transfer, installation, restart or live
+verification was performed. Device checks below remain pending the owner's report.
+
+This iteration's device acceptance only:
+
+- With all categories folded, start upward swipes at high, middle and low empty
+  left-side positions. After opening a card, try empty gaps beside/between cards;
+  those should still expand sequentially, while swipes starting on the card remain native.
+- Fold music, a live card and ordinary notifications. Three upward swipes should
+  reveal all three in order; the third must show notifications without a fourth native
+  list swipe. If native scrolling leaves notifications hidden under other cards,
+  their bubble should return rather than leaving an inaccessible intermediate state.
+- Add/remove more than three rail items. The capsule should shorten automatically;
+  when even circles fill the safe strip, top items hide, the bottom stays above
+  shortcuts, and hidden items still open through the left-side sequence.
+- In ColorOS, switch up/down, hold halfway, reverse, release and interrupt a settling
+  switch. Verify the original liquid/ear animation, upright content and no width jump.
+- In HyperOS, hold and reverse a fusion, then return a card to split out a bubble.
+  Check the changing neck's edge and its transition into the existing glass rim.
 
 ### Preview 5 feedback and preview 6 work (2026-11-12)
 
