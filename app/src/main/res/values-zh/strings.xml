@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="lock_right_rail">右侧纵向胶囊</string>
-    <string name="lock_right_rail_summary">预览功能：在 MiDuo 右侧竖排的手电筒、相机上方显示纵向胶囊；无法识别该布局时使用常规布局。</string>
+    <string name="lock_right_rail_summary">预览功能：固定右侧胶囊、手电筒和相机的位置，顶部显示时间、电量和网络状态；无需 MiDuo。</string>
     <string name="lock_reflow_content">为右侧控件预留锁屏空间</string>
     <string name="lock_reflow_content_summary">预览功能：日期、时间和通知按剩余区域重新排版，并在该区域内居中。</string>
     <string name="lock_follow_native_glass">跟随原生通知玻璃</string>
@@ -527,7 +527,7 @@
     <string name="fold_music_artwork_and_lyrics">封面和歌词</string>
     <string name="about_maintainer">维护者</string>
     <string name="about_releases">版本发布</string>
-    <string name="about_duo_summary">为 MiDuo 与折叠屏打造的锁屏音乐和歌词体验。</string>
+    <string name="about_duo_summary">为折叠屏打造的独立锁屏音乐、歌词与布局。</string>
     <string name="duo_vertical_text">竖排文字</string>
     <string name="duo_vertical_text_summary">汉字直立，英文词组侧转，短数字横排；长内容展开后阅读。</string>
     <string name="fold_keep_last">保持上次锁屏状态</string>

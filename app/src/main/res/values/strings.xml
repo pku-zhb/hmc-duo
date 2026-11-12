@@ -12,7 +12,7 @@
     <string name="cover_style_card">Square card</string>
     <string name="cover_fold_columns">Landscape cover and lyrics</string>
     <string name="lock_right_rail">Vertical island on the right</string>
-    <string name="lock_right_rail_summary">Preview: place an upright vertical capsule above MiDuo’s right-hand flashlight and camera buttons. Uses the regular layout when that column is unavailable.</string>
+    <string name="lock_right_rail_summary">Preview: arrange capsules, flashlight and camera in a fixed right-hand column, with time, battery and network status above. Works without MiDuo.</string>
     <string name="lock_reflow_content">Reserve space for the right column</string>
     <string name="lock_reflow_content_summary">Preview: reflow the native clock, date and notifications into the remaining area and center them there.</string>
     <string name="lock_follow_native_glass">Follow native notification glass</string>
@@ -519,7 +519,7 @@
     <string name="fold_music_artwork_and_lyrics">Artwork and lyrics</string>
     <string name="about_maintainer">Maintainer</string>
     <string name="about_releases">Releases</string>
-    <string name="about_duo_summary">Lock-screen music and lyrics for MiDuo and foldable displays.</string>
+    <string name="about_duo_summary">Independent lock-screen music, lyrics and layout for foldable displays.</string>
     <string name="duo_vertical_text">Vertical text</string>
     <string name="duo_vertical_text_summary">Upright CJK, sideways words and horizontal short numbers. Open the card to read longer content.</string>
     <string name="fold_keep_last">Keep last lock-screen state</string>

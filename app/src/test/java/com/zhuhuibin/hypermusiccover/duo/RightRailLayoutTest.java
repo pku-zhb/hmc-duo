@@ -12,7 +12,7 @@ public class RightRailLayoutTest {
         assertEquals(607.75f, p.pill.height(), .001f);
         assertEquals(1345.5625f, p.pill.bottom, .001f);
         assertEquals(961.75f, p.content.right, .001f);
-        assertEquals(324f, p.strip.top, .001f);
+        assertEquals(390f, p.strip.top, .001f);
         assertTrue(p.pill.bottom + 12 * 2.75f < 1379);
     }
 
