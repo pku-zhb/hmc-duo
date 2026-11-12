@@ -336,6 +336,7 @@
     <string name="media_hide_source">Hide source app icon</string>
     <string name="media_hide_device">Hide output device button</string>
     <string name="media_background_style">Player background</string>
+    <string name="media_native_material_summary">With default background and motion and the system theme, the music card keeps the current system or module material. Artwork, lyrics and controls remain independent. For a custom background, turn off other modules’ music-material control.</string>
     <string name="media_background_mosaic">Cover collage</string>
     <string name="media_background_blur">Blurred cover</string>
     <string name="media_background_radial">Radial gradient</string>
@@ -379,9 +380,9 @@
     <string name="mini_background_section">Background</string>
     <string name="fold_material_section">Material</string>
     <string name="fold_material">Island and shortcut material</string>
-    <string name="fold_material_summary">Follow the native player’s final glass parameters, including HyperLight adjustments.</string>
+    <string name="fold_material_summary">Only capsules and shortcut backgrounds follow the native player’s current final material. The player is not modified.</string>
     <string name="fold_material_native">Native Soft Glass</string>
-    <string name="fold_material_follow">Follow system and HyperLight</string>
+    <string name="fold_material_follow">Follow final system material</string>
     <string name="lock_hide_charging_hint">Hide lock-screen charging hint</string>
     <string name="lock_hide_charging_hint_summary">Hide the charging status text at the bottom of the lock screen.</string>
     <string name="fold_updates_paused">Updates are paused</string>

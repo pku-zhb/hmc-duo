@@ -51,6 +51,10 @@ object MediaCardConfig {
     }.toString()
 
     fun normalized(json: String?): String = encode(parse(json))
+    /** Native means no material ownership, not a request to apply any glass recipe. */
+    fun followsNativeMaterial(values: Map<String, Int>, scope: String = "notification"): Boolean =
+        listOf("background", "flow", "theme").all { values["$scope.$it"] == 0 }
+
     fun customBackground(style: Int, flow: Int): Boolean = style > 0 || flow in 1..3
     fun animate(playing: Boolean, pauseRestore: Boolean, shown: Boolean, screenOn: Boolean): Boolean =
         shown && screenOn && (playing || !pauseRestore)

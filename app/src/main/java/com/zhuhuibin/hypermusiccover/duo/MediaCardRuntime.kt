@@ -38,17 +38,16 @@ object MediaCardRuntime {
     private val worker by lazy { Executors.newSingleThreadExecutor { r ->
         Thread(r, "MCMediaStyle").apply { isDaemon = true; priority = Thread.MIN_PRIORITY }
     } }
-    private var values = MediaCardConfig.parse(null)
-    private var revision = 0L
+    @Volatile private var values = MediaCardConfig.parse(null)
+    @Volatile private var revision = 0L
     private val states = WeakHashMap<Any, MutableList<CardState>>()
+    private val detachedOwners = java.util.Collections.newSetFromMap(WeakHashMap<Any, Boolean>())
     private val layouts = java.util.Collections.newSetFromMap(WeakHashMap<Any, Boolean>())
     private var applying = false
     private var hasOverrides = false
     private var sleeping = false
     private var renderer: MediaCardBackgroundRenderer? = null
     private var flowApi: NativeMusicBgApi? = null
-    private data class Material(val effect: Any?, val method: java.lang.reflect.Method, val context: Context)
-    private val materials = WeakHashMap<Any, Material>()
     private var refreshedMaterialTheme = 0
     private val materialInFlight = ThreadLocal.withInitial {
         java.util.Collections.newSetFromMap(java.util.IdentityHashMap<Any, Boolean>())
@@ -94,6 +93,7 @@ object MediaCardRuntime {
                     if (!applying) {
                         val owner = chain.thisObject
                         if (owner != null) safely("$scope.$method") {
+                            if (method == "attach") detachedOwners.remove(owner)
                             bind(owner, scope, if (method == "bindMediaData") chain.args.firstOrNull() else null)
                         }
                     }
@@ -101,7 +101,10 @@ object MediaCardRuntime {
                 }
             }
             Xp.hookAll(clazz, "detach") { chain ->
-                chain.thisObject?.let { owner -> states.remove(owner)?.forEach { it.restore() } }
+                chain.thisObject?.let { owner ->
+                    detachedOwners.add(owner)
+                    states.remove(owner)?.forEach { it.restore() }
+                }
                 chain.proceed()
             }
         }
@@ -133,7 +136,6 @@ object MediaCardRuntime {
                     val inFlight = requireNotNull(materialInFlight.get())
                     if (target == null || context == null || !inFlight.add(target)) chain.proceed()
                     else try {
-                        materials[target] = Material(chain.thisObject, method, context)
                         val theme = setting("notification", "theme")
                         if (theme == 0) chain.proceed()
                         else chain.proceed(arrayOf(target, themed(context, theme)))
@@ -156,7 +158,12 @@ object MediaCardRuntime {
     }
 
     private fun bind(owner: Any, scope: String, data: Any?) {
-        if (Looper.myLooper() != Looper.getMainLooper()) { main.post { bind(owner, scope, data) }; return }
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            // A queued callback can outlive this binding; read the owner's current media then.
+            main.post { bind(owner, scope, null) }
+            return
+        }
+        if (owner in detachedOwners) return
         val holders = listOfNotNull(field(owner, "holder"), if (scope == "island") field(owner, "dummyHolder") else null).distinct()
         val collection = states.getOrPut(owner) { mutableListOf() }
         val media = data ?: field(owner, "mediaData")
@@ -180,15 +187,14 @@ object MediaCardRuntime {
                 methods.firstOrNull { it.name in listOf("updateLayout\$1", "updateLayout\$6") && it.parameterCount == 0 }?.apply { isAccessible = true }?.invoke(owner)
             } }
             val materialTheme = setting("notification", "theme")
-            if (refreshedMaterialTheme != materialTheme) {
-                refreshedMaterialTheme = materialTheme
-                materials.toMap().forEach { (view, material) -> safely("refresh material") {
-                    material.method.invoke(material.effect, view, material.context)
-                } }
-            }
+            val themeChanged = refreshedMaterialTheme != materialTheme
+            refreshedMaterialTheme = materialTheme
             states.values.toList().flatten().forEach { state -> safely("refresh") {
-                state.removeAppearance()
-                state.requestToken = ""
+                val owned = state.settingsChanged()
+                state.applyTheme()
+                // Only a real ownership/theme boundary asks the current provider to recalculate.
+                // Never replay an effect captured on another lock/AOD/theme scene.
+                if (owned || themeChanged) state.rebindNativeMaterial()
                 state.apply()
             } }
         } finally { applying = false }
@@ -196,7 +202,7 @@ object MediaCardRuntime {
 
     @JvmStatic fun refreshMotion() {
         if (Looper.myLooper() != Looper.getMainLooper()) { main.post { refreshMotion() }; return }
-        states.values.toList().flatten().forEach { it.motion() }
+        states.values.toList().flatten().forEach { it.refreshPendingMaterial(); it.motion() }
     }
 
     /** The cover morph owns thumbnail alpha/scale; appearance is reapplied after its pass. */
@@ -223,7 +229,7 @@ object MediaCardRuntime {
     }
 
     @JvmStatic fun describe(): String = states.values.flatten().joinToString("\n") {
-        "${it.scope} theme=${setting(it.scope, "theme")} materialCount=${materials.size} clip=${it.overlay?.clipToOutline} attached=${it.album.isAttachedToWindow} shown=${it.album.isShown} background=${setting(it.scope, "background")} flow=${setting(it.scope, "flow")} cover=${setting(it.scope, "cover")} overlay=${it.overlay != null} rotation=${it.rotation?.isRunning == true} token=${it.requestToken.hashCode()} geometry=${it.geometryReport()}"
+        "${it.scope} theme=${setting(it.scope, "theme")} nativeMaterial=${MediaCardConfig.followsNativeMaterial(values, it.scope)} clip=${it.overlay?.clipToOutline} attached=${it.album.isAttachedToWindow} shown=${it.album.isShown} background=${setting(it.scope, "background")} flow=${setting(it.scope, "flow")} cover=${setting(it.scope, "cover")} overlay=${it.overlay != null} rotation=${it.rotation?.isRunning == true} token=${it.requestToken.hashCode()} geometry=${it.geometryReport()}"
     }
 
     private fun configureLayout(owner: Any) {
@@ -252,32 +258,41 @@ object MediaCardRuntime {
         var originalClip = album.clipToOutline
         var originalParentOutline = albumView.outlineProvider
         var originalParentClip = albumView.clipToOutline
-        val originalBackground = background?.background
-        val originalAlpha = background?.alpha ?: 1f
-        val originalContext = owner.let { field(it, "context") as? Context }
+        private val backgroundAlpha = MediaPropertyLease<Float>()
+        private val themeContext = MediaPropertyLease<Context> { a, b -> a === b }
+        private var contextTheme = 0
+        private var nativeRebinds = 0
+        private var nativeRebindAvailable = true
+        private val nativeRebindRequest = MediaRebindRequest()
+        private var windowDetached = !album.isAttachedToWindow
+        private fun materialSettings() = listOf("background", "flow", "theme", "pauseRestore", "animate", "blur", "invert", "tone")
+            .map { setting(scope, it) }
+        private var lastMaterialSettings = materialSettings()
         val originalRotation = album.rotation
         var media: Any? = null
         var requestToken = ""
-        var request = 0L
+        private val renders = MediaRenderGeneration()
         var overlay: View? = null
         var overlayMode = -1
         var rendered: Bitmap? = null
         var rotation: ObjectAnimator? = null
-        var disposed = false
+        @Volatile var disposed = false
         var imageVisibility: Int? = null
         private var roundApplied = false
         private var activeColors: Pair<Int, Int>? = null
         private val hidden = WeakHashMap<View, Int>()
-        private val textColors = WeakHashMap<TextView, ColorStateList>()
+        private val textColors = WeakHashMap<TextView, MediaPropertyLease<ColorStateList>>()
         private val scrollingText = listOf("titleText", "artistText").mapNotNull {
             (field(holder, it) as? TextView)?.let(::MediaTextMarquee)
         }
-        private val imageColors = WeakHashMap<ImageView, ColorStateList?>()
-        private var seekColors: Array<ColorStateList?>? = null
+        private val imageColors = WeakHashMap<ImageView, MediaPropertyLease<ColorStateList?>>()
+        private val seekThumb = MediaPropertyLease<ColorStateList?> { a, b -> a === b }
+        private val seekProgress = MediaPropertyLease<ColorStateList?> { a, b -> a === b }
+        private val seekBackground = MediaPropertyLease<ColorStateList?> { a, b -> a === b }
         private var nativePaused = false
         private val islandTheme = MediaIslandTheme()
         private var seekPaint: Paint? = null
-        private var originalSeekFilter: ColorFilter? = null
+        private val seekFilter = MediaPropertyLease<ColorFilter?> { a, b -> a === b }
         private var seekShaderColor: Int? = null
         private var lastMotion: Boolean? = null
         private var lastTone: MediaFlowTone? = null
@@ -285,8 +300,12 @@ object MediaCardRuntime {
             if (hasOverrides) { safely("layout background") { applyBackground() }; motion() }
         }
         private val attachListener = object : View.OnAttachStateChangeListener {
-            override fun onViewAttachedToWindow(v: View) { apply() }
-            override fun onViewDetachedFromWindow(v: View) { stopMotion() }
+            override fun onViewAttachedToWindow(v: View) { windowDetached = false; apply() }
+            override fun onViewDetachedFromWindow(v: View) {
+                windowDetached = true
+                stopMotion()
+                if (removeAppearance()) nativeRebindRequest.defer()
+            }
         }
         private val nativeClip = android.graphics.Rect()
         private val overlayClip = android.graphics.Rect()
@@ -297,7 +316,8 @@ object MediaCardRuntime {
 
         fun geometryReport(): String {
             fun bounds(v: View?) = if (v == null) "none" else "${v.javaClass.simpleName}:${v.width}x${v.height},layout=${v.layoutParams?.width}x${v.layoutParams?.height},clip=${v.clipBounds}"
-            return "native[${bounds(background)}],custom[${bounds(overlay)}],progress[${bounds(field(holder, "seekBar") as? View)}]"
+            return "native[${bounds(background)}],custom[${bounds(overlay)}],progress[${bounds(field(holder, "seekBar") as? View)}]" +
+                ",ownership[alpha=${backgroundAlpha.held},context=${themeContext.held},rebind=$nativeRebinds/$nativeRebindAvailable,pending=${nativeRebindRequest.pending}]"
         }
 
         private fun syncBackgroundGeometry() {
@@ -329,9 +349,10 @@ object MediaCardRuntime {
         }
 
         fun apply() {
-            if (disposed) return
+            if (disposed || windowDetached || !album.isAttachedToWindow) return
             applyElements()
             applyTheme()
+            refreshPendingMaterial()
             applyBackground()
             motion()
         }
@@ -382,18 +403,21 @@ object MediaCardRuntime {
             if (cover != 2) stopRotation()
         }
 
-        private fun applyTheme() {
+        fun applyTheme() {
+            if (disposed || windowDetached || !album.isAttachedToWindow) return
             val theme = forcedTheme(scope)
             if (scope == "island") safely("island theme") { islandTheme.apply(field(holder, "player") as? View, theme == 2) }
-            if (originalContext != null) owner.get()?.let { controller ->
-                val desired = if (theme == 0) originalContext else themed(originalContext, theme)
-                val current = field(controller, "context") as? Context
-                if (current?.resources?.configuration?.uiMode != desired.resources.configuration.uiMode) {
-                    runCatching { Xp.setObjectField(controller, "context", desired) }
-                    if (scope == "notification") runCatching {
-                        applying = true
-                        Xp.callMethod(controller, "updateForegroundColors")
-                    }.also { applying = false }
+            owner.get()?.let { controller ->
+                val current = field(controller, "context") as? Context ?: return@let
+                if (theme == 0) {
+                    themeContext.release(current) { Xp.setObjectField(controller, "context", it) }
+                    contextTheme = 0
+                } else if (!themeContext.owns(current) || contextTheme != theme) {
+                    val base = themeContext.nativeValue(current)
+                    val desired = themed(base, theme)
+                    if (current.resources.configuration.uiMode != desired.resources.configuration.uiMode)
+                        themeContext.write(current, desired) { Xp.setObjectField(controller, "context", it) }
+                    contextTheme = theme
                 }
             }
             if (theme > 0 && !MediaCardConfig.customBackground(setting(scope, "background"), setting(scope, "flow"))) {
@@ -408,16 +432,21 @@ object MediaCardRuntime {
             val flow = setting(scope, "flow")
             val pausedRestore = style == 0 && flow in 1..3 && on(scope, "pauseRestore") && !playing()
             if (!MediaCardConfig.customBackground(style, flow) || pausedRestore) {
-                if (overlay != null || requestToken.isNotEmpty()) { removeOverlay(); restoreColors(); applyTheme() }
+                if (overlay != null || requestToken.isNotEmpty() || backgroundAlpha.held) {
+                    val owned = overlay != null || backgroundAlpha.held || activeColors != null || nativePaused
+                    removeOverlay(); restoreColors()
+                    if (owned) rebindNativeMaterial()
+                    applyTheme()
+                }
                 if (flow == 4 && scope == "island") {
-                    bg.alpha = 0f
+                    backgroundAlpha.write(bg.alpha, 0f) { bg.alpha = it }
                     pauseNative()
                 } else {
-                    if (bg.alpha != originalAlpha) bg.alpha = originalAlpha
                     resumeNative()
                 }
                 return
             }
+            if (windowDetached || !album.isAttachedToWindow) return
             val parent = bg.parent as? ViewGroup ?: return
             val w = bg.width.takeIf { it > 0 } ?: parent.width
             val h = bg.height.takeIf { it > 0 } ?: parent.height
@@ -427,7 +456,8 @@ object MediaCardRuntime {
             val key = "$revision|$w,$h|$style|$flow|$packageName|${field(media, "song")}|${field(media, "artist")}|${System.identityHashCode(icon)}"
             if (key == requestToken) { activeColors?.let { foreground(it.first, it.second) }; return }
             requestToken = key
-            val token = ++request
+            val token = renders.invalidate()
+            val version = revision
             val snapshot = values
             val weak = WeakReference(this)
             val source = icon ?: album.drawable?.constantState?.newDrawable()?.mutate()
@@ -435,7 +465,7 @@ object MediaCardRuntime {
             worker.execute {
                 var bitmap: Bitmap? = null
                 try {
-                    if (weak.get()?.request != token) return@execute
+                    if (weak.get()?.renders?.accepts(token) != true) return@execute
                     val s = weak.get() ?: return@execute
                     val ctx = s.album.context
                     val drawable = when (source) {
@@ -452,7 +482,7 @@ object MediaCardRuntime {
                         val owned = result.bitmap
                         main.post {
                             val active = weak.get()
-                            if (active == null || active.disposed || active.request != token) { owned.recycle(); return@post }
+                            if (active == null || !active.acceptsRender(token, version)) { owned.recycle(); return@post }
                             active.showStatic(owned, result.colors)
                         }
                         bitmap = null
@@ -468,7 +498,7 @@ object MediaCardRuntime {
                             }
                             main.post {
                                 val active = weak.get()
-                                if (active == null || active.disposed || active.request != token) return@post
+                                if (active == null || !active.acceptsRender(token, version)) return@post
                                 active.showNativeFlow(api, palette, flow)
                             }
                         } else {
@@ -477,7 +507,7 @@ object MediaCardRuntime {
                             if (artwork == null) return@execute
                             main.post {
                                 val active = weak.get()
-                                if (active == null || active.disposed || active.request != token) return@post
+                                if (active == null || !active.acceptsRender(token, version)) return@post
                                 active.showFlow(artwork, flow)
                             }
                         }
@@ -486,6 +516,14 @@ object MediaCardRuntime {
                     Xp.w("Media card rendering failed: $t")
                 } finally { bitmap?.recycle() }
             }
+        }
+
+        private fun acceptsRender(token: Long, version: Long): Boolean {
+            val style = setting(scope, "background")
+            val flow = setting(scope, "flow")
+            return !disposed && !windowDetached && album.isAttachedToWindow && version == revision && renders.accepts(token)
+                    && MediaCardConfig.customBackground(style, flow)
+                    && !(style == 0 && on(scope, "pauseRestore") && !playing())
         }
 
         private fun attachOverlay(view: View) {
@@ -522,7 +560,7 @@ object MediaCardRuntime {
             overlay = view
             syncBackgroundGeometry()
             // Moving colors complement the native themed surface. Static artwork replaces it.
-            bg.alpha = if (view is ImageView) 0f else originalAlpha
+            if (view is ImageView) backgroundAlpha.write(bg.alpha, 0f) { bg.alpha = it }
             pauseNative()
         }
 
@@ -570,7 +608,7 @@ object MediaCardRuntime {
         private fun tone(): MediaFlowTone = when (forcedTheme(scope)) {
             1 -> MediaFlowTone.LIGHT
             2 -> MediaFlowTone.DARK
-            else -> if ((originalContext ?: album.context).resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES)
+            else -> if (((field(owner.get(), "context") as? Context) ?: album.context).resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES)
                 MediaFlowTone.DARK else MediaFlowTone.LIGHT
         }
         private fun shouldMove() = MediaCardConfig.animate(playing(), on(scope, "pauseRestore"),
@@ -612,88 +650,128 @@ object MediaCardRuntime {
             for ((name, color) in listOf("titleText" to primary, "artistText" to secondary,
                 "elapsedTimeView" to primary, "totalTimeView" to primary)) {
                 val text = field(holder, name) as? TextView ?: continue
-                textColors.putIfAbsent(text, text.textColors)
-                if (text.currentTextColor != color) text.setTextColor(color)
+                if (text.currentTextColor != color) textColors.getOrPut(text) {
+                    MediaPropertyLease { a, b -> a === b }
+                }.write(text.textColors, ColorStateList.valueOf(color)) { text.setTextColor(it) }
             }
             val tint = ColorStateList.valueOf(primary)
             val actions = runCatching { Xp.callMethod(holder, "getActionList") as? List<*> }.getOrNull().orEmpty()
             val icons = (listOf(field(holder, "seamlessIcon")) + actions + (0..4).map { field(holder, "action$it") }).filterIsInstance<ImageView>().distinct()
-            for (image in icons) { if (!imageColors.containsKey(image)) imageColors[image] = image.imageTintList; image.imageTintList = tint }
+            for (image in icons) imageColors.getOrPut(image) {
+                MediaPropertyLease { a, b -> a === b }
+            }.write(image.imageTintList, tint) { image.imageTintList = it }
             (field(holder, "seekBar") as? SeekBar)?.let { seek ->
-                if (seekColors == null) seekColors = arrayOf(seek.thumbTintList, seek.progressTintList, seek.progressBackgroundTintList)
                 if (seekPaint == null) {
                     seekPaint = field(seek, "mPaint") as? Paint
-                    originalSeekFilter = seekPaint?.colorFilter
                 }
                 runCatching { Xp.callMethod(seek, "setForegroundPrimaryColor", primary) }
                 runCatching { Xp.callMethod(seek, "setBackgroundPrimaryColor", primary and 0x00ffffff or 0x33000000) }
                 seekPaint?.let { paint ->
                     if (seekShaderColor != primary || paint.colorFilter == null) {
-                        paint.colorFilter = BlendModeColorFilter(primary, BlendMode.SRC_IN); seekShaderColor = primary; seek.invalidate()
+                        seekFilter.write(paint.colorFilter, BlendModeColorFilter(primary, BlendMode.SRC_IN)) { paint.colorFilter = it }
+                        seekShaderColor = primary; seek.invalidate()
                     }
                 }
-                seek.thumbTintList = tint; seek.progressTintList = tint
-                seek.progressBackgroundTintList = ColorStateList.valueOf(primary and 0x00ffffff or 0x33000000)
+                seekThumb.write(seek.thumbTintList, tint) { seek.thumbTintList = it }
+                seekProgress.write(seek.progressTintList, tint) { seek.progressTintList = it }
+                seekBackground.write(seek.progressBackgroundTintList,
+                    ColorStateList.valueOf(primary and 0x00ffffff or 0x33000000)) { seek.progressBackgroundTintList = it }
             }
         }
 
-        fun removeAppearance() { removeOverlay(); restoreColors() }
+        fun removeAppearance(): Boolean {
+            val owned = overlay != null || backgroundAlpha.held || themeContext.held || activeColors != null || nativePaused
+            removeOverlay()
+            restoreColors()
+            owner.get()?.let { controller -> (field(controller, "context") as? Context)?.let { current ->
+                themeContext.release(current) { Xp.setObjectField(controller, "context", it) }
+            } }
+            contextTheme = 0
+            return owned
+        }
+
+        fun settingsChanged(): Boolean {
+            val next = materialSettings()
+            if (lastMaterialSettings == next) return false
+            lastMaterialSettings = next
+            return removeAppearance()
+        }
+
+        fun refreshPendingMaterial() {
+            if (disposed || windowDetached || !nativeRebindRequest.take(album.isAttachedToWindow)) return
+            applyTheme()
+            rebindNativeMaterial()
+            applyTheme()
+        }
+
+        fun rebindNativeMaterial() {
+            if (scope != "notification" || disposed) return
+            if (windowDetached || !album.isAttachedToWindow) { nativeRebindRequest.defer(); return }
+            val controller = owner.get() ?: return
+            nativeRebindRequest.clear()
+            val previousApplying = applying
+            applying = true
+            try {
+                val result = NativeMediaMaterial.rebind(controller, album)
+                nativeRebindAvailable = result != NativeMediaMaterial.Result.UNAVAILABLE
+                if (result == NativeMediaMaterial.Result.DEFERRED) { nativeRebindRequest.defer(); return }
+                if (result == NativeMediaMaterial.Result.REQUESTED) nativeRebinds++
+                // The current controller owns native seek-bar colours as well as text tints.
+                runCatching { Xp.callMethod(controller, "updateForegroundColors") }
+            } finally { applying = previousApplying }
+        }
 
         fun restoreColors() {
             activeColors = null
-            textColors.forEach { (view, color) -> view.setTextColor(color) }; textColors.clear()
-            imageColors.forEach { (view, color) -> view.imageTintList = color }; imageColors.clear()
-            (field(holder, "seekBar") as? SeekBar)?.let { seek -> seekColors?.let {
-                seek.thumbTintList = it[0]; seek.progressTintList = it[1]; seek.progressBackgroundTintList = it[2]
-            } }; seekColors = null
-            seekPaint?.colorFilter = originalSeekFilter
-            seekPaint = null; originalSeekFilter = null; seekShaderColor = null
-            owner.get()?.let { controller ->
-                val previousApplying = applying
-                applying = true
-                try {
-                    if (scope == "island") runCatching { Xp.callMethod(controller, "updateForegroundColors", holder) }
-                    else runCatching { Xp.callMethod(controller, "updateForegroundColors") }
-                } finally { applying = previousApplying }
+            textColors.forEach { (view, lease) -> lease.release(view.textColors) { view.setTextColor(it) } }; textColors.clear()
+            imageColors.forEach { (view, lease) -> lease.release(view.imageTintList) { view.imageTintList = it } }; imageColors.clear()
+            (field(holder, "seekBar") as? SeekBar)?.let { seek ->
+                seekThumb.release(seek.thumbTintList) { seek.thumbTintList = it }
+                seekProgress.release(seek.progressTintList) { seek.progressTintList = it }
+                seekBackground.release(seek.progressBackgroundTintList) { seek.progressBackgroundTintList = it }
             }
+            seekPaint?.let { paint -> seekFilter.release(paint.colorFilter) { paint.colorFilter = it } }
+            seekPaint = null; seekShaderColor = null
         }
 
         private fun removeOverlay(cancelPending: Boolean = true) {
-            if (cancelPending) { request++; requestToken = "" }
+            if (cancelPending) { renders.invalidate(); requestToken = "" }
             lastMotion = null; lastTone = null
             (overlay as? MediaFlowBackgroundView)?.update(tone = tone(), playing = false)
             overlay?.takeIf { overlayMode in 1..2 }?.let { view -> runCatching { flowApi?.pause(view) } }
             (overlay?.parent as? ViewGroup)?.removeView(overlay)
             overlay = null
             overlayMode = -1
-            background?.alpha = originalAlpha
+            background?.let { bg -> backgroundAlpha.release(bg.alpha) { bg.alpha = it } }
             rendered?.let { if (!it.isRecycled) it.recycle() }; rendered = null
             resumeNative()
         }
 
         private fun pauseNative() {
             if (!nativePaused && background?.javaClass?.name == "com.mi.widget.view.MusicBgView") {
-                runCatching { Xp.callMethod(background, "pause") }; nativePaused = true
+                nativePaused = runCatching { Xp.callMethod(background, "pause") }.isSuccess
             }
         }
 
         private fun resumeNative() {
             if (nativePaused) {
-                background?.let { runCatching { Xp.callMethod(it, "resume") } }
                 nativePaused = false
+                // Do not wake an animation the OEM just paused for AOD or detach.
+                if (!disposed && !windowDetached && !sleeping && Main.screenOnCached() && album.isAttachedToWindow && playing())
+                    background?.let { runCatching { Xp.callMethod(it, "resume") } }
             }
         }
 
         fun restore() {
             islandTheme.restore()
             disposed = true
+            nativeRebindRequest.clear()
             scrollingText.forEach { it.restore() }
-            stopRotation(); removeOverlay(); restoreColors()
+            stopRotation(); removeAppearance()
             hidden.forEach { (view, visibility) -> view.visibility = visibility }; hidden.clear()
             imageVisibility?.let { albumView.visibility = it }; imageVisibility = null
             album.outlineProvider = originalOutline; album.clipToOutline = originalClip
             albumView.outlineProvider = originalParentOutline; albumView.clipToOutline = originalParentClip
-            originalContext?.let { ctx -> owner.get()?.let { runCatching { Xp.setObjectField(it, "context", ctx) } } }
             album.removeOnAttachStateChangeListener(attachListener)
             album.removeOnLayoutChangeListener(visibilityListener)
             if (album.viewTreeObserver.isAlive) album.viewTreeObserver.removeOnPreDrawListener(preDraw)

@@ -344,6 +344,7 @@
     <string name="media_hide_source">隐藏封面来源图标</string>
     <string name="media_hide_device">隐藏音频输出切换按钮</string>
     <string name="media_background_style">播放器背景</string>
+    <string name="media_native_material_summary">背景、动态效果均为默认，主题跟随系统时，音乐卡片保留系统或其他模块提供的当前材质；封面、歌词和控件设置仍独立生效。自定义背景时，请关闭其他模块的音乐材质接管。</string>
     <string name="media_background_mosaic">拼贴封面</string>
     <string name="media_background_blur">模糊封面</string>
     <string name="media_background_radial">径向渐变</string>
@@ -387,9 +388,9 @@
     <string name="mini_background_section">背景</string>
     <string name="fold_material_section">材质</string>
     <string name="fold_material">胶囊和快捷按钮材质</string>
-    <string name="fold_material_summary">跟随模式使用原生播放器最终的玻璃参数，包括 HyperLight 的调整。</string>
+    <string name="fold_material_summary">仅胶囊和快捷按钮背景跟随原生播放器当前的最终材质，不修改播放器。</string>
     <string name="fold_material_native">原生柔光玻璃</string>
-    <string name="fold_material_follow">跟随系统与 HyperLight</string>
+    <string name="fold_material_follow">跟随系统最终材质</string>
     <string name="lock_hide_charging_hint">隐藏锁屏充电提示</string>
     <string name="lock_hide_charging_hint_summary">隐藏锁屏底部的充电状态文字。</string>
     <string name="fold_updates_paused">更新功能已暂停</string>
