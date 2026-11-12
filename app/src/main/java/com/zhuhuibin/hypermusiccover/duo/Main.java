@@ -1792,6 +1792,7 @@ public class Main extends XposedModule {
                     // A gesture that starts on the mini player is the mini player's alone: its
                     // swipe up would otherwise also be swipe-to-unlock.
                     try {
+                        if (MiniPlayerRuntime.detachedRail() && swallowArtTap(ev)) return Boolean.TRUE;
                         int contentSwipe = MiniPlayerRuntime.routeContentSwipe(ev,
                                 !sGestureOnCentre && !sGestureOnCharge
                                 && !LyricsButton.contains(ev.getRawX(), ev.getRawY())
@@ -1813,7 +1814,7 @@ public class Main extends XposedModule {
                     // before the art tap, which it overrides; the moment it is recognised the
                     // rest of the tree gets a CANCEL, so the shade does not also start opening.
                     try {
-                        int swipe = cardSwipe(ev);
+                        int swipe = MiniPlayerRuntime.detachedRail() ? SWIPE_NONE : cardSwipe(ev);
                         if (swipe == SWIPE_FIRED) {
                             MotionEvent cancel = MotionEvent.obtain(ev);
                             cancel.setAction(MotionEvent.ACTION_CANCEL);
@@ -1829,7 +1830,7 @@ public class Main extends XposedModule {
                         MiniPlayerRuntime.noteTouch("card swipe failed: " + t);
                     }
                     try {
-                        if (swallowArtTap(ev)) return Boolean.TRUE;
+                        if (!MiniPlayerRuntime.detachedRail() && swallowArtTap(ev)) return Boolean.TRUE;
                     } catch (Throwable ignored) {
                     }
                     feedTap(ev);

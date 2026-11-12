@@ -12,8 +12,18 @@ class RailContentGestureTest {
         assertFalse(g.move(65f, -90f, 8f, true))
         assertEquals(RailContentGesture.Action.NONE, g.commit(65f, -90f, -2000f, 1f, false))
         g.start(true, true, false, startsOnScrollableCard = true)
-        assertTrue(g.move(3f, -24f, 8f, true))
-        assertFalse(g.nativeControl)
+        assertFalse(g.move(3f, -24f, 8f, true))
+        assertTrue(g.nativeControl)
+    }
+
+    @Test fun everyDirectionOnAnExistingCardStaysNativeEvenAtTheListTop() {
+        for ((x, y) in listOf(0f to -120f, 0f to 120f, 120f to 0f, -120f to 0f)) {
+            val g = RailContentGesture()
+            g.start(true, true, false, startsOnScrollableCard = true, atListTop = true)
+            assertTrue(g.nativeControl)
+            assertFalse(g.move(x, y, 8f, true))
+            assertEquals(RailContentGesture.Action.NONE, g.commit(x, y, y * 30f, 1f, false))
+        }
     }
     @Test fun aProgressDragKeepsNativeOwnershipDespiteVerticalWobbleAndLeavingTheControl() {
         val g = RailContentGesture()
