@@ -2285,6 +2285,7 @@ private class MiniPlayerController(
     private var controller: MediaController? = null
     private var header: WeakReference<View>? = null
     private val suppressedHeaders = WeakViewOverrideRegistry<View>()
+    private val credentialOverlays = OwnedOverlayClipGuard()
     private var nativeSuppressionRequested = false
     private var morph: MiniCardMorph? = null
     private var morphScene = false
@@ -2406,6 +2407,7 @@ private class MiniPlayerController(
         applyRailNoteExitFrame()
         observeNotificationReturn()
         lottiesFollowSight()
+        hideOverlaysBehindCredentials()
         true
     } finally { android.os.Trace.endSection() } }
 
@@ -2414,6 +2416,30 @@ private class MiniPlayerController(
     private var followRoot: WeakReference<View>? = null
     private var rowHeldOff = false
     private var shortcutRow: WeakReference<View>? = null
+
+    /** Occlusion must not release native cards or overwrite the user's collapsed selection. */
+    private fun hideOverlaysBehindCredentials() {
+        if (!Main.bouncerShown()) {
+            credentialOverlays.restoreAll()
+            return
+        }
+        // First-unlock credentials can appear without the shortcut-row fade. Clip the owned
+        // overlays after placement: ongoing alpha/visibility animations cannot reveal them.
+        // Never clip the host, credential views, native cards or the native shortcut buttons.
+        player?.let(credentialOverlays::suppress)
+        smallIsland?.let(credentialOverlays::suppress)
+        railBubbles.values.forEach { credentialOverlays.suppress(it.view) }
+        railGlass?.let(credentialOverlays::suppress)
+        gooGlass?.let(credentialOverlays::suppress)
+        mergeGlass?.let(credentialOverlays::suppress)
+        oldContent?.let(credentialOverlays::suppress)
+        ghostPill?.let(credentialOverlays::suppress)
+        ghostDisc?.let(credentialOverlays::suppress)
+        flight?.let(credentialOverlays::suppress)
+        group?.smallView?.let(credentialOverlays::suppress)
+        spareViews.forEach(credentialOverlays::suppress)
+        spread?.items?.forEach { it.view?.let(credentialOverlays::suppress) }
+    }
 
     /**
      * The torch and camera's motion and fade, on the pill, every frame. The pill hangs off the
@@ -12463,7 +12489,7 @@ private class MiniPlayerController(
 
     private var exitSurfacesHidden = false
 
-    fun surfaceState(): String = "exitHidden=$exitSurfacesHidden hold=$holdButtons rowHold=$rowHeldOff " +
+    fun surfaceState(): String = "exitHidden=$exitSurfacesHidden credentialClipped=${credentialOverlays.hasOverrides} hold=$holdButtons rowHold=$rowHeldOff " +
         "musicOpen=[${MiniPlayerRuntime.musicExpansionState()}] " +
         "mediaExit=${railMediaExit != null} lastExit=$lastRailExit frames=$lastRailExitFrames " +
         "musicSelected=${selectedIsland == MUSIC_ISLAND} discs=${discs.count { it?.visibility == View.VISIBLE }} " +
@@ -12556,6 +12582,7 @@ private class MiniPlayerController(
         player = null
         controller = null
         handler.removeCallbacksAndMessages(null)
+        credentialOverlays.restoreAll()
     }
 
     fun shortcutGeometry(): FloatArray? {
@@ -14355,8 +14382,8 @@ private class MiniPlayerController(
         // The lock screen's own choice of pill or card holds through everything that passes over
         // the lock screen - the doze, the PIN pad, the control centre. It used to be dropped
         // for each of them, so the card came back for the doze and for every swipe that raised
-        // the pad; the pill now fades and zooms with the shortcut row instead (followShortcuts)
-        // and only stops taking touches.
+        // the pad. Keep ownership, but explicitly clip owned overlays behind credentials;
+        // first-unlock credentials need not run the shortcut-row fade (followShortcuts).
         // With music, the lock screen's media card has to be up; a row of notifications alone
         // needs only the lock screen.
         // The music on its flight out of the cover is not gated by the card either, as canShow():
@@ -14810,6 +14837,9 @@ private class MiniPlayerController(
     }
 
     private fun position() {
+        // The rail intentionally has no plan behind credentials. That is not a request to
+        // relocate the capsule to the legacy bottom-shortcut layout.
+        if (Main.bouncerShown()) return
         if (gooActive) return
         if (railReturn != null) { applyRailReturnFrame(); return }
         if (railFusion != null) { applyRailFusionFrame(); return }

@@ -19,6 +19,29 @@ not automatically verified on every device, display or OS version.
 
 ## Current acceptance scope
 
+### Queued after Preview 14: credential-screen capsule occlusion
+
+The owner reports capsules at an unexpected lower-right position on the first
+mandatory credential screen after boot. Source inspection found a mismatch:
+the rail drops its layout plan while the bouncer is visible, but capsule
+presentation intentionally retains ownership of collapsed cards. The old path
+relies on native shortcut fading to hide the capsule and can fall back to the
+bottom-shortcut layout when the rail plan is absent.
+
+Owned capsules, bubbles and their transition overlays now receive a reversible
+empty drawing clip while credentials are visible. Their selection, native-card
+ownership and animation alpha remain unchanged. Placement also stops before the
+legacy fallback, and dismissing credentials restores each overlay's prior clip.
+The native credential UI, cards and shortcut buttons are not clipped.
+
+This source fix is queued for the next preview, not included in the archived
+Preview 14 APK. First-boot reproduction remains unverified; no phone reboot,
+installation or scope reload is required for this low-priority report. Check it
+opportunistically at the next normal first unlock, including that capsules return
+with the same collapsed choices after leaving the credential screen.
+
+### Preview 14
+
 Preview 14 follows the owner's Preview 13 feedback: status-time shadow residue,
 intermittent full-screen sharp-layer loss, lyric availability cues, short-capsule
 content and repeated notification gestures. See the
