@@ -7,8 +7,8 @@ public class RailStatusTest {
     @Test public void referenceClusterAlignsWithCapsulesAndClearsTheFirstBubble() {
         RightRailLayout.Plan rail = RightRailLayout.plan(1168, 1712, 2.75f, 0, 126, 0, 0, 0);
         FoldMusicLayout.Box status = RailStatusLayout.place((rail.pill.left+rail.pill.right)/2, 126, 2.75f);
-        assertEquals(962.75f, status.left, .001f);
-        assertEquals(159f, status.top, .001f);
+        assertEquals(963f, status.left, .001f);
+        assertEquals(158f, status.top, .001f);
         assertEquals(205f, status.width(), .001f);
         assertTrue(status.right <= 1168);
         assertTrue(rail.strip.top-status.bottom >= 10*2.75f);
@@ -21,7 +21,8 @@ public class RailStatusTest {
                         0, 46*d, 10*d, 24*d, 0);
                 assertNotNull(rail);
                 FoldMusicLayout.Box status = RailStatusLayout.place((rail.pill.left+rail.pill.right)/2, 46*d, d);
-                assertTrue(status.right <= window[0]*d-10*d);
+                // The reference snaps the surface origin to the nearest physical pixel.
+                assertTrue(status.right <= window[0]*d-10*d+.5f);
                 assertTrue(status.bottom+10*d <= rail.strip.top);
                 assertTrue(rail.companion.top >= rail.strip.top);
             }

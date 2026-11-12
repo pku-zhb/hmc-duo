@@ -241,22 +241,6 @@ internal class RailStatusSource(private val context: Context, private val change
     }
     fun describe() = "listening=$running sims=${sims.size} wifi=${wifiLevels.isNotEmpty()} errors=${errors.joinToString()}"
 
-    private fun networkName(info: TelephonyDisplayInfo): String = when (info.overrideNetworkType) {
-        TelephonyDisplayInfo.OVERRIDE_NETWORK_TYPE_NR_ADVANCED -> "5G+"
-        TelephonyDisplayInfo.OVERRIDE_NETWORK_TYPE_NR_NSA -> "5G"
-        TelephonyDisplayInfo.OVERRIDE_NETWORK_TYPE_LTE_CA,
-        TelephonyDisplayInfo.OVERRIDE_NETWORK_TYPE_LTE_ADVANCED_PRO -> "4G+"
-        else -> when (info.networkType) {
-            TelephonyManager.NETWORK_TYPE_NR -> "5G"
-            TelephonyManager.NETWORK_TYPE_LTE -> "4G"
-            TelephonyManager.NETWORK_TYPE_HSPAP -> "H+"
-            TelephonyManager.NETWORK_TYPE_HSDPA, TelephonyManager.NETWORK_TYPE_HSUPA,
-            TelephonyManager.NETWORK_TYPE_HSPA -> "H"
-            TelephonyManager.NETWORK_TYPE_UMTS, TelephonyManager.NETWORK_TYPE_EVDO_0,
-            TelephonyManager.NETWORK_TYPE_EVDO_A, TelephonyManager.NETWORK_TYPE_EVDO_B -> "3G"
-            TelephonyManager.NETWORK_TYPE_EDGE -> "E"
-            TelephonyManager.NETWORK_TYPE_GPRS, TelephonyManager.NETWORK_TYPE_GSM -> "G"
-            else -> ""
-        }
-    }
+    private fun networkName(info: TelephonyDisplayInfo): String =
+        RailStatusValues.networkLabel(info.overrideNetworkType, info.networkType)
 }
