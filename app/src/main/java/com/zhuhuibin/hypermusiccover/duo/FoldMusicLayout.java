@@ -3,6 +3,7 @@ package com.zhuhuibin.hypermusiccover.duo;
 /** Shared, Android-free geometry for artwork, the native player and reflowed lyrics. */
 final class FoldMusicLayout {
     private FoldMusicLayout() {}
+    static final float GAP_DP = 16f, MIN_PLAYER_DP = 240f, MIN_LYRIC_DP = 260f;
 
     static boolean wideWindow(float width, float height, float density, int smallestWidthDp) {
         return finite(width, height, density) && width > 0f && height > 0f && density > 0f
@@ -32,32 +33,42 @@ final class FoldMusicLayout {
         }
     }
 
-    /** All inputs are in the same, unscaled window coordinates; unknown edges fail closed. */
+    /** Keep the native player/header and every row below it in their existing vertical frame. */
     static Columns columns(float width, float height, float density, int smallestWidthDp,
                            float insetLeft, float insetTop, float insetRight, float insetBottom,
-                           float clockBottom, float playerHeight, float shortcutsTop) {
-        if (!wideWindow(width, height, density, smallestWidthDp)
-                || !finite(insetLeft, insetTop, insetRight, insetBottom, clockBottom, playerHeight)
+                           float clockBottom, Box nativePlayer, float shortcutsTop) {
+        // Runtime checks the complete window's orientation. This width excludes the rail,
+        // so reusing the full-window aspect threshold here can reject a usable inner screen.
+        if (!finite(width, height, density) || width <= 0f || height <= 0f || density <= 0f
+                || smallestWidthDp < 600 || height / density < 400f || nativePlayer == null
+                || !finite(insetLeft, insetTop, insetRight, insetBottom, clockBottom,
+                    nativePlayer.left, nativePlayer.top, nativePlayer.right, nativePlayer.bottom)
                 || insetLeft < 0f || insetTop < 0f || insetRight < 0f || insetBottom < 0f
-                || clockBottom < 0f || playerHeight <= 0f) return null;
-        float gap = 16f * density;
-        float left = insetLeft + gap, right = width - insetRight - gap;
+                || clockBottom < 0f || nativePlayer.height() <= 0f) return null;
+        float gap = GAP_DP * density;
+        float right = width - insetRight - gap;
         float top = Math.max(insetTop, clockBottom) + gap;
         float bottom = height - insetBottom - gap;
-        if (Float.isFinite(shortcutsTop) && shortcutsTop > 0f) {
+        if (Float.isFinite(shortcutsTop) && shortcutsTop > 0f)
             bottom = Math.min(bottom, shortcutsTop - gap);
+        float lyricLeft = nativePlayer.right + gap;
+        float artworkBottom = nativePlayer.top - gap;
+        if (nativePlayer.left < insetLeft || nativePlayer.width() < MIN_PLAYER_DP * density
+                || right - lyricLeft < MIN_LYRIC_DP * density || bottom <= top) return null;
+        artworkBottom = Math.min(artworkBottom, bottom);
+        if (artworkBottom - top >= 120f * density) {
+            return new Columns(new Box(nativePlayer.left, top, nativePlayer.right, artworkBottom),
+                    nativePlayer, new Box(lyricLeft, top, right, bottom));
         }
-        float usable = right - left - gap;
-        float columnWidth = usable * 0.46f;
-        float playerWidth = columnWidth;
-        float playerLeft = left + (columnWidth - playerWidth) / 2;
-        float lyricLeft = left + columnWidth + gap;
-        float playerTop = bottom - playerHeight;
-        if (columnWidth < 240f * density || right - lyricLeft < 260f * density
-                || playerTop - gap - top < 120f * density) return null;
-        return new Columns(new Box(left, top, left + columnWidth, playerTop - gap),
-                new Box(playerLeft, playerTop, playerLeft + playerWidth, bottom),
-                new Box(lyricLeft, top, right, bottom));
+        // An expanded native stack can start immediately below the clock. Keep both scenes
+        // reachable by stacking artwork over lyrics in the free right column, never by moving
+        // a media child outside its header or pushing a live/notification row off screen.
+        float available = bottom - top;
+        float artworkHeight = Math.min(right - lyricLeft, Math.min(available * .4f,
+                available - gap - 160f * density));
+        if (artworkHeight < 120f * density) return null;
+        return new Columns(new Box(lyricLeft, top, right, top + artworkHeight), nativePlayer,
+                new Box(lyricLeft, top + artworkHeight + gap, right, bottom));
     }
 
     /** Same square-based coordinates used by the artwork renderer and its morph endpoints. */

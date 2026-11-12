@@ -528,7 +528,8 @@ private fun CoverGroup(
             if (mask and MiniPlayerConfig.COLLAPSE_MUSIC == 0) WindowDropdownPreference(
                 title = stringResource(if (landscape) R.string.fold_landscape_music_view else R.string.fold_startup_music_view),
                 items = listOf(stringResource(R.string.fold_music_player), stringResource(R.string.fold_music_artwork),
-                    stringResource(if (landscape) R.string.fold_music_artwork_and_lyrics else R.string.fold_music_lyrics)),
+                    stringResource(R.string.fold_music_lyrics)) +
+                    if (landscape) listOf(stringResource(R.string.fold_music_artwork_and_lyrics)) else emptyList(),
                 selectedIndex = MiniPlayerConfig.startupMusicView(miniConfig, landscape),
                 enabled = entryEnabled && !keepLast,
                 onSelectedIndexChange = { entrySetting(if (landscape) MiniPlayerConfig.LANDSCAPE_MUSIC_VIEW else MiniPlayerConfig.STARTUP_MUSIC_VIEW, it) })

@@ -153,15 +153,14 @@ final class CoverCompose {
         android.graphics.Paint p = new android.graphics.Paint(
                 android.graphics.Paint.FILTER_BITMAP_FLAG);
 
-        float coverH = src.getHeight() * (w / (float) src.getWidth());
-        if (bias < 0f) bias = 0f;
-        if (bias > 1f) bias = 1f;
-        float top = (h - coverH) * bias;
+        CoverFullScenePolicy.Band layout = CoverFullScenePolicy.band(w, h,
+                src.getWidth(), src.getHeight(), bias);
 
         // The sharp band, feathered in its own pixels and then drawn in one go. See feathered().
-        Bitmap band = feathered(src, w, Math.round(coverH),
-                Math.min(240, Math.round(coverH / 4f)));
-        cv.drawBitmap(band, null, new android.graphics.RectF(0, top, w, top + coverH), p);
+        Bitmap band = feathered(src, w, Math.max(1, Math.round(layout.height)),
+                CoverFullScenePolicy.feather(w, Math.round(layout.height), w));
+        cv.drawBitmap(band, null, new android.graphics.RectF(0, layout.top, w,
+                layout.top + layout.height), p);
         band.recycle();
         return out;
     }
@@ -173,13 +172,20 @@ final class CoverCompose {
 
     /** What composeWallpaper() lays under its sharp band. */
     static Bitmap composedBackdrop(Bitmap src, int w, int h, float bias, int fullBlur) {
-        Bitmap out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
-        android.graphics.Canvas cv = new android.graphics.Canvas(out);
-        Bitmap blurred = blur(mirroredBackground(src, w, h, bias), blurWidth(fullBlur), 4, 3);
-        cv.drawBitmap(blurred, null, new android.graphics.RectF(0, 0, w, h),
-                new android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG));
-        cv.drawColor(0x14000000);
-        return out;
+        Bitmap mirrored = mirroredBackground(src, w, h, bias);
+        Bitmap blurred = null;
+        try {
+            blurred = fullBlur <= 0 ? mirrored : blur(mirrored, blurWidth(fullBlur), 4, 3);
+            Bitmap out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
+            new android.graphics.Canvas(out).drawBitmap(blurred, null,
+                    new android.graphics.RectF(0, 0, w, h),
+                    new android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG));
+            // Brightness belongs to the same dim setting as CARD, not a second baked-in wash.
+            return out;
+        } finally {
+            if (blurred != null && blurred != mirrored) blurred.recycle();
+            mirrored.recycle();
+        }
     }
 
     /** Card mode fills the screen with one cropped cover and artwork-derived color regions. */
@@ -232,8 +238,10 @@ final class CoverCompose {
      * composition it follows.
      */
     private static Bitmap mirroredBackground(Bitmap src, int w, int h, float bias) {
-        float coverH = src.getHeight() * (w / (float) src.getWidth());
-        float top = (h - coverH) * bias;
+        CoverFullScenePolicy.Band layout = CoverFullScenePolicy.band(w, h,
+                src.getWidth(), src.getHeight(), bias);
+        float coverH = layout.height;
+        float top = layout.top;
         int bw = Math.max(1, w / 4), bh = Math.max(1, h / 4);
         float k = bw / (float) w;
         // Floored at a pixel: a panorama's band is a fraction of a row, and the loop below counts
@@ -341,9 +349,8 @@ final class CoverCompose {
      * the artwork in the same place, so blurring THAT to 36 lands on the same pixels for a
      * sixteenth of the work.
      *
-     * Two things the finished composition has that this does not: the sharp band, which is the
-     * same artwork in the same place and vanishes at 36 pixels either way, and the 8% darkening
-     * over the backdrop, which is applied here so the two paths agree.
+     * The finished composition's sharp band has the same artwork in the same place and vanishes
+     * at 36 pixels either way. Brightness is applied separately by the shared dim setting.
      */
     static Bitmap frostedFor(Bitmap src, int w, int h, float bias, boolean cardMode) {
         if (cardMode) {
@@ -383,9 +390,7 @@ final class CoverCompose {
         cm.setSaturation(1.3f);
         sp.setColorFilter(new android.graphics.ColorMatrixColorFilter(cm));
         sc.drawBitmap(soft, 0f, 0f, sp);
-        // 0x14 is the wash composeWallpaper() lays over its own backdrop; 0x61 is the frosting.
-        // Both, so a cover frosted from the layout matches one frosted from the composition.
-        if (keep == null) sc.drawColor(0x14000000);
+        // The lyric frosting is independent of the user's shared wallpaper dim level.
         sc.drawColor(0x61000000);
         if (soft != keep) soft.recycle();
 

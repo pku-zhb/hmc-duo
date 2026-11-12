@@ -42,10 +42,11 @@ final class CoverGlow {
             sArt = now;
             if (now != null && !now.isRecycled()) palette(now);
         }
-        boolean base = now != null && !now.isRecycled() && sRegions != null && Main.coverModeOn()
-                && !CoverBackdrop.hidden() && Main.onKeyguardNow()
+        boolean scene = now != null && !now.isRecycled() && sRegions != null && Main.coverModeOn()
+                && Main.onKeyguardNow()
                 && LockscreenSurfacePolicy.visible(Main.keyguardLocked(),
                         MiniPlayerScene.INSTANCE.getKeyguardGoingAway());
+        boolean base = scene && !CoverBackdrop.hidden();
         boolean drift = Main.sGlowDrift;
         // The mesh is a way of moving the colours; standing still they are always the regions.
         boolean mesh = drift && Main.sMeshBackdrop;
@@ -58,7 +59,8 @@ final class CoverGlow {
         }
         // Local presentation also covers still wallpapers with no separate keyguard engine.
         // The wallpaper GL path remains useful for native glass sampling when available.
-        VideoBackdropMesh.show(base, on && mesh, sSpec);
+        VideoBackdropMesh.show(scene && (!CoverBackdrop.hidden() || CoverCardLayer.fullScene()),
+                on && mesh, sSpec);
         if (on != sSentOn || drift != sSentDrift || sSpec != sSentSpec) {
             sSentOn = on;
             sSentDrift = drift;

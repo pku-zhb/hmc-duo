@@ -182,8 +182,10 @@ final class CoverPush {
         if (!currentPush(gen, key)) return;
         long t0 = android.os.SystemClock.uptimeMillis();
         Intent out = wallpaperIntent("art");
-        // Both foreground shapes live in SystemUI. The wallpaper owns only the backdrop.
-        out.putExtra("cardmode", true);
+        // FULL keeps upstream's complete full-width composition. The local scene mirrors it
+        // on OEMs without a keyguard wallpaper engine; only CARD has a separate foreground.
+        final boolean cardMode = !CoverCardLayer.fullScene();
+        out.putExtra("cardmode", cardMode);
         // The blur travels with the cover. A lyricblur broadcast is one shot - dropped, or
         // overtaken on the other side - and nothing else ever corrected it, so a song could play
         // out sharp under its lyrics. This makes every track change an agreement between the two
@@ -229,7 +231,7 @@ final class CoverPush {
         }
         if (art == null) { Xp.log(Main.TAG + "pushart: no album art"); return; }
         if (Main.sCoverMode) {
-            CoverCardLayer.publish(art, temporaryThumbnail, gen, key);
+            CoverCardLayer.publish(art, temporaryThumbnail, gen, key, cardMode);
         }
         if (!currentPush(gen, key)) return;
         SquareCardWallpaperPolicy.Route route = squareWallpaper.route(CoverBackdrop.hidden(),
@@ -290,7 +292,7 @@ final class CoverPush {
                 // picture every time (trace 2026-09-30), so the same key takes the last answer.
                 String tintKey = artPrint(src) + ":" + src.getWidth() + "x" + src.getHeight()
                         + ":" + w + "x" + h + ":" + Main.sBias + ":" + Main.sFullBlur
-                        + ":" + Main.bandKey() + ":" + Main.effectiveCoverStyle().mode;
+                        + ":" + Main.bandKey() + ":" + cardMode;
                 boolean reused = tintKey.equals(sTintKey);
                 if (reused) {
                     Main.sCoverTint = sTintValue;
@@ -299,7 +301,7 @@ final class CoverPush {
                     Bitmap full;
                     android.os.Trace.beginSection("MC push.compose");
                     try {
-                        full = composeWallpaper(src, w, h, Main.sBias, Main.sFullBlur);
+                        full = composeWallpaper(src, w, h, Main.sBias, Main.sFullBlur, cardMode);
                     } catch (Throwable t) {
                         Xp.w(Main.TAG + "composeWallpaper failed after the hand-over: " + t);
                         return;
@@ -328,7 +330,6 @@ final class CoverPush {
         if (Main.sVideoWallpaper) {
             final Bitmap srcArt = art;
             final int fw = w, fh = h;
-            final boolean cardMode = true;
             final float fb = cardMode ? 0.5f : Main.sBias;
             frostTask = new java.util.concurrent.FutureTask<>(
                     () -> CoverCompose.frostedFor(srcArt, fw, fh, fb, cardMode));
@@ -336,7 +337,7 @@ final class CoverPush {
         }
         Bitmap full;
         try {
-            full = composeWallpaper(art, w, h, Main.sBias, Main.sFullBlur);
+            full = composeWallpaper(art, w, h, Main.sBias, Main.sFullBlur, cardMode);
         } catch (Throwable t) {
             // This runs on a HandlerThread, and an uncaught throw on one reaches
             // KillApplicationHandler - so an OutOfMemoryError composing a full-screen cover
@@ -2564,12 +2565,11 @@ final class CoverPush {
         }
     }
 
-    /**
-     * The wallpaper owns only the backdrop. Both foreground shapes are drawn in SystemUI,
-     * so native/background choice and shape never change each other's texture ownership.
-     */
-    private static Bitmap composeWallpaper(Bitmap src, int w, int h, float bias, int fullBlur) {
-        return CoverCompose.cardBackground(src, w, h, fullBlur);
+    /** Match the upstream full-screen scene rather than placing another card over its fill. */
+    private static Bitmap composeWallpaper(Bitmap src, int w, int h, float bias, int fullBlur,
+                                           boolean cardMode) {
+        return cardMode ? CoverCompose.cardBackground(src, w, h, fullBlur)
+                : CoverCompose.composeWallpaper(src, w, h, bias, fullBlur);
     }
 
     /** Fills w x h from the source without distorting it, the way CENTER_CROP would. */

@@ -66,8 +66,9 @@ final class RailStackBounds {
             parent = parent.getParent() instanceof View ? (View) parent.getParent() : null;
         }
         if (parent != root) { release(); return false; }
-        RailContentFrame target = RailContentFrame.in(content,
-                root.getResources().getDisplayMetrics().density, parentLeft);
+        RailContentFrame target = RailContentFrame.inWindow(content,
+                root.getResources().getDisplayMetrics().density, parentLeft,
+                root.getWidth(), root.getHeight(), FoldMusicRuntime.combinedRequested() && Main.coverModeOn());
         if (target == null) { release(); return false; }
         if (stack != next) {
             release();

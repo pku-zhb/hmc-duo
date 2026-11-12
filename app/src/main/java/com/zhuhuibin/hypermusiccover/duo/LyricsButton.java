@@ -149,6 +149,7 @@ final class LyricsButton {
             int next = Main.nextRailMusicPage();
             String description = next == RailMusicPagePolicy.ARTWORK ? (chinese ? "显示封面" : "Show artwork")
                     : next == RailMusicPagePolicy.LYRICS ? (chinese ? "显示歌词" : "Show lyrics")
+                    : next == RailMusicPagePolicy.ARTWORK_AND_LYRICS ? (chinese ? "显示封面和歌词" : "Show artwork and lyrics")
                     : (chinese ? "返回锁屏时钟" : "Return to lock-screen clock");
             button.setContentDescription(description);
         } else button.setContentDescription(chinese ? (hide ? "隐藏歌词" : "显示歌词") : (hide ? "Hide lyrics" : "Show lyrics"));

@@ -13101,7 +13101,7 @@ private class MiniPlayerController(
 
     private fun entrySnapshot(landscape: Boolean): LockscreenSnapshot? =
         if (MiniPlayerConfig.keepLastLockscreen(config)) MiniPlayerRuntime.entryDefaults.snapshot(landscape) {
-            LockscreenSnapshot.decode(prefs.getString(LockscreenSnapshot.preference(landscape), null))
+            LockscreenSnapshot.decode(prefs.getString(LockscreenSnapshot.preference(landscape), null), landscape)
         } else null
 
     private val rememberPresentation = Runnable { rememberLockPresentation() }
@@ -13120,7 +13120,7 @@ private class MiniPlayerController(
             host.width <= 0 || host.height <= 0) return
         val landscape = entryLandscape()
         val preference = LockscreenSnapshot.preference(landscape)
-        val previous = LockscreenSnapshot.decode(prefs.getString(preference, null))
+        val previous = LockscreenSnapshot.decode(prefs.getString(preference, null), landscape)
         var collapsed = previous?.collapsed ?: MiniPlayerConfig.collapsedCategories(config, landscape)
         fun set(bit: Int, folded: Boolean) { collapsed = if (folded) collapsed or bit else collapsed and bit.inv() }
         val music = controller?.takeIf(::isUsable)?.takeIf { Main.miniPlayerMediaCardPresent() }
@@ -13133,7 +13133,9 @@ private class MiniPlayerController(
         if (focus.isNotEmpty()) set(MiniPlayerConfig.COLLAPSE_LIVE, expanded.size < focus.size)
         val musicView = if (music == null) previous?.musicView ?: MiniPlayerConfig.startupMusicView(config, landscape)
             else if (!Main.coverModeOn() || LockLyrics.playerChosen()) MiniPlayerConfig.VIEW_PLAYER
-            else if (LockLyrics.sTapHidden) MiniPlayerConfig.VIEW_ARTWORK else MiniPlayerConfig.VIEW_LYRICS
+            else if (LockLyrics.sTapHidden) MiniPlayerConfig.VIEW_ARTWORK
+            else if (FoldMusicRuntime.combinedRequested()) MiniPlayerConfig.VIEW_ARTWORK_AND_LYRICS
+            else MiniPlayerConfig.VIEW_LYRICS
         val snapshot = LockscreenSnapshot(collapsed, musicView, focus, expanded,
             selectedIsland?.takeIf { it in collapsedRailKeys() })
         val encoded = snapshot.encode()
