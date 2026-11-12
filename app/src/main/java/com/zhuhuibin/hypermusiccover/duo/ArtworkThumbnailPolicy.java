@@ -1,6 +1,6 @@
 package com.zhuhuibin.hypermusiccover.duo;
 
-/** The rail player's thumbnail remains a stable control while its larger artwork is open. */
+/** Keep the native artwork slot stable while its contents name the next page action. */
 final class ArtworkThumbnailPolicy {
     private ArtworkThumbnailPolicy() {}
 
@@ -10,6 +10,10 @@ final class ArtworkThumbnailPolicy {
 
     static float hideProgress(boolean fixedControls, float morphProgress) {
         return fixedControls ? 0f : morphProgress;
+    }
+
+    static boolean replaceWithPageAction(boolean fixedControls, int nextPage) {
+        return fixedControls && nextPage != RailMusicPagePolicy.ARTWORK;
     }
 
     static boolean veil(boolean fixedControls, boolean artworkExpanded, boolean screenOn,

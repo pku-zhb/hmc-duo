@@ -4,6 +4,15 @@ import org.junit.Test;
 import static org.junit.Assert.*;
 
 public class ArtworkThumbnailPolicyTest {
+    @Test public void onlyOneActionOccupiesTheArtworkSlotAcrossAllThreePages() {
+        for (int current : new int[]{RailMusicPagePolicy.CLOCK, RailMusicPagePolicy.ARTWORK,
+                RailMusicPagePolicy.LYRICS}) {
+            int next = RailMusicPagePolicy.next(current, true);
+            assertEquals(current != RailMusicPagePolicy.CLOCK,
+                    ArtworkThumbnailPolicy.replaceWithPageAction(true, next));
+            assertFalse(ArtworkThumbnailPolicy.replaceWithPageAction(false, next));
+        }
+    }
     @Test public void railThumbnailAndTitleSlotStayFixedThroughTheWholeMorph() {
         assertTrue(ArtworkThumbnailPolicy.fixedControls(true, true, false));
         for (float progress : new float[]{0f, .2f, .5f, .9f, 1f}) {

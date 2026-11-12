@@ -53,6 +53,13 @@ The first host-validated input/notification changes are:
 These are source-supported candidates, not device acceptance. No phone interaction,
 installation or restart is authorized for this iteration.
 
+The page control now uses the native artwork slot itself. On the clock page the
+native thumbnail opens artwork; its pixels are then replaced by the lyrics action,
+then the clock action, then the thumbnail again. The original image stays in the
+layout and retains its bitmap for cover rendering. The title/artist receive no
+extra left inset, while their accepted source/output-button avoidance stays active.
+Focused page-cycle, artwork and media-text tests pass on the host.
+
 ### Preview 4 feedback and preview 5 candidate (2026-11-12)
 
 The owner accepted the content expansion order, the filled gesture gap, notification
