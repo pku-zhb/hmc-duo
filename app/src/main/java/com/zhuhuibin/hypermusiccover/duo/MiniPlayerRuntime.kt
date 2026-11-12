@@ -1050,11 +1050,13 @@ object MiniPlayerRuntime {
     private var contentSlop = 0f
     private var contentVelocity: VelocityTracker? = null
     private var contentScrollTarget = false
+    private var contentNativeScrollReleased = false
     const val CONTENT_NATIVE_CONTROL = 3
 
-    /** Actual card pixels, not the empty clock/rail gap or native shortcut tolerance. */
+    /** Native cards and list gaps; the clock band, rail and shortcuts have separate owners. */
     @JvmStatic fun nativeContentAt(x: Float, y: Float): Boolean = detachedRail() &&
-        live().none { it.nativeShortcutAt(x, y) } && live().any { it.contentStartsOnCard(x, y) }
+        live().none { it.nativeShortcutAt(x, y) || it.railBubbleAt(x, y) != null || it.touchTarget(x, y) != null } &&
+        live().any { it.nativeCardAreaAt(x, y) }
 
     /** isShown ignores alpha; native views kept in layout can be invisible through any parent. */
     internal fun effectiveViewAlpha(view: View): Float {
@@ -1069,7 +1071,7 @@ object MiniPlayerRuntime {
         return alpha
     }
 
-    /** Only actual visible controls own a native stream; gaps keep the content swipe guard. */
+    /** Explicit controls also stay native while their card is being laid out or animated. */
     private fun nativeMediaControlAt(x: Float, y: Float): Boolean {
         if (!detachedRail() || !Main.keyguardLocked() || !Main.onKeyguardNow() ||
             Main.bouncerShown() || MiniPlayerScene.aodActive || MiniPlayerScene.keyguardGoingAway ||
@@ -1103,7 +1105,7 @@ object MiniPlayerRuntime {
         val action = ev.actionMasked
         if (action == MotionEvent.ACTION_DOWN) {
             contentVelocity?.recycle(); contentVelocity = null
-            val nativeControl = nativeMediaControlAt(ev.rawX, ev.rawY)
+            val nativeControl = nativeMediaControlAt(ev.rawX, ev.rawY) || nativeContentAt(ev.rawX, ev.rawY)
             contentOwner = if (canStart && !nativeControl && detachedRail()) live().firstOrNull {
                 it.contentExpansionTarget(ev.rawX, ev.rawY) != null ||
                     it.contentCollapseAt(ev.rawX, ev.rawY)
@@ -1114,16 +1116,26 @@ object MiniPlayerRuntime {
             val canCollapse = contentOwner?.contentCollapseAt(ev.rawX, ev.rawY) == true
             contentSwipe.start(contentKey != null, canCollapse, nativeControl, contentScrollTarget, atTop)
             contentCancelled = false
+            contentNativeScrollReleased = false
             if (nativeControl) { releasePress(); endRoute() }
             contentX = ev.rawX; contentY = ev.rawY
-            contentOwner?.contentGestureContext()?.let {
+            (contentOwner ?: live().firstOrNull())?.contentGestureContext()?.let {
                 contentDensity = it.resources.displayMetrics.density
                 contentSlop = ViewConfiguration.get(it).scaledTouchSlop.toFloat()
                 contentVelocity = VelocityTracker.obtain()
             }
         }
         if (contentSwipe.nativeControl) {
-            if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) contentSwipe.reset()
+            if (action == MotionEvent.ACTION_MOVE && !contentNativeScrollReleased &&
+                abs(ev.rawY - contentY) > contentSlop && abs(ev.rawY - contentY) > abs(ev.rawX - contentX)) {
+                releaseNativeScrollPin()
+                contentNativeScrollReleased = true
+            }
+            if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
+                contentVelocity?.recycle(); contentVelocity = null
+                contentSwipe.reset()
+                contentOwner = null; contentKey = null; contentScrollTarget = false
+            }
             return CONTENT_NATIVE_CONTROL
         }
         contentVelocity?.addMovement(ev)
@@ -7879,7 +7891,39 @@ private class MiniPlayerController(
         val xy = IntArray(2).also(host::getLocationOnScreen)
         if (!content.contains(x - xy[0], y - xy[1]) ||
             fingerprintInHost()?.contains((x - xy[0]).toInt(), (y - xy[1]).toInt()) == true) return false
-        return true
+        return RailContentRegion.clockSpace(y, content.top + xy[1], content.bottom + xy[1], firstNativeCardTop())
+    }
+
+    private fun firstNativeCardTop(): Float? {
+        val rect = android.graphics.Rect()
+        var top: Float? = null
+        fun include(view: View?) {
+            if (view == null || !view.isShown || MiniPlayerRuntime.effectiveViewAlpha(view) <= .01f ||
+                !view.getGlobalVisibleRect(rect) || rect.isEmpty) return
+            val rootXY = IntArray(2).also(view.rootView::getLocationOnScreen)
+            val y = (rect.top + rootXY[1]).toFloat()
+            top = top?.let { minOf(it, y) } ?: y
+        }
+        include(Main.miniPlayerMediaHeader())
+        notificationStack()?.let { stack ->
+            for (i in 0 until stack.childCount) {
+                val row = stack.getChildAt(i)
+                if (row.javaClass.name.endsWith("ExpandableNotificationRow")) include(row)
+            }
+        }
+        return top
+    }
+
+    /** Keep the native list's gaps, too: scrolling should not change owner between rows. */
+    fun nativeCardAreaAt(x: Float, y: Float): Boolean {
+        if (!MiniPlayerRuntime.detachedRail() || !Main.keyguardLocked() || !Main.onKeyguardNow() ||
+            Main.bouncerShown() || MiniPlayerScene.aodActive || MiniPlayerScene.keyguardGoingAway) return false
+        if (contentStartsOnCard(x, y)) return true
+        val first = firstNativeCardTop() ?: return false
+        val content = android.graphics.RectF()
+        if (!LockScreenRailRuntime.content(host, content)) return false
+        val at = IntArray(2).also(host::getLocationOnScreen)
+        return y >= first && content.contains(x - at[0], y - at[1])
     }
 
     fun contentCollapseAt(x: Float, y: Float): Boolean = contentGestureAt(x, y) &&

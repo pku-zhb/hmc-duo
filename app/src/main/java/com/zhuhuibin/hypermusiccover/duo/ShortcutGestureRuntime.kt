@@ -42,10 +42,14 @@ internal object ShortcutGestureRuntime {
                 }
                 if (event != null && streams[owner] == event.downTime && eligible()) {
                     // The hidden native count footer must not own the card drawn in its band.
-                    Xp.setObjectField(owner, "isDownInNumStateArea", false)
-                    Xp.setObjectField(owner, "pendingClick", false)
-                    Xp.setObjectField(owner, "handledByNumState", null)
-                    null
+                    val cleared = runCatching {
+                        Xp.setObjectField(owner, "isDownInNumStateArea", false)
+                        Xp.setObjectField(owner, "pendingClick", false)
+                        Xp.setObjectField(owner, "handledByNumState", null)
+                    }.onFailure { failure = it.javaClass.simpleName }.isSuccess
+                    if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL)
+                        streams.remove(owner)
+                    if (cleared) null else chain.proceed()
                 } else chain.proceed()
             }
         }.onFailure { Xp.w("DuoShortcut: count area boundary unavailable: $it") }

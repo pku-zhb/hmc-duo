@@ -23,13 +23,16 @@ package was 20003 while the SystemUI probe still reported 20002, with its proces
 unchanged; the owner subsequently supplied preview-3 feedback. Preview 4 was then
 installed after fresh explicit confirmation, temporarily replaced with preview 3
 for a compatibility comparison, and restored to preview 4 at the owner's request.
-Preview 5 is the next host-built candidate. The owner explicitly requested no
-installation, phone debugging or restart for this iteration.
+The owner subsequently supplied preview-5 device feedback. Preview 6 is the next
+host-built candidate; installation still requires fresh confirmation. No phone
+interaction, debugging or restart is part of this iteration.
 
 ### Preview 5 feedback and preview 6 work (2026-11-12)
 
-The owner accepted full-area downward collapse and immediate long-title avoidance.
-Undersized cards have not recurred; long-background session recovery remains untested.
+The owner accepted immediate long-title avoidance. Undersized cards have not
+recurred; long-background session recovery remains untested. The later interaction
+request supersedes full-area downward collapse: content expansion and collapse
+start only in the clock/empty band above the first visible native card.
 Black flashing and bottom-area horizontal input remain unresolved on the device.
 The page-cycle request means reusing the native artwork slot, not adding an adjacent
 button. Notification islands can also be absent after a collapse. HyperOS now needs
@@ -44,11 +47,24 @@ The first host-validated input/notification changes are:
   streams clear that flag and bypass the hidden number-footer interceptor, without
   bypassing the rest of panel handling. Shortcut acquisition uses displayed icon
   screen coordinates and its existing tolerance, latched for the full stream.
-- A horizontal notification dismissal keeps native ownership through later vertical
-  wobble, even with other islands folded. Empty-space diagonal protection remains.
+- All native card/list streams keep their owner from DOWN, including vertical
+  scrolling, horizontal notification dismissal, taps, long presses and media controls.
+  List gaps belong to the same region. Only the clock/empty band above the first
+  visible card expands or collapses content. A native list drag releases the short
+  placement pin; it does not enter the rail collapse recognizer. The native artwork
+  slot retains its explicitly requested page-cycle action.
 - A notification-return timeout no longer changes the user's collapsed choice to
   expanded. A single bounded native settle attempt and final publication reconciliation
   replace the premature cancellation. Repeated native NUMBER callbacks still publish.
+
+- Notification retention now follows the inspected local HyperLight implementation
+  (`f4.java` / `i11.java`, `notif_lockscreen_notif_keep`): clear the shared
+  `mHasShownAfterUnlock` marker before both `shouldHideNotification` overloads,
+  without restoring it before grouping/counting consumers run. The direct OEM
+  `forceHideOnKeyguard` entry remains a backstop. Show-all bypasses only
+  `ExpandedNotification.canShowOnKeyguard`, as HyperLight does. The native provider
+  still decides privacy, profile and redaction; preference changes invalidate its
+  consumers as well as the island presentation.
 
 These are source-supported candidates, not device acceptance. No phone interaction,
 installation or restart is authorized for this iteration.

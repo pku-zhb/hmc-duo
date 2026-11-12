@@ -13,11 +13,20 @@ internal object LockscreenNotificationRuntime {
     private var showHook = false
     private var retainHook = false
     private var retentionReadFailed = false
-    private var retentionRestoreFailed = false
+    private var providerHook = false
+    private var markerClears = 0
+    private var providerRef: java.lang.ref.WeakReference<Any>? = null
+    private var notifyProvider: java.lang.reflect.Method? = null
     private val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
         if (key == null || key == "config") {
             load()
-            Main.main().post { LockIslands.notificationPolicyChanged() }
+            Main.main().post {
+                // The native provider invalidates all its consumers, even when islands are off.
+                providerRef?.get()?.let { provider ->
+                    runCatching { notifyProvider?.invoke(null, provider, "Duo notification settings") }
+                }
+                LockIslands.notificationPolicyChanged()
+            }
         }
     }
 
@@ -46,8 +55,7 @@ internal object LockscreenNotificationRuntime {
             val method = expanded.getDeclaredMethod("canShowOnKeyguard")
             check(method.returnType == Boolean::class.javaPrimitiveType)
             Xp.hook(method) { chain ->
-                val original = chain.proceed()
-                if (original is Boolean) current().canShowOnKeyguard(original) else original
+                if (current().canShowOnKeyguard(false)) true else chain.proceed()
             }
             showHook = true
         }.onFailure { Xp.w("MCNotif: show-all filter unavailable; native visibility retained: $it") }
@@ -59,37 +67,48 @@ internal object LockscreenNotificationRuntime {
             val sbnField = entryClass.getDeclaredField("mSbn").also { it.isAccessible = true }
             val seenField = expanded.getDeclaredField("mHasShownAfterUnlock").also { it.isAccessible = true }
             check(seenField.type == Boolean::class.javaPrimitiveType && expanded.isAssignableFrom(sbnField.type))
+            fun retainEntry(entry: Any?) {
+                val policy = current()
+                if (!policy.retain || entry == null) return
+                runCatching {
+                    val sbn = sbnField.get(entry) ?: return
+                    val original = seenField.getBoolean(sbn)
+                    val retained = policy.shownAfterUnlock(original)
+                    if (retained != original) {
+                        // Match HyperLight's entry boundary: this is the shared native marker,
+                        // not a temporary mask restored before grouping/counting consumers run.
+                        seenField.setBoolean(sbn, retained)
+                        markerClears++
+                    }
+                }.onFailure {
+                    if (!retentionReadFailed) Xp.w("MCNotif: retention marker unavailable: $it")
+                    retentionReadFailed = true
+                }
+            }
+            runCatching {
+                val provider = Xp.findClass("com.android.systemui.statusbar.notification.interruption." +
+                    "KeyguardNotificationVisibilityProviderImpl", loader)
+                notifyProvider = runCatching {
+                    provider.getDeclaredMethod("access\$notifyStateChanged", provider, String::class.java)
+                        .also { it.isAccessible = true }
+                }.getOrNull()
+                // Both the one-argument wrapper and the direct boolean overload are used.
+                provider.declaredMethods.filter { it.name == "shouldHideNotification" &&
+                    it.parameterTypes.firstOrNull() == entryClass }.forEach { method ->
+                    Xp.hook(method) { chain ->
+                        providerRef = java.lang.ref.WeakReference(chain.thisObject)
+                        retainEntry(chain.args.firstOrNull())
+                        chain.proceed()
+                    }
+                    providerHook = true
+                }
+            }.onFailure { Xp.w("MCNotif: early retention boundary unavailable: $it") }
             val method = filter.getDeclaredMethod("forceHideOnKeyguard", entryClass)
             check(method.returnType == Boolean::class.javaPrimitiveType)
             Xp.hook(method) { chain ->
-                val entry = chain.args.firstOrNull()
-                if (!current().retain || entry == null) return@hook chain.proceed()
-                val sbn = runCatching { sbnField.get(entry) }.getOrNull()
-                    ?: return@hook chain.proceed()
-                synchronized(sbn) {
-                    val original = runCatching { seenField.getBoolean(sbn) }.getOrElse {
-                        if (!retentionReadFailed) Xp.w("MCNotif: retention marker unreadable; native filter retained: $it")
-                        retentionReadFailed = true
-                        return@hook chain.proceed()
-                    }
-                    val masked = current().shownAfterUnlock(original)
-                    if (masked == original) return@hook chain.proceed()
-                    runCatching { seenField.setBoolean(sbn, masked) }.getOrElse {
-                        if (!retentionReadFailed) Xp.w("MCNotif: retention marker not writable; native filter retained: $it")
-                        retentionReadFailed = true
-                        return@hook chain.proceed()
-                    }
-                    try {
-                        // Continue the complete OEM filter. Global privacy, secret notifications,
-                        // user/profile restrictions and redaction remain the provider's decisions.
-                        chain.proceed()
-                    } finally {
-                        runCatching { seenField.setBoolean(sbn, original) }.onFailure {
-                            if (!retentionRestoreFailed) Xp.w("MCNotif: retention marker restore failed: $it")
-                            retentionRestoreFailed = true
-                        }
-                    }
-                }
+                // Direct stock callers outside the visibility provider read the same marker.
+                retainEntry(chain.args.firstOrNull())
+                chain.proceed()
             }
             retainHook = true
         }.onFailure { Xp.w("MCNotif: retention filter unavailable; native visibility retained: $it") }
@@ -97,6 +116,6 @@ internal object LockscreenNotificationRuntime {
 
     fun describe(): String = current().let {
         "notificationFilters showAll=${it.showAll}/$showHook retain=${it.retain}/$retainHook" +
-            " readFailed=$retentionReadFailed restoreFailed=$retentionRestoreFailed"
+            " provider=$providerHook cleared=$markerClears readFailed=$retentionReadFailed"
     }
 }
