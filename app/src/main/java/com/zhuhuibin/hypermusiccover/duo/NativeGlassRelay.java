@@ -3,6 +3,8 @@ package com.zhuhuibin.hypermusiccover.duo;
 import android.content.res.Configuration;
 import android.graphics.RenderNode;
 import android.graphics.Point;
+import android.os.Looper;
+import android.view.Choreographer;
 import android.view.View;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -20,18 +22,21 @@ final class NativeGlassRelay {
     private static final Map<View, GlassProfile.Blur> committedBlur = Collections.synchronizedMap(new WeakHashMap<>());
     private static final Map<View, GlassProfile.Background> committedBackground = Collections.synchronizedMap(new WeakHashMap<>());
     private static final NativeMaterialCommitScope<View> scopes = new NativeMaterialCommitScope<>();
+    private static final NativeMaterialSourceBinding<View> sourceBinding = new NativeMaterialSourceBinding<>();
+    private static final NativePaletteBatch<View> palettes = new NativePaletteBatch<>();
+    private static final ThreadLocal<View> paletteReplay = new ThreadLocal<>();
     private static volatile GlassProfile profile;
     private static volatile GlassProfile.Blur blur;
     private static volatile GlassProfile.Background background;
     private static GlassProfile appliedProfile;
     private static GlassProfile.Blur appliedBlur;
     private static GlassProfile.Background appliedBackground;
-    private static boolean installed, glassInstalled, blurInstalled, backgroundInstalled, refreshPosted;
+    private static boolean installed, glassInstalled, blurInstalled, backgroundInstalled, refreshPosted, paletteFramePosted;
     private static Method glassSetter, blurSetter;
     private static Method backgroundRadius, backgroundScale, backgroundColors;
     private static Method readRadius, readScale, readColors;
     private static Field renderNode;
-    private static int captures, applications, blurApplications, refreshes;
+    private static int captures, applications, blurApplications, refreshes, paletteRestores;
 
     static void register(View target) { register(target, GLASS_TARGET); }
     static void registerBlurContainer(View target) { register(target, BLUR_TARGET); }
@@ -40,7 +45,16 @@ final class NativeGlassRelay {
         if (target != null && NativeMaterialSource.ownedClass(target.getClass().getName()))
             synchronized (targets) { targets.put(target, targets.getOrDefault(target, 0) | role); }
     }
-    static void unregister(View target) { targets.remove(target); }
+    static void unregister(View target) { targets.remove(target); palettes.remove(target); }
+
+    /** Complete owned recipes restore their final palette once, before returning to draw. */
+    static void beginOwnedPaletteUpdate(View target) {
+        Integer role = targets.get(target);
+        if (Main.sFollowNativeMaterial && role != null && (role & GLASS_TARGET) != 0) palettes.begin(target);
+    }
+    static void endOwnedPaletteUpdate(View target) {
+        if (palettes.end(target)) restorePalette(target);
+    }
 
     /** View hook order is irrelevant: only the known RenderNode commit bridge supplies values. */
     static void install() {
@@ -124,24 +138,29 @@ final class NativeGlassRelay {
                 Xp.api().hook(setter).intercept(chain -> {
                     View view = (View) chain.getThisObject();
                     Integer role = targets.get(view);
-                    boolean source = role == null && nativePlayerBackground(view);
-                    if (role == null && !source) return chain.proceed();
+                    boolean source = role == null && sourceBinding.isSource(view);
+                    // No scene queries, hierarchy discovery, reflection or argument copies
+                    // for unrelated views. Native mode still samples the one known source.
+                    if (!source && (role == null || !Main.sFollowNativeMaterial)) return chain.proceed();
+                    if (!relaySceneNow() || !sourceStillBound(source ? view : sourceBinding.source()))
+                        return chain.proceed();
+                    if (role != null && paletteReplay.get() == view) return chain.proceed();
                     Object[] args = chain.getArgs().toArray();
                     GlassProfile.Background state = currentBackground(view);
-                    if (role != null && followsNow() && state != null) {
+                    if (role != null && state != null) {
                         if (setter == backgroundRadius && (role & BLUR_TARGET) != 0) args[0] = state.radius;
                         else if (setter == backgroundScale && (role & BLUR_TARGET) != 0) args[0] = state.scale;
                         else if (setter == backgroundColors && (role & GLASS_TARGET) != 0) args[0] = points(state);
                     }
                     Object result = chain.proceed(args);
                     // Never sample on throw, and never infer committed values from args.
-                    if (source && nativePlayerBackground(view)) captureBackground(view);
-                    else if (role != null && (role & GLASS_TARGET) != 0 && followsNow() && state != null &&
+                    if (source && sourceStillBound(view)) captureBackground(view);
+                    else if (role != null && (role & GLASS_TARGET) != 0 && state != null &&
                             (setter == clear || setter == add)) {
-                        // The legacy recipe uses public clear/add. Let it run, then keep the
-                        // owned layer on the final palette; bulk apply never re-enters these hooks.
-                        try { backgroundColors.invoke(view, points(state)); }
-                        catch (Throwable error) { Xp.d(Main.TAG + "owned palette replay skipped: " + error); }
+                        // clear + N add calls form one palette, not N+1 full replays.
+                        if (palettes.mark(view)) schedulePaletteFrame();
+                    } else if (role != null && setter == backgroundColors) {
+                        palettes.completed(view);
                     }
                     return result;
                 });
@@ -155,6 +174,35 @@ final class NativeGlassRelay {
         ArrayList<Point> result = new ArrayList<>(colors.length);
         for (int i = 0; i < colors.length; ++i) result.add(new Point(colors[i], modes[i]));
         return result;
+    }
+
+    private static void schedulePaletteFrame() {
+        if (paletteFramePosted) return;
+        paletteFramePosted = true;
+        Runnable schedule = () -> Choreographer.getInstance().postFrameCallback(frameTime -> {
+            paletteFramePosted = false;
+            for (View view : palettes.drain()) restorePalette(view);
+        });
+        if (Looper.myLooper() == Looper.getMainLooper()) schedule.run(); else Main.main().post(schedule);
+    }
+
+    private static void restorePalette(View view) {
+        Integer role = targets.get(view);
+        if (role == null || (role & GLASS_TARGET) == 0 || !view.isAttachedToWindow() || !followsNow()) return;
+        GlassProfile.Background state = currentBackground(view);
+        if (state == null || !backgroundInstalled) return;
+        View previous = paletteReplay.get();
+        paletteReplay.set(view);
+        try {
+            // The bulk setter reaches RenderNode directly. Do not rebuild the same palette
+            // in its own relay hook or treat this owned write as a new native sample.
+            backgroundColors.invoke(view, points(state));
+            palettes.completed(view);
+            ++paletteRestores;
+        } catch (Throwable error) { Xp.d(Main.TAG + "owned palette replay skipped: " + error); }
+        finally {
+            if (previous == null) paletteReplay.remove(); else paletteReplay.set(previous);
+        }
     }
 
     private static void captureBackground(View view) {
@@ -188,7 +236,9 @@ final class NativeGlassRelay {
             if (!(self instanceof View)) return chain.proceed();
             View view = (View) self;
             Integer role = targets.get(view);
-            if (role == null && !nativePlayerBackground(view)) return chain.proceed();
+            boolean source = role == null && sourceBinding.isSource(view);
+            if (!source && (role == null || !Main.sFollowNativeMaterial)) return chain.proceed();
+            if (!relaySceneNow() || !sourceStillBound(source ? view : sourceBinding.source())) return chain.proceed();
             Object node;
             try { node = renderNode.get(view); } catch (Throwable ignored) { return chain.proceed(); }
             NativeMaterialCommitScope.Frame<View> frame = scopes.enter(view, node,
@@ -202,7 +252,11 @@ final class NativeGlassRelay {
     }
 
     private static boolean followsNow() {
-        return Main.sFollowNativeMaterial && Main.keyguardLocked() && Main.onKeyguardNow()
+        return Main.sFollowNativeMaterial && relaySceneNow() && sourceStillBound(sourceBinding.source());
+    }
+
+    private static boolean relaySceneNow() {
+        return Main.keyguardLocked() && Main.onKeyguardNow()
                 && !MiniPlayerScene.INSTANCE.getKeyguardGoingAway();
     }
 
@@ -235,7 +289,7 @@ final class NativeGlassRelay {
                         blurSetter.invoke(view, radii[0], radii[1]);
                     GlassProfile.Background state = currentBackground(view);
                     if (backgroundInstalled && state != null) {
-                        if ((item.getValue() & GLASS_TARGET) != 0) backgroundColors.invoke(view, points(state));
+                        if ((item.getValue() & GLASS_TARGET) != 0) restorePalette(view);
                         if ((item.getValue() & BLUR_TARGET) != 0) {
                             backgroundRadius.invoke(view, state.radius);
                             backgroundScale.invoke(view, state.scale);
@@ -248,16 +302,52 @@ final class NativeGlassRelay {
         });
     }
 
-    static boolean nativePlayerBackground(View view) {
+    /** Called only by the known OEM effect binder, independently of the follow preference. */
+    static boolean bindNativePlayerBackground(View view, View owner) {
+        Object parent = view == null ? null : view.getParent();
+        Object ownerParent = owner == null ? null : owner.getParent();
+        if (!relaySceneNow()) return false;
+        boolean sameSource = sourceBinding.isSource(view);
+        boolean bound = sourceBinding.bind(view, parent, owner, ownerParent,
+                () -> nativePlayerBackground(view, owner));
+        // Reparenting the same accepted background does not reset its RenderNode. Its
+        // next identical setter can return false, so keep that source's committed state.
+        if (!bound || !sameSource) clearSourceProfiles();
+        return bound;
+    }
+
+    private static boolean sourceStillBound(View view) {
+        if (view == null) return false;
+        View owner = sourceBinding.owner();
+        if (owner != null && sourceBinding.isSource(view) && view.isAttachedToWindow() && owner.isAttachedToWindow()) {
+            if (sourceBinding.matches(view, view.getParent(), owner, owner.getParent())) return true;
+            // Only a previously bound source reaches this rare topology-change validation.
+            return bindNativePlayerBackground(view, owner);
+        }
+        sourceBinding.clear();
+        clearSourceProfiles();
+        return false;
+    }
+
+    private static void clearSourceProfiles() {
+        profile = null; blur = null; background = null;
+        appliedProfile = null; appliedBlur = null; appliedBackground = null;
+        committedGlass.clear(); committedBlur.clear(); committedBackground.clear();
+    }
+
+    private static boolean nativePlayerBackground(View view, View owner) {
         if (view == null || view.getId() == View.NO_ID || !Main.keyguardLocked() || !Main.onKeyguardNow()) return false;
         String id;
         try { id = view.getResources().getResourceEntryName(view.getId()); }
         catch (Throwable ignored) { return false; }
         if (!"media_bg".equals(id)) return false;
         ArrayList<String> lineage = new ArrayList<>();
-        for (View v = view; v != null; v = v.getParent() instanceof View ? (View) v.getParent() : null)
+        boolean containsOwner = false;
+        for (View v = view; v != null; v = v.getParent() instanceof View ? (View) v.getParent() : null) {
             lineage.add(v.getClass().getName());
-        return NativeMaterialSource.accepts(id, lineage, targets.containsKey(view));
+            if (v == owner) containsOwner = true;
+        }
+        return containsOwner && NativeMaterialSource.accepts(id, lineage, targets.containsKey(view));
     }
 
     /** Signature inputs only: never use these as a baseline for the independent native mode. */
@@ -280,6 +370,6 @@ final class NativeGlassRelay {
                 + " profile=" + (profile != null) + " captures=" + captures
                 + " blurProfile=" + (blur != null) + " backgroundProfile=" + (background != null)
                 + " applications=" + applications + " blurApplications=" + blurApplications
-                + " ownedRefreshes=" + refreshes + " targets=" + targets.size();
+                + " ownedRefreshes=" + refreshes + " paletteRestores=" + paletteRestores + " targets=" + targets.size();
     }
 }

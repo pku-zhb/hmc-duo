@@ -198,7 +198,9 @@ object MiniPlayerRuntime {
                         clipping?.nativeVisible = true
                         // Hidden in the same call the stack shows it: a frame later it had been
                         // drawn once already (/1cc/ blinking, 2026-10-26).
-                        if (NotificationTransitionTarget.eligible(v)) spreadLateRow?.invoke(v)
+                        spreadLateRow?.let { callback ->
+                            if (NotificationTransitionTarget.eligible(v)) callback(v)
+                        }
                     }
                     chain.proceed()
                 }
@@ -424,7 +426,7 @@ object MiniPlayerRuntime {
                     val card = Main.miniPlayerMediaHeader()
                     val candidateBg = target?.let { holderMediaBg(it) ?: Main.miniPlayerMediaBg(it) }
                     val mine = effectDepth == 0 && target != null && target === card &&
-                        NativeGlassRelay.nativePlayerBackground(candidateBg)
+                        NativeGlassRelay.bindNativePlayerBackground(candidateBg, target)
                     if (mine) {
                         // The holder's own mediaBg, the view the effect dresses: looked up by
                         // name it was often not found yet, and Soft Glass was never recorded.
@@ -781,7 +783,9 @@ object MiniPlayerRuntime {
             if (blurOpened) {
                 val look = aodDimLook
                 val colours = look?.first ?: IntArray(6) { args[4 + it] as Int }
-                blendMethod?.invoke(null, ctx, view, false, colours, false)
+                NativeGlassRelay.beginOwnedPaletteUpdate(view)
+                try { blendMethod?.invoke(null, ctx, view, false, colours, false) }
+                finally { NativeGlassRelay.endOwnedPaletteUpdate(view) }
                 val params = if (look != null) look.second ?: args[10] as? FloatArray else args[10] as? FloatArray
                 if (args[12] == true && params != null) glassMethod?.invoke(null, view, params)
             } else {
@@ -2268,13 +2272,14 @@ object MiniPlayerRuntime {
             val recipe = cardRecipe ?: error("the card has not been dressed yet")
             view.setImageDrawable(null)
             view.background = cardBackground?.newDrawable(res)?.mutate()
-            run {
+            NativeGlassRelay.beginOwnedPaletteUpdate(view)
+            try {
                 recipe.forEach { call ->
                     val args = call.args.copyOf()
                     args[call.viewAt] = view
                     call.method.invoke(null, *args)
                 }
-            }
+            } finally { NativeGlassRelay.endOwnedPaletteUpdate(view) }
             dressedViews.add(view)
             // Dressed in the AOD - a small island coming up there: dimmed as the rest are.
             aodDimArgs?.let { run { dimView(view, it) } }
@@ -8465,6 +8470,13 @@ private class MiniPlayerController(
 
     /** Retire visual work at a scene/role boundary without changing saved collapsed choices. */
     private fun releaseInvalidNotificationTransitions(force: Boolean = false) {
+        // Native AOD/island frames need no notification-role or scene queries when no
+        // notification transition has borrowed a property from the native stack.
+        if (nativeRailNote == null && railNoteExit == null && spread == null &&
+            hiddenRows.isEmpty() && foldHidden.isEmpty() && spreadLateFades.isEmpty() &&
+            piles.isEmpty() && pileRows.isEmpty() && group?.folded.isNullOrEmpty() &&
+            railReturn?.let { it.plan.key != MUSIC_ISLAND } != true &&
+            pinned?.get()?.let(::isNotificationRow) != true) return
         val scene = !force && NotificationTransitionTarget.sceneEligible() && !destroyed
         group?.folded?.let { held ->
             for (row in held.keys.toList()) if (!scene || !NotificationTransitionTarget.eligible(row))
@@ -12093,14 +12105,19 @@ private class MiniPlayerController(
         for (i in 0 until stack.childCount) {
             val child = stack.getChildAt(i)
             if (!child.javaClass.name.contains("ExpandableNotificationRow")) continue
-            if (!NotificationTransitionTarget.ordinary(child)) continue
-            if (rowKey(child) == key) return child to child
+            if (rowKey(child) == key) {
+                if (NotificationTransitionTarget.ordinary(child)) return child to child
+                continue
+            }
             // One app, one row, as the stack groups them: a notification in a group is found as
             // the group's row, never its own child row. A child is not even drawn with the group
             // folded (the children's container INVISIBLE): three QQ messages grouped, the stack
             // island waited for a child that never came on screen and the tap did nothing, and
             // opened, the rows of one app were piled one by one (2026-09-26, the user's rule).
-            for (sub in childRows(child)) if (rowKey(sub) == key) return child to child
+            for (sub in childRows(child)) if (rowKey(sub) == key) {
+                if (NotificationTransitionTarget.ordinary(child)) return child to child
+                break
+            }
         }
         return null
     }

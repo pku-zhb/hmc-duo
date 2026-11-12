@@ -19,22 +19,33 @@ internal object NotificationTransitionTarget {
     fun ordinary(row: View): Boolean {
         val a = access.getOrPut(row.javaClass) { Access(row.javaClass) }
         return NotificationTransitionPolicy.ordinary(
-            runCatching { a.headsUp?.invoke(row) as? Boolean }.getOrNull(),
-            runCatching { a.pinned?.invoke(row) as? Boolean }.getOrNull(),
-            runCatching { a.leaving?.invoke(row) as? Boolean }.getOrNull())
+            { runCatching { a.headsUp?.invoke(row) as? Boolean }.getOrNull() },
+            { runCatching { a.pinned?.invoke(row) as? Boolean }.getOrNull() },
+            { runCatching { a.leaving?.invoke(row) as? Boolean }.getOrNull() })
     }
 
     fun sceneEligible(): Boolean = NotificationTransitionPolicy.scene(
-        Main.keyguardLocked(), MiniPlayerScene.keyguardGoingAway,
-        MiniPlayerScene.aodActive, Main.screenOnCached()) && !Main.bouncerShown()
+        MiniPlayerScene.keyguardGoingAway, MiniPlayerScene.aodActive, Main.screenOnCached(),
+        { Main.keyguardLocked() }, { Main.bouncerShown() })
 
     fun eligible(row: View): Boolean = row.isAttachedToWindow && sceneEligible() && ordinary(row)
 }
 
 internal object NotificationTransitionPolicy {
     fun ordinary(headsUp: Boolean?, pinned: Boolean?, leaving: Boolean?): Boolean =
-        headsUp == false && pinned == false && leaving == false
+        ordinary({ headsUp }, { pinned }, { leaving })
+
+    /** Inline readers avoid both unnecessary reflection and per-frame callback allocations. */
+    inline fun ordinary(headsUp: () -> Boolean?, pinned: () -> Boolean?, leaving: () -> Boolean?): Boolean =
+        headsUp() == false && pinned() == false && leaving() == false
 
     fun scene(locked: Boolean, goingAway: Boolean, aod: Boolean, screenOn: Boolean): Boolean =
-        locked && !goingAway && !aod && screenOn
+        scene(goingAway, aod, screenOn, { locked }, { false })
+
+    /** Cached exit flags reject before a system-state query or a bouncer visibility walk. */
+    inline fun scene(goingAway: Boolean, aod: Boolean, screenOn: Boolean,
+                     locked: () -> Boolean, bouncer: () -> Boolean): Boolean {
+        if (goingAway || aod || !screenOn) return false
+        return locked() && !bouncer()
+    }
 }
