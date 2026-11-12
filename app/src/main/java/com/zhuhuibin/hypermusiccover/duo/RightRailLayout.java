@@ -17,7 +17,7 @@ final class RightRailLayout {
     // Duo owns these dp values. No MiDuo view, margin or measured width is an input.
     static final float RIGHT_EDGE_DP = 16f;
     static final float CONTENT_RESERVE_DP = 75f;
-    static final float TOP_CONTROL_RESERVE_DP = 72f;
+    static final float TOP_CONTROL_RESERVE_DP = RailStatusLayout.RESERVE_DP;
     static final float CAPSULE_LENGTH_DP = 221f;
 
     static Plan plan(float width, float height, float density, float leftInset, float topInset,
@@ -37,7 +37,7 @@ final class RightRailLayout {
         if (shortcuts == null) return null;
         float limit = shortcuts.capsuleBottom - indicatorExtent;
         float length = Math.min(CAPSULE_LENGTH_DP * density, limit - companionTop - thickness - gap);
-        float ceiling = topInset + gap + thickness + gap;
+        float ceiling = companionTop + thickness + gap;
         float center = Math.max(ceiling + length / 2,
                 Math.min((topInset + height - bottomInset) / 2 - (narrow ? 16f : 12f) * density,
                     limit - length / 2));

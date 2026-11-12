@@ -57,6 +57,7 @@ final class LockScreenRailRuntime {
             try { update(); }
             catch (Throwable error) {
                 plan = null;
+                RailStatusRuntime.hide();
                 restore();
                 reason = "adapter unavailable: " + error.getClass().getSimpleName();
                 Xp.w(Main.TAG + "right rail: " + error);
@@ -74,9 +75,11 @@ final class LockScreenRailRuntime {
         restore();
         root = null;
         keyguardCanvas = null;
+        RailStatusRuntime.detach();
     }
 
     static void refresh() {
+        RailStatusRuntime.hide();
         restore();
         plan = null;
         if (root != null) root.invalidate();
@@ -93,12 +96,13 @@ final class LockScreenRailRuntime {
         sessionEligible = root != null && RailLifecycle.eligible(Main.sRightRail,
                 Main.keyguardLocked(), Main.bouncerShown());
         if (!sessionEligible) {
+            RailStatusRuntime.hide();
             plan = null;
             restore();
             note(Main.sRightRail ? "outside lock screen" : "disabled");
             return;
         }
-        if (MiniPlayerScene.INSTANCE.getKeyguardGoingAway()) return;
+        if (MiniPlayerScene.INSTANCE.getKeyguardGoingAway()) { RailStatusRuntime.hide(); return; }
         if (revision != Main.screenGeometry().revision || planWidth != root.getWidth()
                 || planHeight != root.getHeight()) {
             restore();
@@ -111,6 +115,8 @@ final class LockScreenRailRuntime {
         RightRailLayout.Plan next = retained ? plan : planForWindow();
         if (next != null) planRevision = revision;
         plan = next;
+        if (next != null) RailStatusRuntime.update(root, next);
+        else RailStatusRuntime.hide();
         if (next != null && Main.sReflowLockContent) {
             cacheNotificationFloor();
             int id = root.getResources().getIdentifier("notification_stack_scroller", "id", "com.android.systemui");

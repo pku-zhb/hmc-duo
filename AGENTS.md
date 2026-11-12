@@ -9,9 +9,9 @@ not the destination for project links, updates or bug reports.
   Do not accumulate unrelated work until the end.
 - Preserve upstream copyright, licence notices and retained trial APKs. Remove
   retired code only after checking its callers.
-- Deliver preview APK attachments with `cc-connect send --file` to the current
-  conversation. Report delivery only after the CLI confirms success.
-  The default user-facing version archive is
+- Archive previews without sending a Slack attachment unless the owner asks.
+  When requested, use `cc-connect send --file` to the current conversation and
+  report delivery only after the CLI confirms success. The version archive is
   `~/Harbor Drive/02 Personal Files/Miduo/`. Preserve versioned filenames and verify
   archive copies against the retained APK under `releases/local/`.
 - Use `tools/build.sh` for local Gradle tasks. Builds, test reports and temporary

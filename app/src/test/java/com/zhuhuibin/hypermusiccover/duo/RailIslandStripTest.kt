@@ -89,4 +89,17 @@ class RailIslandStripTest {
         assertEquals(listOf("delivery"), p.slots.map { it.key })
         assertNull(RailIslandStrip.layout(keys, "missing", 46f, 460f, 1f, false))
     }
+    @Test fun standaloneStatusLeavesRoomForThreeCategoriesAndSixOverflowCircles() {
+        val rail = RightRailLayout.plan(1168f, 1712f, 2.75f, 0f, 126f, 0f, 0f, 0f)!!
+        val three = listOf("notifications", "calendar", "music")
+        val normal = RailIslandStrip.layout(three, "music", rail.strip.width(), rail.strip.height(), 2.75f, false)!!
+        assertEquals(three, normal.slots.map { it.key })
+        assertEquals(221f*2.75f, normal.slots.single { it.primary }.height, .001f)
+        val many = (1..10).map { "live-$it" } + "music"
+        val overflow = RailIslandStrip.layout(many, "music", rail.strip.width(), rail.strip.height(), 2.75f, false)!!
+        assertEquals(many.takeLast(6), overflow.slots.map { it.key })
+        assertTrue(overflow.slots.all { it.height == rail.strip.width() })
+        assertTrue(overflow.slots.first().top >= 0f)
+        assertEquals(5, overflow.hiddenAbove)
+    }
 }

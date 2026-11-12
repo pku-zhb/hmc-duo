@@ -52,7 +52,34 @@ No forced tap-launch, app activity launch, or phone UI automation was added.
 
 Shortcut milestone validation: 766 JVM tests pass and the Debug APK builds.
 Device behavior, including startup placement and AOD transitions, remains untested.
-The next milestone adds the display-only time/battery/network cluster.
+
+`RailStatusView` reproduces the inspected cluster's clock, open battery ring with
+percentage, Wi-Fi/network mark and one/two-SIM signal dots. The visual proportions
+were identified in MiDuo's `j0` renderer. Data now comes directly from platform
+battery/time broadcasts, ConnectivityManager and Telephony callbacks inside SystemUI;
+unavailable values remain unknown. Network identifiers are not retained. There is
+no companion service, wake lock, or independent window.
+
+The stock `KeyguardRootView` was verified to extend ConstraintLayout. The cluster
+uses its display-only ViewGroupOverlay with explicitly measured bounds, so it
+neither enters that constraint solver nor receives touch. It inherits the native
+root's transforms and is hidden on bouncer/unlock/disable; callbacks are removed
+when hidden or detached. Top reservation is now 96 dp, including clearance below
+the ring. At the observed outer geometry, three categories retain a 221 dp capsule;
+overflow fits at most six circles and continues hiding from the top as before.
+Short landscape layouts also clamp the capsule below this reserved region.
+
+README and settings no longer require MiDuo. The standalone preview expects both
+MiDuo SystemUI mounts to remain disabled. This changes ownership, not the native
+camera/torch permission checks or the accepted content gesture routing. Read-only
+diagnostics include independent shortcut and status-source state. The owner now
+requests archive-only delivery, without a Slack attachment.
+
+Standalone milestone validation: all 773 tests in 133 JVM suites pass, with zero
+failures/errors/skips, and the Debug APK builds. This includes fixed shortcut and
+status spacing, safe insets, short landscape bounds, overflow integration, unknown
+battery readings and service/Wi-Fi loss. These results do not establish phone
+behavior; no device access followed the unplug handoff.
 
 ### Preview 7 width oscillation and fixed geometry (2026-11-12)
 

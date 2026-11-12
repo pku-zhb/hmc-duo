@@ -62,6 +62,7 @@ final class LockScreenLayoutDiagnostics {
             out.put("railEvents", LockScreenRailRuntime.events());
             out.put("shortcutGesture", ShortcutGestureRuntime.describe());
             out.put("shortcutLayout", RailShortcutRuntime.describe());
+            out.put("statusCluster", RailStatusRuntime.describe());
             out.put("railFooter", NumState.INSTANCE.railFooterState());
             out.put("glass", NativeGlassRelay.describe());
         } catch (Throwable failure) {

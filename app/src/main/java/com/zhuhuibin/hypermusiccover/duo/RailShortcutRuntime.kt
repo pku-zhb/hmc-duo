@@ -19,6 +19,7 @@ internal object RailShortcutRuntime {
     private var right: ImageView? = null
     private var observer: ViewTreeObserver? = null
     private var listener: ViewTreeObserver.OnPreDrawListener? = null
+    private var attachment: View.OnAttachStateChangeListener? = null
     private var containerHeight: Int? = null
     private var writtenHeight = 0
     private val leases = WeakHashMap<ImageView, Lease>()
@@ -118,13 +119,15 @@ internal object RailShortcutRuntime {
         }
         listener = draw; observer = container.viewTreeObserver
         observer?.addOnPreDrawListener(draw)
-        container.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
+        val attachListener = object : View.OnAttachStateChangeListener {
             override fun onViewAttachedToWindow(v: View) = Unit
             override fun onViewDetachedFromWindow(v: View) {
                 if (host === v) detach()
                 v.removeOnAttachStateChangeListener(this)
             }
-        })
+        }
+        attachment = attachListener
+        container.addOnAttachStateChangeListener(attachListener)
         update()
     }
 
@@ -147,11 +150,13 @@ internal object RailShortcutRuntime {
             if (wrapper.layoutParams !is FrameLayout.LayoutParams) continue
             val parent = wrapper.parent as? View ?: continue
             var x = 0; var y = 0; var current: View? = parent
+            var inContainer = false
             while (current != null && current !== window) {
+                if (current === container) inContainer = true
                 x += current.left; y += current.top
                 current = current.parent as? View
             }
-            if (current !== window) continue
+            if (current !== window || !inContainer) continue
             leases.getOrPut(icon) { Lease(icon, wrapper) }.place(slot, x, y)
             // Some plugin versions retain a fixed-height content row inside the container.
             // Only the shortcut branch may draw outside that row; never unclip native cards.
@@ -186,6 +191,8 @@ internal object RailShortcutRuntime {
     private fun detach() {
         if (observer?.isAlive == true) listener?.let { observer?.removeOnPreDrawListener(it) }
         observer = null; listener = null
+        attachment?.let { host?.removeOnAttachStateChangeListener(it) }
+        attachment = null
         restore(); host = null; root = null; left = null; right = null
     }
 

@@ -2,8 +2,8 @@
 
 # hypermusiccover-duo
 
-Lock-screen music, lyrics and a vertical notification rail for Xiaomi Fold with
-MiDuo on HyperOS. Maintained by [pku-zhb](https://github.com/pku-zhb).
+Lock-screen music, lyrics and an independent vertical notification rail for Xiaomi
+Fold on HyperOS. Maintained by [pku-zhb](https://github.com/pku-zhb).
 
 A dedicated adaptation of [HyperMusicCover-Enhanced](https://github.com/Lewewe/HyperMusicCover-Enhanced),
 which builds on [HyperMusicCover](https://github.com/zyl6932/HyperMusicCover).
@@ -12,8 +12,11 @@ General device compatibility is not a goal.
 ## Current features
 
 - Square artwork, synchronized/word-timed lyrics and lyric translation.
-- A vertical capsule with ordered notification, live-card and music bubbles beside
-  MiDuo's shortcut column; swipe to switch or tap a bubble to open its card.
+- Duo-owned card bounds, right-hand flashlight/camera placement and a display-only
+  time/battery/network cluster. Shortcut touch and animation origins share those
+  fixed bounds; the system retains secure launch and cancellation.
+- A vertical capsule with ordered notification, live-card and music bubbles above
+  the shortcut column; swipe to switch or tap a bubble to open its card.
   HyperOS switches stop at the first and last item. Its capsule keeps its length
   while following a drag into the next bubble, then separates with a spring release.
   All items are shown when they fit. More than three shorten the capsule, down to
@@ -46,7 +49,8 @@ behavior and open issues. Host tests do not establish phone compatibility.
 ## Install and migrate
 
 Requires rooted HyperOS 4, Android 15+, and LSPosed with modern Xposed API 102.
-The vertical rail requires MiDuo's right-hand shortcut column.
+Duo owns the vertical layout without MiDuo or MiDuo Notification. Keep their
+SystemUI hooks disabled while using this standalone layout preview.
 
 Application ID and source namespace: `com.zhuhuibin.hypermusiccover.duo`.
 Launcher name: `hypermusiccover-duo`. This installs separately from Enhanced and
