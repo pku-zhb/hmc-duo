@@ -144,28 +144,10 @@ final class LockScreenRailRuntime {
     }
 
     private static RightRailLayout.Plan planForWindow() {
-        Insets safe = safeInsets();
+        Insets safe = RailWindowInsets.read(root);
         return RightRailLayout.plan(root.getWidth(), root.getHeight(),
                 root.getResources().getDisplayMetrics().density,
                 safe.left, safe.top, safe.right, safe.bottom, MiniPlayerRuntime.railIndicatorExtent());
-    }
-
-    private static Insets safeInsets() {
-        WindowInsets wi = root.getRootWindowInsets();
-        if (wi == null) return Insets.NONE;
-        Insets bars = wi.getInsetsIgnoringVisibility(WindowInsets.Type.systemBars());
-        android.view.DisplayCutout cutout = wi.getDisplayCutout();
-        java.util.List<android.graphics.Rect> bounds = cutout == null
-                ? java.util.Collections.emptyList() : cutout.getBoundingRects();
-        FoldMusicLayout.Box[] holes = new FoldMusicLayout.Box[bounds.size()];
-        for (int i = 0; i < holes.length; i++) {
-            android.graphics.Rect r = bounds.get(i);
-            holes[i] = new FoldMusicLayout.Box(r.left, r.top, r.right, r.bottom);
-        }
-        FoldMusicLayout.Box safe = RailSafeArea.resolve(root.getWidth(), root.getHeight(),
-                bars.left, bars.top, bars.right, bars.bottom, holes);
-        return Insets.of(Math.round(safe.left), Math.round(safe.top),
-                Math.round(root.getWidth() - safe.right), Math.round(root.getHeight() - safe.bottom));
     }
 
     static boolean holdGeometry() {

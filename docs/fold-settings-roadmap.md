@@ -28,6 +28,32 @@ installed preview 7 independently. Read-only USB diagnostics confirmed runtime
 20007. The current width repair has not been installed; installation still requires
 fresh confirmation. The owner continues to perform all UI interactions and restarts.
 
+### Standalone controls refactor (2026-11-12)
+
+The owner disabled both MiDuo modules and restarted SystemUI independently. The
+last read-only USB sample still ran Duo 20007. It showed stock horizontal 300-pixel
+shortcuts, a 1093-pixel stack, no accumulated translation, and the old rail waiting
+for a vertical shortcut pair. The installed APKs and sample were retained locally;
+the owner was told the cable could be unplugged. Further work is host-only.
+
+`RailShortcutRuntime` owns the native shortcut wrappers at 48 dp, with 6.5 dp
+between them and 18.5 dp bottom clearance (or the larger system inset). The capsule
+and buttons share the same column and safe-inset calculation. Geometry comes from
+the window and explicit dp constants, never another module's current bounds.
+Wrapper, icon and clipping changes are leased and restored on disable/unlock.
+
+Inspection of MiDuo 469 `dev.duo.workspaceprobe.b` and the installed OEM shortcut
+classes established the animation reset: `updateShortcutView` resets the animation
+origin to stock bottom corners. Duo maps the actual native icon center into the
+animation window after that reset and again after attachment; `updateViews` retains
+the mapped initial center while the OEM computes progress and secure activation.
+Existing enlarged hit regions and inward torch-axis projection remain in use.
+No forced tap-launch, app activity launch, or phone UI automation was added.
+
+Shortcut milestone validation: 766 JVM tests pass and the Debug APK builds.
+Device behavior, including startup placement and AOD transitions, remains untested.
+The next milestone adds the display-only time/battery/network cluster.
+
 ### Preview 7 width oscillation and fixed geometry (2026-11-12)
 
 The owner reported the player and notifications rapidly changing width. Read-only
