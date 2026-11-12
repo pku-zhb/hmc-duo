@@ -23,20 +23,17 @@ not the destination for project links, updates or bug reports.
 - End each preview with a short acceptance list for that preview's changes only.
   Do not ask the owner to repeat previously accepted features unless a specific
   regression or changed dependency makes a targeted check necessary.
+- Explain the core bugs' causes and remedies in each report, distinguishing
+  confirmed causes, plausible contributors and behavior still awaiting acceptance.
 - Source work and host builds do not authorize phone installation, restarts or
   live setting changes. Follow the conversation's current device authorization.
-- Ask the owner and receive explicit confirmation immediately before every APK
-  installation. Approval for a previous preview does not authorize another install.
-  If the owner is busy or asks to wait, finish source/build/commit preparation and
-  leave the verified APK ready until a new confirmation is received.
-- The owner performs all phone UI interaction, LSPosed switching and restarts.
-  Prepare and install authorized preview APKs in the background, then provide
-  concrete manual test steps and expected observations. Do not launch activities,
-  automate gestures, capture the UI or restart phone processes to verify a build.
-  Read-only ADB diagnostics may support the owner's reports.
-  Use ordinary replacement for authorized preview updates. Do not choose a staged,
-  reboot-dependent install unless the owner asks for one. Leave explicit scope
-  restarts to the owner; module code must not restart scopes on package replacement.
+- The owner granted continuing phone access for this investigation on 2026-11-12,
+  including relevant installation, interaction and scope restarts, until explicitly
+  revoked. Prefer logs, state and frame timing; avoid screenshots when possible,
+  and keep GUI screenshots out of the main conversation when possible.
+- Never reboot the whole phone. Restart only relevant scopes when needed. Use
+  ordinary replacement for preview updates, never a reboot-dependent staged install.
+  Module code must not restart scopes automatically on package replacement.
 - Duo owns its content and capsule geometry through explicit dp parameters and
   the window size; do not derive it from MiDuo widths or animated shortcut bounds.
   Duo also owns the native shortcut column and its animation origins. Keep visual

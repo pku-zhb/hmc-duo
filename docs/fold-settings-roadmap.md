@@ -17,16 +17,110 @@ is retained, and its four local appearance/language preference files were copied
 to Duo with byte-for-byte verification. Existing SystemUI runtime settings remain
 in their original shared location.
 
-The owner performs LSPosed selection, all phone UI interactions and restarts.
+Earlier previews left LSPosed selection, UI interactions and restarts to the owner.
 Preview 3 was delivered by ordinary replacement. At that delivery the installed
 package was 20003 while the SystemUI probe still reported 20002, with its process ID
 unchanged; the owner subsequently supplied preview-3 feedback. Preview 4 was then
 installed after fresh explicit confirmation, temporarily replaced with preview 3
 for a compatibility comparison, and restored to preview 4 at the owner's request.
 The owner subsequently supplied preview-5 and preview-6 device feedback, then
-installed preview 7 independently. Read-only USB diagnostics confirmed runtime
-20007. The current width repair has not been installed; installation still requires
-fresh confirmation. The owner continues to perform all UI interactions and restarts.
+installed previews 7 and 9 independently. Read-only USB diagnostics confirmed
+runtime 20009 during the latest regression report. On 2026-11-12 the owner granted
+continuing phone access for this investigation until explicitly revoked, preferring
+logs and state over screenshots. Whole-phone reboot is prohibited; only relevant
+scope restarts are allowed. Delivery remains archive-only.
+
+### Preview 9 regression repair (2026-11-12)
+
+The owner reported missing shortcut backgrounds until the first capsule action,
+an inexact status-cluster appearance, and inability to open either shade from the
+home screen. The owner manually reproduced the home-screen problem while a
+read-only USB probe captured version 20009 in SystemUI PID 9819. It showed:
+
+- Unlocked, screen on, AOD off, rail/stack ownership released, and status hidden.
+- Native notification width restored to 1093, with no horizontal translation loop.
+- Hidden shortcut icons requesting 300 x 300 but retaining measured 132 x 132;
+  the shortcut container also retained its full-window measured height.
+- No nonzero StatusBarService disable records on the home screen.
+
+The new shortcut OnPreDrawListener vetoed the entire shade window whenever the
+shortcut container had a pending layout. A GONE branch can keep that flag after
+unlock, so a shortcut-only layout wait can indefinitely prevent both shades from
+drawing. The listener now always allows the window to draw; native layout settles
+the shortcut changes normally. Diagnostics expose requested height and pending
+layout separately from actual bounds. This is a confirmed source defect and the
+leading explanation for the device report; acceptance of the repair is pending.
+MiDuo's absence from the current module log alone does not prove no other hooks
+were loaded. A later authorized input swipe made the OEM shade report full
+expansion even during the reported failure; logical expansion alone is therefore
+not evidence that frames reached the screen.
+
+Shortcut backgrounds now resolve their native keyguard parent independently of
+capsule visibility. Previously that parent was discovered only while following a
+visible capsule. Their native material recipe also waits for attached, nonzero
+container and element bounds, and retries after first layout or reattachment.
+Diagnostics expose parent, dimensions and applied recipe generation. This records
+native API success separately from fallback, not proof of final compositor
+appearance. A failed application retries at most three times per generation and
+attachment, at least 150 ms apart; detach cancels retries.
+
+The status cluster now uses the reference's vector digit outlines, advances,
+kerning and optical centering instead of a system font. Ring endpoints, glyph
+shadows, airplane geometry and mobile-only network layout follow the inspected
+MiDuo 469 renderer. At the reference geometry the surface starts at x=963, y=158.
+Density/safe-inset adaptation and the user's 12-hour clock preference are retained.
+Source geometry matches are distinct from pending on-device visual acceptance.
+
+Pre-update frame statistics confirm that a desktop swipe advanced StatusBar frames
+but left NotificationShade's last completed frame unchanged, even though native
+shade expansion reached 1.0. This distinguishes a draw stall from disabled input.
+
+The AOD-to-unlock black flash remains under investigation. Existing native-rail
+policy already bypasses cover-wallpaper force-fade and AOD dim reassertion; the
+available log did not show either operation during the reported failure. The old
+24-entry dim tail had lost the original unlock window. Diagnostics now retain the
+last three unlock windows with prelude, 1.6 seconds of dim/surface observations,
+pre-draw/draw counts and first-frame timing. The observers never request or block
+frames, are removed after the window, and fail closed to diagnostic errors.
+
+Host validation: all 787 tests across 135 JVM suites pass, with zero failures,
+errors or skips. This includes startup material readiness, bounded native-material
+retries, vector glyph metrics and retained unlock evidence. Debug, Release/R8 and
+release vital lint pass. APK ZIP integrity, 16 KiB alignment, manifest and v2
+signature checks pass; the debug certificate matches the installed preview.
+
+Preview 10 (`20010`) was installed by ordinary replacement. Only the main user's
+SystemUI process was restarted (9819 to 20496); the cloned-user process was left
+alone and the phone boot ID stayed unchanged. No screenshots were captured.
+Before any capsule interaction, both shortcut discs reported their native
+keyguard parent, nonzero container/element bounds and successful native material
+application on their first attempt. The status source reported one SIM, Wi-Fi and
+no errors. Visual cold-start appearance and status glyph fidelity remain for the
+owner to judge.
+
+On the desktop, the same hidden shortcut branch still reports pending layout,
+but no longer blocks rendering. A notification swipe now advances the shade's
+completed-frame timestamp and reaches expansion 1.0. A right-side swipe makes the
+control center visible with expansion approximately 0.992 and also advances
+window frames. Both panels were then collapsed. No new crash was present in the
+sampled crash log.
+
+The owner reported no black flash during AOD fingerprint unlock. The retained
+trace contains two direct AOD unlocks; native wallpaper dim clears in 60 ms and
+57 ms respectively, with Duo's backdrop transparent and force-fade disabled.
+Pre-draw/draw counts show normal rendering rather than the old persistent veto.
+This establishes that the flash was not reproduced in this trial, not that every
+historical flash had the same cause. The trace window's start can be an earlier
+OEM relock state pulse, so its aggregate first-frame delay must not be interpreted
+as AOD-unlock latency.
+
+Retained and archive copies are named `hypermusiccover-duo-0.2.0-preview.10.apk`
+under `releases/local/` and `~/Harbor Drive/02 Personal Files/Miduo/`. Both match
+the installed candidate: 4,194,221 bytes, SHA-256
+`ca0eacb13d5f8e4ddc5bf70cb937e53ce6c634317e950c474dc10a2cccf376df`.
+No Slack attachment was sent. This round's remaining visual acceptance is limited
+to first-lock shortcut backgrounds and the three-in-one glyph/ring/network display;
+the owner need not repeat unrelated earlier features.
 
 ### Standalone controls refactor (2026-11-12)
 
