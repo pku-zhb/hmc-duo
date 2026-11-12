@@ -51,6 +51,15 @@ final class ClockPageSize {
      */
     static void update(boolean active, boolean on, float poseUnit, float poseTop, float poseDate,
                        Predicate<Float> landscapeFits, Runnable refresh) {
+        if (ClockCollapse.statusClockRequested() || ClockCollapse.statusClockMoving()) {
+            if (sAnimator != null) sAnimator.cancel();
+            sAnimator = null;
+            sNative = 1f; sNativeTarget = true;
+            sScale = sScaleTarget = 1f;
+            sFromUnit = sTop = sDate = Float.NaN;
+            sProgress = 1f;
+            return;
+        }
         // The outer artwork row shares ClockCollapse's one spring, including cover-to-lyrics
         // page changes. A second size animator must not restart beneath that same transition.
         if (ClockCollapse.compactRowRequested() || ClockCollapse.compactRowMoving()) {

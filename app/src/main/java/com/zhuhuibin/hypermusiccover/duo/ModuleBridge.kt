@@ -50,6 +50,7 @@ object ModuleBridge {
         val followNativeMaterial: Boolean = false,
         val hideLockStatusBar: Boolean = true,
         val artworkClockRow: Boolean = true,
+        val artworkClockDestination: Int = ArtworkClockDestination.DATE_ROW,
         val artworkClockBeforeDate: Boolean = true,
         val hideChargingHint: Boolean = true,
         val forceNotificationFloor: Boolean = true,
@@ -457,6 +458,12 @@ object ModuleBridge {
 
     fun setRailSetting(context: Context, key: String, on: Boolean) =
         send(context, "railsetting") { putExtra("key", key); putExtra("on", on) }
+
+    fun setArtworkClockDestination(context: Context, value: Int) =
+        send(context, "railsetting") {
+            putExtra("key", "artworkClockDestination")
+            putExtra("v", ArtworkClockDestination.normalize(value))
+        }
 
     fun setCover(context: Context, on: Boolean) = send(context, "pushart") { putExtra("on", on) }
 
@@ -902,6 +909,8 @@ object ModuleBridge {
             followNativeMaterial = b.getBoolean("followNativeMaterial", false),
             hideLockStatusBar = b.getBoolean("hideLockStatusBar", true),
             artworkClockRow = b.getBoolean("artworkClockRow", true),
+            artworkClockDestination = ArtworkClockDestination.normalize(b.getInt("artworkClockDestination",
+                ArtworkClockDestination.fromLegacy(b.getBoolean("artworkClockRow", true)))),
             artworkClockBeforeDate = b.getBoolean("artworkClockBeforeDate", true),
             hideChargingHint = b.getBoolean("hideChargingHint", true),
             forceNotificationFloor = b.getBoolean("forceNotificationFloor", true),

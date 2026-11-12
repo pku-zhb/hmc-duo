@@ -12,7 +12,7 @@ import kotlin.math.asin
 import kotlin.math.cos
 import kotlin.math.sin
 
-/** Display-only battery arc and network cluster, drawn in the native keyguard overlay. */
+/** Display-only status cluster with a clock that shares the artwork scene's fade progress. */
 internal class RailStatusView(context: Context) : View(context) {
     private val ink = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.WHITE
@@ -58,6 +58,13 @@ internal class RailStatusView(context: Context) : View(context) {
         quadTo(-8.7f, 11.9f, -7f, 10.3f); close()
     }
     private var status = RailStatusSnapshot()
+    private var time = ""
+    private var timeAlpha = 0f
+    private val clock = RailStatusClockSource(context) { text ->
+        time = text
+        refreshDescription()
+        invalidate()
+    }
     private val source = RailStatusSource(context) { next ->
         val changed = status != next
         status = next
@@ -72,19 +79,37 @@ internal class RailStatusView(context: Context) : View(context) {
         accessibilityLiveRegion = ACCESSIBILITY_LIVE_REGION_NONE
     }
     override fun onTouchEvent(event: MotionEvent): Boolean = false
-    override fun onDetachedFromWindow() { source.stop(); listening = false; super.onDetachedFromWindow() }
+    override fun onDetachedFromWindow() {
+        source.stop(); clock.stop(); listening = false
+        super.onDetachedFromWindow()
+    }
+
+    fun setTimeAlpha(value: Float) {
+        val next = if (value.isFinite()) value.coerceIn(0f, 1f) else 0f
+        if (next == timeAlpha) { if (next > 0f) clock.refresh(); return }
+        timeAlpha = next
+        syncClockListening()
+        refreshDescription()
+        invalidate()
+    }
+
+    private fun syncClockListening() {
+        if (listening && timeAlpha > 0f) clock.start() else clock.stop()
+    }
 
     fun setListening(value: Boolean) {
         if (listening == value) return
         listening = value
         if (value) { source.start(); refreshDescription() } else source.stop()
+        syncClockListening()
     }
     private fun refreshDescription() {
         val zh = resources.configuration.locales[0].language == "zh"
         val power = if (status.battery < 0) "—" else "${status.battery}%"
-        contentDescription = if (zh) "电量 $power" else "Battery $power"
+        val clockText = if (timeAlpha > 0f && time.isNotEmpty()) time + (if (zh) "，" else ", ") else ""
+        contentDescription = clockText + if (zh) "电量 $power" else "Battery $power"
     }
-    fun describe() = "visible=${visibility == VISIBLE} ${source.describe()}"
+    fun describe() = "visible=${visibility == VISIBLE} timeAlpha=$timeAlpha ${clock.describe()} ${source.describe()}"
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
@@ -92,6 +117,12 @@ internal class RailStatusView(context: Context) : View(context) {
         val scale = resources.displayMetrics.density / RailStatusLayout.REFERENCE_DENSITY
         canvas.scale(scale, scale)
         ink.color = Color.WHITE
+        if (timeAlpha > 0f) {
+            ink.alpha = (255f * timeAlpha).toInt().coerceIn(0, 255)
+            // Restore the original three-in-one renderer's exact reference typography.
+            drawGlyphs(canvas, time, 29.986198f, 98f, 64.400604f)
+            ink.alpha = 255
+        }
         drawBattery(canvas)
         drawNetwork(canvas)
         canvas.restoreToCount(checkpoint)
