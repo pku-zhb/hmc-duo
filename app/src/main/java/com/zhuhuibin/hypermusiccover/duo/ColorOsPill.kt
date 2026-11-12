@@ -421,6 +421,7 @@ internal class GooGlass(context: Context, private val roundedCarrier: Boolean = 
     private val element = MaterialElement(context)
     private val local = Path()
     private val contourRim = if (roundedCarrier) GlassContourRim(context.resources.displayMetrics.density) else null
+    private var rimDirty = false
     private var dressWith: ((ImageView) -> Unit)? = null
     private var dressedAs = -1
     private var requestedAs = -1
@@ -475,7 +476,7 @@ internal class GooGlass(context: Context, private val roundedCarrier: Boolean = 
                 MeasureSpec.makeMeasureSpec(h.coerceAtLeast(0), MeasureSpec.EXACTLY))
         }
         element.layout(0, 0, w, h)
-        if (changed) contourRim?.update(local, w.toFloat(), h.toFloat(), carrierRadius)
+        if (changed) rimDirty = true
         applyDressIfReady()
     }
 
@@ -506,7 +507,7 @@ internal class GooGlass(context: Context, private val roundedCarrier: Boolean = 
         carrierRadius = nativeRadius.takeIf { it.isFinite() }?.coerceAtLeast(0f) ?: 0f
         local.set(path)
         local.offset(-originX, -originY)
-        contourRim?.update(local, width.toFloat(), height.toFloat(), carrierRadius)
+        rimDirty = true
         invalidateOutline()
         element.invalidateOutline()
         applyDressIfReady()
@@ -518,6 +519,10 @@ internal class GooGlass(context: Context, private val roundedCarrier: Boolean = 
     override fun dispatchDraw(canvas: android.graphics.Canvas) {
         super.dispatchDraw(canvas)
         if (local.isEmpty) return
+        if (rimDirty) {
+            contourRim?.update(local, width.toFloat(), height.toFloat(), carrierRadius)
+            rimDirty = false
+        }
         val save = canvas.save()
         canvas.clipPath(local)
         contourRim?.draw(canvas)
@@ -530,6 +535,7 @@ internal class GooGlass(context: Context, private val roundedCarrier: Boolean = 
     fun clearShape() {
         local.reset()
         contourRim?.clear()
+        rimDirty = false
         invalidateOutline()
         element.invalidateOutline()
     }
