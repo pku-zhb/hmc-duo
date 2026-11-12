@@ -77,6 +77,13 @@ cases. Host tests and a candidate build cannot establish phone behavior. Targete
 acceptance is limited to stable widths through notification/music updates and
 AOD/wake, normal scrolling after unlock, and the fixed rail's placement/animation.
 
+Preview 8 packaging: Release/R8 and vital lint pass. The retained and Personal
+Files archive copies of `hypermusiccover-duo-0.2.0-preview.8.apk` are byte-identical,
+4,177,857 bytes, version 20008, SHA-256
+`9989a0ea137675c225096724e03ca25f46397d4c0e442641261b0464cfc0fa23`.
+The APK passes ZIP integrity, alignment and v2 signature verification; its signing
+certificate matches preview 7. No installation or device restart was performed.
+
 ### Preview 6 feedback and preview 7 candidate (2026-11-12)
 
 The owner accepted the native card/media interaction fixes, the page-cycle control,
