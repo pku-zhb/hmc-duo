@@ -7,62 +7,40 @@ not automatically verified on every device, display or OS version.
 
 | Area | Current implementation |
 | --- | --- |
-| Music and lyrics | Square/full-screen artwork, synchronized/word-timed lyrics, lyric effects, providers and optional translation. The artwork slot cycles between artwork, lyrics and the lock-screen clock. |
+| Music and lyrics | Square/full-screen artwork, synchronized/word-timed lyrics, lyric effects, providers and optional translation. The artwork slot cycles between artwork, lyrics and the lock-screen clock; inner landscape adds an explicit combined page. |
 | Background | Native wallpaper, artwork background and animated background are independent of foreground artwork mode. Blur and dimming are configurable. Older inactive backdrop preferences migrate to native wallpaper. |
 | Layout and gestures | Duo-owned card bounds and shortcut geometry, native secure camera/flashlight launch, empty-space expansion/collapse, and native interactions on actual cards. |
 | Capsules | HyperOS spring/fusion/split motion and bounded switching; ColorOS switching; automatic size reduction and top overflow hiding. |
-| Notifications | Independent lock-screen visibility/retention, per-category collapse defaults and last-state restoration. Native rows remain represented by a capsule until visibly expanded. |
+| Notifications | Independent lock-screen visibility/retention, per-category collapse defaults and last-state restoration. Native visibility is tracked separately from shared-stack state; capsule animation follows native movement while exposure verification retains retry ownership. |
 | Clock and status | Independent status-bar visibility, outer-screen compact time/date row with a side preference, and a display-only battery/network cluster. Full-screen AOD can retain the compact row; ordinary AOD uses native presentation. |
-| Inner screen | Portrait/landscape handling, landscape category defaults and two-column artwork/lyrics layout. Logical portrait/landscape layouts are device-checked; physical and visual acceptance remains outstanding. |
+| Inner screen | Portrait/landscape handling, fixed bounded landscape card widths, category defaults and an explicit combined artwork/lyrics page. Preview 12 layout changes await device acceptance. |
 | Delivery | Duo release identity, preview-compatible signing path, guarded official signing and the project's own update feed. Production key configuration remains a separate owner setup step. |
 | Settings | Export/import with legacy normalization; credentials stay on-device. Donation controls await owner-provided payment assets. |
 
 ## Current acceptance scope
 
-Preview 11 has partial device evidence. The final candidate passed 819 host
-tests in 137 suites, including the local-background first-frame state guards.
-See the [Preview 11 record](releases/preview-11.md) for the measured results and
-delivery limits.
+Preview 12 is an offline iteration following the owner's Preview 11 feedback.
+The final candidate passed 851 host tests in 140 suites and both APK builds.
+See the [Preview 12 record](releases/preview-12.md) for causes, evidence limits and
+its focused acceptance list. The revised phone behavior has not been accepted.
 
-The mixed notification stack now passes the three-swipe sequence from empty left
-content: player, live card, then ordinary notifications. The default native LIST
-target was `0`, while the explicit target and reached position were `533`. The
-first ordinary row exposed `177` pixels against a `150` pixel threshold at native
-scale/alpha `1`; the capsule disappeared only after the list settled. The sequence
-did not enter the bouncer. This is a sampled device result, not a claim about every
-notification combination.
+Before disconnection, the inner-landscape stack measured 2096 px with Duo reflow
+and 1246 px with only that reflow disabled. The new 453 dp cap is an explicit Duo
+layout parameter derived from that observation, not an ongoing dependency on
+native animation geometry. Notification expansion and scrolling were captured,
+but the intermittent missing representative was not reliably reproduced. Its
+changes address source-level state gaps rather than a claimed device pass.
 
-Both shortcut backgrounds initialized, and their AOD transition ancestor alpha
-chains read `1`. These checks used structural diagnostics without screenshots.
-Material appearance and transition smoothness still need visual acceptance.
-The local artwork backdrop also reported real drawn frames at full opacity, and
-the dynamic shader advanced frames on both outer and inner layouts despite the
-wallpaper process having no separate keyguard renderer. AGSL color indices were
-expanded to constants for this device's shader compiler. Full-screen AOD stops
-this local animation and keeps the existing full-viewport static wash.
+This preview's acceptance scope is limited to full-screen composition, inner
+landscape layout/four-state cycling, notification representation during native
+scrolling and adjacent-seat HyperOS splits. The previous AOD shortcut material
+transition was accepted by the owner and is not requested again.
 
-The remaining checks are limited to this iteration's changes:
+Native glass/refraction may still sample the original wallpaper instead of local
+artwork; this known layer-composition limitation remains open. Long-paused
+music-session recovery has implementation coverage but no explicit long-duration
+device acceptance and does not need repeating in every preview.
 
-1. Shortcut icons and their material remain visible through lock screen → AOD →
-   lock screen, including an entry before any capsule interaction. Ordinary and
-   full-screen AOD must keep their respective behavior.
-2. Native/artwork/animated backgrounds switch independently of square/full-screen
-   foreground artwork. Blur, dimming, lyrics, card expansion and unlock restore
-   the selected wallpaper correctly.
-3. The outer-screen compact row follows its time/date side setting; the status-bar
-   switch is independent, and the right cluster displays battery/network without
-   another clock. The self-drawing `ClassicTextAreaView` adapter passed structural
-   checks for
-   placement, side selection and restoration. Ordinary AOD remains native.
-4. Inner-screen portrait/landscape keeps cards, lyrics, capsule touch targets and
-   full-screen AOD inside their available bounds. Logical portrait and landscape
-   layouts have been read back on-device; physical
-   opening/rotation and visual acceptance remain outstanding.
-5. Restoring an older module backup chooses native wallpaper instead of reviving
-   dormant background switches; an app-only backup changes no background settings.
-
-Long-paused music-session recovery has implementation coverage but no explicit
-long-duration device acceptance. It does not need repeating in every preview.
 Official signing and update delivery are verified separately when the production
 key and an official release are configured. The maintainer deferred key setup to
 a later session. The workflow template at `tools/ci-check.yml` is ready, but the
@@ -84,8 +62,8 @@ establish that every earlier flash shared the same cause.
 
 The AOD shortcut issue had a separate visibility path: the native shortcut
 ancestor could fade out even when both material discs had initialized. Preview 11
-corrects that path and has the structural evidence above; its visual result still
-awaits acceptance.
+corrects that path. Its structural evidence is recorded in Preview 11, and the
+owner subsequently accepted the material transitions.
 
 ## Validation policy
 

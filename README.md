@@ -32,9 +32,11 @@ other devices is not established.
   available. Visible cards retain native scrolling, dismissal, taps, long presses
   and player controls. After all content is open, upward swipes can unlock.
 - The native artwork slot cycles through artwork, lyrics and return-to-clock
-  actions without moving the title or adding another control.
+  actions without moving the title or adding another control. Inner landscape adds
+  an artwork-and-lyrics page to this cycle.
 - Per-category initial collapse settings or restoration of the last lock-screen
-  state; separate inner-landscape settings and a two-column artwork/lyrics layout.
+  state; separate inner-landscape settings, bounded native card widths and a combined
+  artwork/lyrics layout.
 - Native glass materials and independent lock-screen notification visibility and
   retention options. Disable equivalent HyperLight options when using Duo's controls.
 - Settings export/import, notification media-card customization and a Duo-only
