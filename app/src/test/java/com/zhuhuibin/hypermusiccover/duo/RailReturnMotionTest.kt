@@ -2,7 +2,6 @@ package com.zhuhuibin.hypermusiccover.duo
 
 import org.junit.Assert.*
 import org.junit.Test
-import kotlin.math.hypot
 
 class RailReturnMotionTest {
     private fun slots(keys: List<String>, selected: String) =
@@ -17,6 +16,8 @@ class RailReturnMotionTest {
         val before = slots(listOf("notifications"), "notifications")
         val after = slots(listOf("notifications", "music"), "notifications")
         val plan = RailReturnMotion.plan("music", "notifications", before, after)!!
+        assertEquals("notifications", plan.source)
+        assertTrue(plan.surfaceOwnsPrimary)
         val start = frame(plan, 0f)
         val born = start.seats.getValue("music")
         val parent = start.primary
@@ -37,18 +38,49 @@ class RailReturnMotionTest {
         assertEquals(out, back.reversed())
         assertEquals(out[37], frame(plan, .37f))
     }
-    @Test fun aNonAdjacentReturnGoesAroundTheUnrelatedCircle() {
+    @Test fun musicReturnsFromTheAdjacentCalendarBubbleInsteadOfCrossingFromNotifications() {
         val before = slots(listOf("notifications", "calendar"), "notifications")
         val after = slots(listOf("notifications", "calendar", "music"), "notifications")
         val plan = RailReturnMotion.plan("music", "notifications", before, after)!!
-        assertTrue(plan.detour)
+        assertEquals("calendar", plan.source)
+        assertFalse(plan.surfaceOwnsPrimary)
+        val born = frame(plan, 0f).seats.getValue("music")
+        assertEquals(before.getValue("calendar").cx, born.cx, .001f)
+        assertEquals(before.getValue("calendar").cy, born.cy, .001f)
         for (i in 0..100) {
             val f = frame(plan, i/100f)
             val bubble = f.seats.getValue("music")
-            val other = f.seats.getValue("calendar")
-            assertTrue("collision at $i", hypot(bubble.cx-other.cx, bubble.cy-other.cy) + .01f >= (bubble.w+other.w)/2)
+            val source = f.seats.getValue("calendar")
+            assertEquals("no lateral detour at $i", source.cx, bubble.cx, .001f)
+            assertTrue("must not cross the unrelated primary at $i", bubble.y >= f.primary.y + f.primary.h)
+            assertEquals(1f, f.primaryMaterial, 0f)
+            assertTrue(f.surface.boxes.contains(source))
+            assertFalse(f.surface.boxes.contains(f.primary))
         }
+        assertTrue(plan.ownsBubbleMaterial("calendar"))
+        assertTrue(plan.ownsBubbleMaterial("music"))
+        assertFalse(plan.ownsBubbleMaterial("notifications"))
         assertEquals(after, frame(plan, 1f).seats)
+    }
+
+    @Test fun returningNotificationsUseTheirUpperNeighborEvenWhenMusicIsSelected() {
+        val before = slots(listOf("calendar", "music"), "music")
+        val after = slots(listOf("notifications", "calendar", "music"), "music")
+        val plan = RailReturnMotion.plan("notifications", "music", before, after)!!
+        assertEquals("calendar", plan.source)
+        assertEquals("music", plan.selected)
+        assertEquals(1f, frame(plan, .5f).primaryMaterial, 0f)
+        assertEquals(after, frame(plan, 1f).seats)
+    }
+
+    @Test fun overflowNeverUsesADisappearingSeatAsTheBirthSource() {
+        val before = slots(listOf("notifications", "calendar", "delivery"), "delivery")
+        val after = slots(listOf("calendar", "delivery", "music"), "delivery")
+        val plan = RailReturnMotion.plan("music", "delivery", before, after)!!
+        assertEquals("delivery", plan.source)
+        assertTrue(plan.source in before && plan.source in after)
+        assertTrue(plan.surfaceOwnsPrimary)
+        assertEquals(0f, frame(plan, .5f).primaryMaterial, 0f)
     }
     @Test fun theFirstReturningContentGrowsFromItsTargetCircleDuringTheCardExit() {
         val after = slots(listOf("music"), "music")
