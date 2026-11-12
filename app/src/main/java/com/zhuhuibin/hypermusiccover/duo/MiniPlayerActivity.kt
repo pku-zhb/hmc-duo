@@ -107,6 +107,13 @@ private fun MiniPlayerPage(blur: Boolean, refreshKey: Int, onBack: () -> Unit) {
                             MiniPlayerConfig.STYLE_COLOROS).coerceIn(0, 1),
                         enabled = alive && config.optBoolean(MiniPlayerConfig.ENABLED),
                         onSelectedIndexChange = { push(MiniPlayerConfig.PILL_STYLE, it) })
+                    if (!MiniPlayerConfig.colorOs(config)) WindowDropdownPreference(
+                        title = stringResource(R.string.duo_rail_limit),
+                        summary = stringResource(R.string.duo_rail_limit_summary),
+                        items = listOf("2", "3", "4", "5"),
+                        selectedIndex = MiniPlayerConfig.railVisibleLimit(config) - 2,
+                        enabled = alive && config.optBoolean(MiniPlayerConfig.ENABLED),
+                        onSelectedIndexChange = { push(MiniPlayerConfig.RAIL_VISIBLE_LIMIT, it + 2) })
                     top.yukonga.miuix.kmp.basic.BasicComponent(
                         title = stringResource(R.string.duo_vertical_text),
                         summary = stringResource(R.string.duo_vertical_text_summary))

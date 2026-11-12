@@ -2771,7 +2771,7 @@ private class MiniPlayerController(
         val bounds = android.graphics.RectF()
         if (!LockScreenRailRuntime.strip(host, bounds)) return emptyMap()
         val plan = RailIslandStrip.layout(keys, selected, bounds.width(), bounds.height(),
-            density(), colorOs()) ?: return emptyMap()
+            density(), colorOs(), MiniPlayerConfig.railVisibleLimit(config)) ?: return emptyMap()
         railOverflow = plan.hidden
         return plan.slots.associate { it.key to android.graphics.RectF(bounds.left,
             bounds.top + it.top, bounds.right, bounds.top + it.top + it.height) }
@@ -2779,7 +2779,8 @@ private class MiniPlayerController(
 
     private fun updateRailBubbles(music: MediaController?, notes: List<LockIslands.Note>) {
         val keys = if (colorOs()) emptyList() else
-            (islandKeys.filter { it != selectedIsland || railFusion != null } + listOfNotNull(railReturn?.plan?.key)).distinct()
+            (islandKeys.filter { it != selectedIsland || railFusion != null } +
+                railReturn?.plan?.before?.keys.orEmpty() + listOfNotNull(railReturn?.plan?.key)).distinct()
         for (key in railBubbles.keys.toList()) if (key !in keys) {
             railBubbles.remove(key)?.view?.let { host.removeView(it) }
         }
@@ -2825,13 +2826,14 @@ private class MiniPlayerController(
         val key = if (motion != null || returning != null) railBubbles.entries.firstOrNull { it.value === bubble }?.key else null
         val moving = key?.let { motion?.frame?.seats?.get(it) ?: returning?.frame?.seats?.get(it) }
         val box = moving?.let { android.graphics.RectF(it.x, it.y, it.x + it.w, it.y + it.h) } ?: rest
-        val shown = railBubblesShown && box != null && ((motion == null && returning == null) || key != selectedIsland)
+        val seatAlpha = motion?.frame?.seatAlpha?.get(key) ?: returning?.frame?.seatAlpha?.get(key) ?: 1f
+        val shown = railBubblesShown && box != null && seatAlpha > .001f && ((motion == null && returning == null) || key != selectedIsland)
         v.visibility = if (shown) View.VISIBLE else View.GONE
         v.isEnabled = shown && Main.screenOnCached() && !MiniPlayerScene.aodActive && !Main.bouncerShown()
         v.translationZ = if (motion != null || returning != null) (player?.translationZ ?: 0f) + 1f else 0f
-        val companion = motion?.let { if (it.frame.incoming) it.plan.from else it.plan.to }
-        v.setMaterialAlpha(if (key == companion && motion != null || returning != null && key == returning.plan.key) 0f else 1f)
-        v.setIconAlpha(if (returning != null && key == returning.plan.key) returning.plan.iconAlpha(returning.progress) else 1f)
+        val companion = motion?.takeUnless { it.plan.windowed }?.let { if (it.frame.incoming) it.plan.from else it.plan.to }
+        v.setMaterialAlpha(if (key == companion && motion != null || returning != null && key == returning.plan.key) 0f else seatAlpha)
+        v.setIconAlpha(if (returning != null && key == returning.plan.key) returning.plan.iconAlpha(returning.progress) else seatAlpha)
         if (box == null) return
         val w = box.width().roundToInt().coerceAtLeast(1)
         val h = if (motion != null || returning != null) box.height().roundToInt().coerceAtLeast(w) else w
@@ -7984,7 +7986,7 @@ private class MiniPlayerController(
             return
         }
         if (motion.revision != Main.screenGeometry().revision || !view.isAttachedToWindow ||
-            islandKeys.filter { it != motion.plan.key }.toSet() != motion.plan.before.keys ||
+            !islandKeys.filter { it != motion.plan.key }.containsAll(motion.plan.before.keys) ||
             selectedIsland != motion.plan.selected || MiniPlayerScene.keyguardGoingAway || MiniPlayerScene.aodActive || !Main.screenOn() ||
             !MiniPlayerRuntime.detachedRail() || colorOs() && !motion.plan.single) {
             finishRailReturn(motion.plan.key, motion.plan.key in islandKeys)

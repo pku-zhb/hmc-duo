@@ -27,22 +27,22 @@ internal object RailIslandStrip {
             ?: stack.takeIf { it in collapsed }
 
     data class Slot(val key: String, val top: Float, val height: Float, val primary: Boolean)
-    data class Plan(val slots: List<Slot>, val hidden: Int)
+    data class Plan(val slots: List<Slot>, val hidden: Int, val hiddenAbove: Int = 0, val hiddenBelow: Int = 0)
 
     /** Bottom aligned above native shortcuts; overflow keeps the selected item in the viewport. */
     fun layout(keys: List<String>, selected: String?, width: Float, height: Float,
-               density: Float, oneOnly: Boolean): Plan? {
+               density: Float, oneOnly: Boolean, limit: Int = 3): Plan? {
         if (keys.isEmpty() || selected !in keys || !listOf(width, height, density).all { it.isFinite() }
             || density <= 0 || width <= 0 || height < 140f * density) return null
-        val gap = 12f * density
-        val minPill = 180f * density
-        val capacity = (1 + ((height - minPill) / (width + gap)).toInt()).coerceAtLeast(1)
-        val shown = if (oneOnly) listOf(selected!!) else {
-            val count = minOf(keys.size, capacity)
-            val start = (keys.indexOf(selected) - count / 2).coerceIn(0, keys.size - count)
-            keys.subList(start, start + count)
-        }
-        val pillHeight = minOf(221f * density, height - (shown.size - 1) * (width + gap))
+        fun gap(count: Int) = (if (count >= 5) 6f else if (count == 4) 8f else 12f) * density
+        var count = if (oneOnly) 1 else minOf(keys.size, limit.coerceIn(2, 5))
+        while (count > 1 && height - (count - 1) * (width + gap(count)) < 156f * density) count--
+        val start = if (oneOnly) keys.indexOf(selected) else
+            (keys.indexOf(selected) - count / 2).coerceIn(0, keys.size - count)
+        val shown = keys.subList(start, start + count)
+        val gap = gap(count)
+        val desired = (if (count >= 5) 167f else if (count == 4) 194f else 221f) * density
+        val pillHeight = minOf(desired, height - (shown.size - 1) * (width + gap))
         val total = pillHeight + (shown.size - 1) * (width + gap)
         var y = height - total
         val slots = shown.map { key ->
@@ -50,6 +50,7 @@ internal object RailIslandStrip {
             val h = if (primary) pillHeight else width
             Slot(key, y, h, primary).also { y += h + gap }
         }
-        return Plan(slots, if (oneOnly) 0 else keys.size - shown.size)
+        return Plan(slots, if (oneOnly) 0 else keys.size - shown.size,
+            if (oneOnly) 0 else start, if (oneOnly) 0 else keys.size - start - count)
     }
 }

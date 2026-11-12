@@ -50,7 +50,9 @@ final class RightRailLayout {
         float right = centerX + thickness / 2, left = centerX - thickness / 2;
         // Reserve the entire native hit wrapper, plus the curved capsule indicator.
         float limit = Math.min(a.top, b.top) - gap - indicatorExtent;
-        float companionTop = topInset + gap;
+        // Keep one native top control and its spacing free (MiDuo's three-in-one button).
+        // Extra islands share the lower viewport, never this reserved band.
+        float companionTop = topInset + 72f * density;
         float maxLength = limit - companionTop - thickness - gap;
         float length = Math.min(221f * density, maxLength);
         // Lower the outer-screen strip; retain the untested inner-screen baseline.

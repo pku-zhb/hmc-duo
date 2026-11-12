@@ -6,7 +6,7 @@ import org.junit.Test
 class RailFusionMotionTest {
     private val keys = listOf("notifications", "calendar", "music")
     private fun slots(keys: List<String>, selected: String, single: Boolean = false) =
-        RailIslandStrip.layout(keys, selected, 46f, 460f, 1f, single)!!.slots.associate {
+        RailIslandStrip.layout(keys, selected, 46f, 460f, 1f, single, 5)!!.slots.associate {
             it.key to RailFusionMotion.Box(10f, it.top, 46f, it.height)
         }
     private fun art(box: RailFusionMotion.Box) = RailFusionMotion.Box(box.x + 8, box.y + 8, 30f, 30f)
@@ -135,7 +135,7 @@ class RailFusionMotionTest {
                 val f = frame(plan, i / 100f)
                 assertEquals(many, f.seats.keys.toList())
                 f.seats.values.zipWithNext().forEach { (a, b) ->
-                    assertEquals(12f, b.y - a.y - a.h, .001f)
+                    assertEquals(8f, b.y - a.y - a.h, .001f)
                 }
                 assertTrue(f.seats.values.all { it.valid() })
             }

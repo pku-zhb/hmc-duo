@@ -34,14 +34,22 @@ internal object RailReturnMotion {
             val cy = startY + (end.cy - startY) * travel
             val bubble = RailFusionMotion.Box(cx - size / 2, cy - size / 2, size, size)
             val seats = LinkedHashMap<String, RailFusionMotion.Box>()
-            for (item in after.keys) seats[item] = when (item) {
+            val alphas = LinkedHashMap<String, Float>()
+            for (item in before.keys + after.keys) seats[item] = when (item) {
                 key -> bubble
                 selected -> primary
-                else -> mix(before.getValue(item), after.getValue(item), move)
+                else -> {
+                    alphas[item] = when {
+                        item !in after -> 1f - smooth(p / .35f)
+                        item !in before -> smooth((p - .65f) / .35f)
+                        else -> 1f
+                    }
+                    mix(before[item] ?: after.getValue(item), after[item] ?: before.getValue(item), move)
+                }
             }
             val tension = sin(Math.PI * p).toFloat().coerceAtLeast(0f)
             return RailFusionMotion.Frame(false, primary, seats, 0f, 1f,
-                mix(oldArt, newArt, move), 1f, RailSurfaceContour.shape(primary, bubble, tension))
+                mix(oldArt, newArt, move), 1f, RailSurfaceContour.shape(primary, bubble, tension), alphas)
         }
         fun iconAlpha(progress: Float): Float = smooth((progress - .16f) / .34f)
     }
@@ -51,7 +59,7 @@ internal object RailReturnMotion {
         if (before.isEmpty() && selected == key && after.keys == setOf(key) && after.getValue(key).valid())
             return Plan(key, selected, before, after, false, single = true)
         if (key in before || before[selected] == null || after[selected] == null || after[key] == null ||
-            before.keys + key != after.keys || (before.values + after.values).any { !it.valid() }) return null
+            (before.values + after.values).any { !it.valid() }) return null
         val order = after.keys.toList()
         return Plan(key, selected, before, after, abs(order.indexOf(key) - order.indexOf(selected)) > 1)
     }
