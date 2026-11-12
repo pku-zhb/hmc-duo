@@ -35,8 +35,8 @@ android {
         minSdk = 35
         targetSdk = 37
         // Build properties can override the release version for local test builds.
-        versionCode = (findProperty("mcVersionCode") as String?)?.toInt() ?: 20008
-        versionName = ((findProperty("mcVersionName") as String?) ?: "0.2.0-preview.8") +
+        versionCode = (findProperty("mcVersionCode") as String?)?.toInt() ?: 20009
+        versionName = ((findProperty("mcVersionName") as String?) ?: "0.2.0-preview.9") +
                 ((findProperty("mcVersionSuffix") as String?) ?: "")
     }
 

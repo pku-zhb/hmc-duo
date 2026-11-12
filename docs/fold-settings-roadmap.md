@@ -81,6 +81,27 @@ status spacing, safe insets, short landscape bounds, overflow integration, unkno
 battery readings and service/Wi-Fi loss. These results do not establish phone
 behavior; no device access followed the unplug handoff.
 
+Preview 9 packaging: `0.2.0-preview.9` / `20009`, Release/R8 and vital lint pass.
+ZIP integrity, 16 KiB alignment, manifest package/version and APK v2 signature were
+verified. The certificate matches the retained previews. Both retained and Personal
+Files copies contain 4,177,837 bytes, SHA-256
+`5b15dd5896788ef8daad8a8fb7f7834fe6553433d4f991d10913e194f79e6672`.
+This remains a locally debug-signed preview. It was archived under
+`02 Personal Files/Miduo/hypermusiccover-duo-0.2.0-preview.9.apk`; no Slack attachment,
+phone installation or restart was performed.
+
+Preview 9 manual acceptance, with both MiDuo SystemUI mounts still disabled:
+
+- Player/notification widths stay fixed while music, notification count and AOD
+  state change. This carries the Preview 8 width repair into the standalone build.
+- Camera and torch sit in the right-hand column. Drag each inward to activate,
+  then try a short drag and cancellation; their animation must start at the icon.
+- The top cluster shows current time/battery and Wi-Fi or mobile signal, updates
+  on a charging/network change, and has no click/swipe action. It must not overlap
+  the first bubble or linger over the home screen after unlocking.
+- During a normal AOD/wake cycle, the cluster, shortcuts and capsule retain their
+  spacing. Device acceptance is pending; host tests cannot establish this result.
+
 ### Preview 7 width oscillation and fixed geometry (2026-11-12)
 
 The owner reported the player and notifications rapidly changing width. Read-only
