@@ -420,6 +420,7 @@ internal object ColorOsPill {
 internal class GooGlass(context: Context, private val roundedCarrier: Boolean = false) : FrameLayout(context) {
     private val element = MaterialElement(context)
     private val local = Path()
+    private val contourRim = if (roundedCarrier) GlassContourRim(context.resources.displayMetrics.density) else null
     private var dressWith: ((ImageView) -> Unit)? = null
     private var dressedAs = -1
     private var requestedAs = -1
@@ -474,6 +475,7 @@ internal class GooGlass(context: Context, private val roundedCarrier: Boolean = 
                 MeasureSpec.makeMeasureSpec(h.coerceAtLeast(0), MeasureSpec.EXACTLY))
         }
         element.layout(0, 0, w, h)
+        if (changed) contourRim?.update(local, w.toFloat(), h.toFloat(), carrierRadius)
         applyDressIfReady()
     }
 
@@ -504,6 +506,7 @@ internal class GooGlass(context: Context, private val roundedCarrier: Boolean = 
         carrierRadius = nativeRadius.takeIf { it.isFinite() }?.coerceAtLeast(0f) ?: 0f
         local.set(path)
         local.offset(-originX, -originY)
+        contourRim?.update(local, width.toFloat(), height.toFloat(), carrierRadius)
         invalidateOutline()
         element.invalidateOutline()
         applyDressIfReady()
@@ -512,11 +515,21 @@ internal class GooGlass(context: Context, private val roundedCarrier: Boolean = 
         invalidate()
     }
 
-    fun describe(): String = "roundedCarrier=$roundedCarrier material=$dressedAs/$requestedAs " +
+    override fun dispatchDraw(canvas: android.graphics.Canvas) {
+        super.dispatchDraw(canvas)
+        if (local.isEmpty) return
+        val save = canvas.save()
+        canvas.clipPath(local)
+        contourRim?.draw(canvas)
+        canvas.restoreToCount(save)
+    }
+
+    fun describe(): String = "roundedCarrier=$roundedCarrier contourRim=${contourRim != null} material=$dressedAs/$requestedAs " +
         "size=${element.width}x${element.height} sdf=${sdfWidth}x${sdfHeight} radius=$carrierRadius"
 
     fun clearShape() {
         local.reset()
+        contourRim?.clear()
         invalidateOutline()
         element.invalidateOutline()
     }

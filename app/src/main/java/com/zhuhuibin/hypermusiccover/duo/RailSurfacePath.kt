@@ -2,7 +2,7 @@ package com.zhuhuibin.hypermusiccover.duo
 
 import android.graphics.Path
 
-/** One outline and one native blur/rim: overlapping shells never draw doubled glass. */
+/** One union outline for native glass clipping and the changing contour bevel. */
 internal class RailSurfacePath {
     val path = Path()
     private val part = Path()
