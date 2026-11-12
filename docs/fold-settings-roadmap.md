@@ -12,14 +12,21 @@ not automatically verified on every device, display or OS version.
 | Layout and gestures | Duo-owned card bounds and shortcut geometry, native secure camera/flashlight launch, empty-space expansion/collapse, and native interactions on actual cards. |
 | Capsules | HyperOS spring/fusion/split motion and bounded switching; ColorOS switching; automatic size reduction and top overflow hiding. Short two/three-seat capsules retain their summary and primary action; single-seat bubbles remain icon-only. |
 | Notifications | Independent lock-screen visibility/retention, per-category collapse defaults and last-state restoration. Native visibility is tracked separately from shared-stack state; capsule animation follows native movement while exposure verification retains retry ownership. |
-| Clock and status | Independent status-bar visibility. Outer-screen artwork/lyrics can shrink the clock, join it to the date row with a side preference, or fade the time into the display-only battery/network cluster. Full-screen AOD retains the selected compact presentation; ordinary AOD uses native presentation. Status and capsule columns share their horizontal AOD/wake anchor. |
+| Clock and status | Independent status-bar visibility. Outer-screen and inner-landscape artwork/lyrics can shrink the clock, join it to the date row with a side preference, or fade the time into the display-only battery/network cluster. Full-screen AOD retains the selected compact presentation; ordinary AOD uses native presentation. Status and capsule columns share their horizontal AOD/wake anchor. |
 | Inner screen | Portrait/landscape handling, fixed bounded landscape card widths, category defaults and an explicit combined artwork/lyrics page. Preview 12 layout changes await device acceptance. |
 | Delivery | Duo release identity, preview-compatible signing path, guarded official signing and the project's own update feed. Production key configuration remains a separate owner setup step. |
 | Settings | Export/import with legacy normalization; credentials stay on-device. Donation controls await owner-provided payment assets. |
 
 ## Current acceptance scope
 
-### Queued after Preview 14: credential-screen capsule occlusion
+### Preview 15 preparation
+
+This iteration addresses square artwork disappearing in full-screen AOD,
+inner-landscape clock placement, inconsistent capsule expansion exits and
+credential-screen capsule occlusion. Short-capsule content remains awaiting an
+opportunity with enough real-time cards; it is not a required repeat test.
+
+### Credential-screen capsule occlusion
 
 The owner reports capsules at an unexpected lower-right position on the first
 mandatory credential screen after boot. Source inspection found a mismatch:
@@ -34,7 +41,7 @@ ownership and animation alpha remain unchanged. Placement also stops before the
 legacy fallback, and dismissing credentials restores each overlay's prior clip.
 The native credential UI, cards and shortcut buttons are not clipped.
 
-This source fix is queued for the next preview, not included in the archived
+This source fix is included in the Preview 15 work, not the archived
 Preview 14 APK. First-boot reproduction remains unverified; no phone reboot,
 installation or scope reload is required for this low-priority report. Check it
 opportunistically at the next normal first unlock, including that capsules return
