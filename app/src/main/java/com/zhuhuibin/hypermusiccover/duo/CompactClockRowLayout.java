@@ -23,6 +23,39 @@ final class CompactClockRowLayout {
         }
     }
 
+    static final class DateInk {
+        final float left, width, baseline;
+        DateInk(float left, float width, float baseline) {
+            this.left = left; this.width = width; this.baseline = baseline;
+        }
+    }
+
+    /** ClassicTextAreaView draws two strings and its icons directly, without a TextView Layout.
+     * Keep its complete native drawing together, including the optional trailing rectangle. */
+    static DateInk classicDate(float viewWidth, float viewHeight, float paddingStart,
+                               float paddingEnd, float prefixWidth, float bodyWidth,
+                               float measuredIcons, float iconAdvance, float iconExtent,
+                               float rectangleWidth, boolean rtl, float ascent, float descent) {
+        float[] dimensions = {viewWidth, viewHeight, paddingStart, paddingEnd, prefixWidth,
+                bodyWidth, measuredIcons, iconAdvance, iconExtent, rectangleWidth};
+        for (float dimension : dimensions)
+            if (!Float.isFinite(dimension) || dimension < 0f) return null;
+        if (!(viewWidth > 0f) || !(viewHeight > 0f) || !(prefixWidth + bodyWidth > 0f)
+                || !Float.isFinite(ascent + descent) || !(descent > ascent)) return null;
+        float left, right;
+        if (rtl) {
+            left = viewWidth - (prefixWidth + bodyWidth + measuredIcons + paddingStart + paddingEnd);
+            float iconsLeft = left + rectangleWidth + bodyWidth;
+            float prefixLeft = Math.max(iconsLeft + iconAdvance, viewWidth - paddingEnd - prefixWidth);
+            right = Math.max(iconsLeft + iconExtent, prefixLeft + prefixWidth);
+        } else {
+            left = paddingStart;
+            float iconsLeft = left + prefixWidth;
+            right = Math.max(iconsLeft + iconExtent, iconsLeft + iconAdvance + bodyWidth + rectangleWidth);
+        }
+        return new DateInk(left, right - left, viewHeight / 2f - (ascent + descent) / 2f);
+    }
+
     static Row place(float left, float right, float timeWidth, float dateWidth,
                      float gap, boolean beforeDate) {
         if (!(right > left) || !Float.isFinite(left + right) || !(timeWidth > 0f) || !(dateWidth > 0f)

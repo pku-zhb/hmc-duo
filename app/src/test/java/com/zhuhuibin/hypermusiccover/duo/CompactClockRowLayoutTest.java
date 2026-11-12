@@ -65,4 +65,65 @@ public class CompactClockRowLayoutTest {
         assertNull(CompactClockRowLayout.place(0, 300, 50, 0, 8, true));
         assertNull(CompactClockRowLayout.place(0, 300, Float.NaN, 120, 8, true));
     }
+
+    @Test public void classicCanvasDateUsesItsOwnCenteredBaselineWithoutAnAndroidLayout() {
+        CompactClockRowLayout.DateInk ink = CompactClockRowLayout.classicDate(
+                580, 74, 0, 0, 300, 240, 40, 40, 40, 0, false, -58, 16);
+        assertNotNull(ink);
+        assertEquals(0, ink.left, 0.001f);
+        assertEquals(580, ink.width, 0.001f);
+        assertEquals(58, ink.baseline, 0.001f);
+    }
+
+    @Test public void classicForegroundDateRemainsValidWhenTextViewBodyIsEmpty() {
+        CompactClockRowLayout.DateInk ink = CompactClockRowLayout.classicDate(
+                580, 74, 10, 10, 300, 0, 0, 0, 0, 0, false, -58, 16);
+        assertNotNull(ink);
+        assertEquals(10, ink.left, 0.001f);
+        assertEquals(300, ink.width, 0.001f);
+    }
+
+    @Test public void classicDateIncludesIconExtentAndTheTrailingNativeRectangle() {
+        CompactClockRowLayout.DateInk ink = CompactClockRowLayout.classicDate(
+                580, 74, 12, 12, 100, 180, 44, 44, 50, 24, false, -58, 16);
+        assertEquals(12, ink.left, 0.001f);
+        assertEquals(348, ink.width, 0.001f);
+        CompactClockRowLayout.DateInk iconOnlyTail = CompactClockRowLayout.classicDate(
+                580, 74, 12, 12, 100, 0, 44, 44, 50, 0, false, -58, 16);
+        assertEquals(150, iconOnlyTail.width, 0.001f);
+    }
+
+    @Test public void rtlClassicDateKeepsNativeRightAnchoredForegroundAndAllDrawnParts() {
+        CompactClockRowLayout.DateInk ink = CompactClockRowLayout.classicDate(
+                580, 74, 12, 12, 100, 180, 44, 44, 50, 24, true, -58, 16);
+        assertEquals(232, ink.left, 0.001f);
+        assertEquals(348, ink.width, 0.001f);
+        assertEquals(58, ink.baseline, 0.001f);
+    }
+
+    @Test public void wholeClassicDateFitsBesideTimeWithinTheObservedOuterScreenBounds() {
+        CompactClockRowLayout.DateInk ink = CompactClockRowLayout.classicDate(
+                580, 74, 0, 0, 300, 240, 40, 40, 40, 0, false, -58, 16);
+        CompactClockRowLayout.Row left = CompactClockRowLayout.place(
+                16 * 2.75f, 961.75f - 16 * 2.75f, 164, ink.width, 8 * 2.75f, true);
+        CompactClockRowLayout.Row right = CompactClockRowLayout.place(
+                16 * 2.75f, 961.75f - 16 * 2.75f, 164, ink.width, 8 * 2.75f, false);
+        assertNotNull(left);
+        assertNotNull(right);
+        assertEquals(1, left.scale, 0.001f);
+        assertEquals(left.timeLeft, right.dateLeft, 0.001f);
+        assertEquals(22, left.dateLeft - left.timeLeft - left.timeWidth, 0.001f);
+        assertEquals(22, right.timeLeft - right.dateLeft - ink.width, 0.001f);
+        assertTrue(left.dateLeft + ink.width <= 917.75f);
+        assertTrue(right.timeLeft + right.timeWidth <= 917.75f);
+    }
+
+    @Test public void unmeasuredOrBlankClassicDateCannotHideTheNativeClock() {
+        assertNull(CompactClockRowLayout.classicDate(
+                580, 0, 0, 0, 300, 240, 40, 40, 40, 0, false, -58, 16));
+        assertNull(CompactClockRowLayout.classicDate(
+                580, 74, 0, 0, 0, 0, 40, 40, 40, 0, false, -58, 16));
+        assertNull(CompactClockRowLayout.classicDate(
+                580, 74, 0, 0, Float.NaN, 240, 40, 40, 40, 0, false, -58, 16));
+    }
 }

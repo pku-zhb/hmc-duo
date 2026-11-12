@@ -1,7 +1,6 @@
 package com.zhuhuibin.hypermusiccover.duo;
 
 import android.graphics.Paint;
-import android.text.Layout;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.TextView;
@@ -18,6 +17,7 @@ final class CompactClockRowRuntime {
     private static final Map<View, DatePose> dates = new WeakHashMap<>();
     private static final float[] POINTS = new float[6];
     private static String reason = "not requested";
+    private static String dateDrawing = "unavailable";
     private static Plan lastPlan;
     private static float drawnProgress;
     private static java.lang.ref.WeakReference<View> inspectedDate = new java.lang.ref.WeakReference<>(null);
@@ -62,8 +62,9 @@ final class CompactClockRowRuntime {
         if (!Main.anchoredStyle()) return unavailable("non-anchored date layout");
         TextView text = text(date);
         if (text == null) return unavailable("date has no TextView");
-        if (text.getLayout() == null) return unavailable("date awaiting layout");
-        if (text.getLayout().getLineCount() != 1) return unavailable("date is multiline");
+        CompactClockRowDate.Measurement drawing = CompactClockRowDate.read(text);
+        dateDrawing = drawing.description;
+        if (drawing.ink == null) return unavailable(drawing.description);
         for (View root : Main.clockRoots()) {
             View target = Main.clockTarget(root);
             if (target != null && descendant(date, target)) return unavailable("date inside time target");
@@ -80,16 +81,15 @@ final class CompactClockRowRuntime {
             time.setVisibility(View.INVISIBLE);
             host.getOverlay().add(time);
         }
-        Layout layout = text.getLayout();
-        float localX = text.getCompoundPaddingLeft() + layout.getLineLeft(0);
-        float localY = text.getBaseline();
+        float localX = drawing.ink.left;
+        float localY = drawing.ink.baseline;
         for (View v = text; v != date;) {
             localX += v.getLeft() + v.getTranslationX();
             localY += v.getTop() + v.getTranslationY();
             if (!(v.getParent() instanceof View)) return unavailable("date detached");
             v = (View) v.getParent();
         }
-        float width = layout.getLineRight(0) - layout.getLineLeft(0);
+        float width = drawing.ink.width;
         DatePose datePose = dates.get(date);
         float nativeSx = datePose == null ? date.getScaleX() : datePose.nativeScaleX(date);
         float nativeSy = datePose == null ? date.getScaleY() : datePose.nativeScaleY(date);
@@ -101,12 +101,11 @@ final class CompactClockRowRuntime {
                 time.timeWidth(text.getPaint()) * nativeSx, width * nativeSx,
                 8f * d, Main.sArtworkClockBeforeDate);
         if (row == null) return unavailable("row dimensions unavailable");
-        Paint.FontMetrics metrics = text.getPaint().getFontMetrics();
         float baseline = targetDateTop + localY;
         reason = "ready";
         lastPlan = new Plan(date, text, row, localX, localY, originX(date) - date.getTranslationX(),
-                nativeSx, baseline + metrics.ascent * nativeSy * row.scale,
-                baseline + metrics.descent * nativeSy * row.scale);
+                nativeSx, baseline + drawing.top * nativeSy * row.scale,
+                baseline + drawing.bottom * nativeSy * row.scale);
         return lastPlan;
     }
 
@@ -196,6 +195,7 @@ final class CompactClockRowRuntime {
                     + " fit=" + Main.r2(p.row.scale))
                 + (time == null ? "" : " time=[" + time.getLeft() + "," + time.getTop()
                     + "," + time.getWidth() + "," + time.getHeight() + "] a=" + Main.r2(time.getAlpha()))
+                + " draw=[" + dateDrawing + "]"
                 + " source=" + structure(inspectedDate.get());
     }
 
@@ -227,7 +227,8 @@ final class CompactClockRowRuntime {
     }
 
     private static TextView text(View v) {
-        if (v instanceof TextView && ((TextView) v).getText().length() > 0) return (TextView) v;
+        if (v instanceof TextView && (CompactClockRowDate.classic((TextView) v)
+                || ((TextView) v).getText().length() > 0)) return (TextView) v;
         if (v instanceof ViewGroup) {
             ViewGroup group = (ViewGroup) v;
             for (int i = 0; i < group.getChildCount(); i++) {
