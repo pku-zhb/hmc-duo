@@ -48,6 +48,22 @@ restored square artwork from any remaining background-appearance complaint.
 Short-capsule content remains awaiting sufficient real-time cards. It is not
 changed or required for this iteration's acceptance.
 
+## Host validation and artifact
+
+- All 917 tests passed across 146 suites, with no failures, errors or skipped
+  tests. Debug, Release and Release vital lint completed successfully.
+- The APK passed ZIP integrity, 16 KiB-aware alignment and Android signature
+  checks. Its embedded source revision matches
+  `d4e2b21c73ec9f9fad82d75794a9471bfebe58c7`.
+- Package: `com.zhuhuibin.hypermusiccover.duo`; version:
+  `0.2.0-preview.15` / `20015`; not debuggable. The existing development preview
+  certificate is retained; this is not a production-key release.
+- APK size: 4,195,341 bytes. SHA-256:
+  `2da1cb7d1d29ac051c550d9a17a12460b57d5c71e28583a8e7bdbb6c66123a9b`.
+- The versioned local, owner-archive and phone Download copies have matching
+  hashes. This build has not been installed or reloaded; host validation does
+  not establish visual phone acceptance.
+
 ## Focused phone acceptance
 
 1. With square artwork, blurred artwork background and the status-cluster time

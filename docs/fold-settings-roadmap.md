@@ -19,12 +19,15 @@ not automatically verified on every device, display or OS version.
 
 ## Current acceptance scope
 
-### Preview 15 preparation
+### Preview 15
 
 This iteration addresses square artwork disappearing in full-screen AOD,
 inner-landscape clock placement, inconsistent capsule expansion exits and
 credential-screen capsule occlusion. Short-capsule content remains awaiting an
-opportunity with enough real-time cards; it is not a required repeat test.
+opportunity with enough real-time cards; it is not a required repeat test. See the
+[Preview 15 record](releases/preview-15.md) for the causes, 917 passing host tests,
+verified artifact and focused acceptance list. The new APK has not been installed
+or reloaded; its visual behavior remains awaiting acceptance.
 
 ### Credential-screen capsule occlusion
 
