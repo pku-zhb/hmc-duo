@@ -83,6 +83,7 @@ final class VideoBackdropMesh extends View implements Choreographer.FrameCallbac
                 + " shader=" + (v.shader == null ? "none" : "ready")
                 + " shape=" + (CoverCardLayer.fullScene() ? "full-band" : "card")
                 + " bandAlpha=" + v.fullArtworkAlpha
+                + " band=[" + CoverCardLayer.fullSceneDescription() + "]"
                 + (failure == null ? "" : " fallback=" + failure);
     }
 
