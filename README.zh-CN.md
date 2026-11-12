@@ -6,70 +6,78 @@
 [pku-zhb](https://github.com/pku-zhb) 维护。
 
 基于 [HyperMusicCover-Enhanced](https://github.com/Lewewe/HyperMusicCover-Enhanced)
-与原始 [HyperMusicCover](https://github.com/zyl6932/HyperMusicCover)。本项目聚焦自用设备适配。
+与原始 [HyperMusicCover](https://github.com/zyl6932/HyperMusicCover)。适配聚焦维护者的折叠屏设备，
+尚未建立其他机型的兼容性保证。
 
-## 当前功能
+## 功能
 
-- 方形封面、同步／逐词歌词与歌词翻译。
-- Duo 独立管理卡片宽度、右侧手电筒／相机布局，以及只显示的时间／电量／网络三合一控件；快捷按钮的触摸与动画起点使用同一套坐标，启动和取消继续走系统原生流程。
-- 右侧快捷按钮上方的竖排胶囊，按通知、实时卡片、音乐排序；上下滑切换，点击圆泡直接展开对应卡片。
-- HyperOS 切换到首尾即停止；胶囊保持长度跟手平移，贴近气泡融合，松手后弹性分离。ColorOS 保留原切换方式。
-- HyperOS 默认显示全部项目；超过三个后自动缩短主胶囊，必要时缩成圆形。圆形仍放不下时从顶部开始隐藏，隐藏项目仍可从左侧逐项展开；顶部给三合一显示留出空间。
-- 播放器原有封面位置依次显示小封面、歌词图标、时钟图标，表示下一步动作；切换时文字位置不变。
-- 所有没有卡片的空白位置都可上滑，依次展开播放器、实时卡片、通知，下滑收回；全收起时左侧整片内容区都可操作。全部展开后上滑交给系统解锁。
-- 从实际可见卡片起手的滚动、左右清除、点击、长按和播放器按钮／进度条操作交给系统；快捷按钮与胶囊仍处理各自手势。
-- 普通通知实际显示后才撤掉对应气泡；系统若停在通知藏于卡片下方的堆叠状态，会重新收到气泡。
-- 多选锁屏时收进胶囊的类别，或保持上次锁屏状态；内屏横屏保留独立类别设置和封面／歌词双栏布局。
-- 原生播放器、时钟、通知重排与 AOD／亮屏状态衔接。
-- 原生柔光玻璃，或跟随原生播放器的最终材质，包括 HyperLight 调整。
-- 设置导出／导入与设备诊断计数。
-- 独立的“锁屏显示全部通知”和“锁屏保留通知”；在 Duo 开启时，请关闭 HyperLight 对应选项。
+- 方形／全屏封面、同步／逐词歌词、歌词效果及可选翻译。前景封面与背景独立设置：
+  可选原生壁纸、封面背景或动态背景，并调节模糊和暗度。
+- Duo 独立管理卡片宽度与右侧手电筒／相机布局。放大的触摸区域与动画使用统一坐标，
+  启动及取消保留系统安全流程，无需 MiDuo 或 MiDuo Notification。
+- 只显示的电量／网络控件、独立的锁屏状态栏开关，以及外屏封面／歌词页面的紧凑时间日期行。
+  可选择时间位于日期左侧或右侧；普通 AOD 保留系统呈现，全屏 AOD 也可使用紧凑行。
+- HyperOS、ColorOS 两种竖排胶囊。点击胶囊或圆泡展开卡片，上下滑切换；HyperOS 到首尾停止，
+  胶囊弹性跟手，气泡融合分裂保留原生材质。超过三个项目自动缩短胶囊，圆形仍放不下时从顶部隐藏，
+  隐藏项目仍可逐项展开。
+- 空白内容区上滑依次展开播放器、实时卡片、通知，下滑收回；全收起时左侧整片区域都可操作。
+  实际卡片区域保留系统滚动、左右清除、点击、长按与播放器按钮／进度条操作，全部展开后上滑解锁。
+- 播放器原有封面位置轮换封面、歌词与返回时钟动作，不增加按钮，也不挤动标题。
+- 多选锁屏时收进胶囊的类别，或保持上次锁屏状态；内屏横屏保留独立类别设置与封面／歌词双栏布局。
+- 原生玻璃材质、独立的锁屏通知显示与保留选项；使用 Duo 的通知选项时关闭 HyperLight 对应功能。
+- 设置导出／导入、通知播放器定制，以及 Duo 自己的发布／更新渠道；翻译凭据不会写入设置备份。
 
-全屏封面与背景切换、频谱和扩展页面仍待兼容性验证。自动更新暂未启用，将使用
-本仓库的发布渠道。已确认行为和未解决问题见[适配进度](docs/fold-settings-roadmap.md)。
-编译与单元测试通过不代表真机验收通过。
+当前为预览版。新增行为、内屏布局和 AOD 切换仍需真机验收，编译成功不等于设备验证通过。
+已确认结果及本轮验收范围见[当前进度](docs/fold-settings-roadmap.md)。
 
 ## 安装与迁移
 
 要求：Root 的 HyperOS 4、Android 15+，以及支持现代 Xposed API 102 的 LSPosed。
-Duo 的竖排布局不再依赖 MiDuo 或 MiDuo Notification。本次独立布局预览请保持这两个模块的 SystemUI 挂载关闭。
+应用包名与代码命名空间均为 `com.zhuhuibin.hypermusiccover.duo`。
 
-应用包名和代码命名空间统一为 `com.zhuhuibin.hypermusiccover.duo`，名称为
-`hypermusiccover-duo`。它与 Enhanced、旧 Fold 预览版
-`com.zhuhuibin.hypermusiccover.fold` 分别安装，Android 不会自动转移应用数据。
+1. 在旧应用中导出设置，再处理旧应用。
+2. 从 [Duo Releases](https://github.com/pku-zhb/hypermusiccover-duo/releases) 获取已发布的安装包，或自行构建。
+3. 在 LSPosed 启用 Duo 并勾选推荐作用域；停用旧音乐模块，以及 MiDuo／MiDuo Notification 的 SystemUI 挂载。
+4. 准备好后自行重启相关作用域，再导入设置。
 
-1. 在旧版中导出设置，再处理旧应用。
-2. 从 [Duo Releases](https://github.com/pku-zhb/hypermusiccover-duo/releases)
-   获取已发布安装包，或自行构建。
-3. 在 LSPosed 中停用旧音乐模块，启用 Duo 并勾选推荐作用域，两者不要同时启用。
-4. 自行重启作用域后导入设置。已移除的选项不会被旧备份重新开启。
+Duo 与 Enhanced、旧 Fold 包分别安装，Android 不会自动转移应用数据。
+旧备份中的已移除选项会被丢弃，原先没有生效的背景配置迁移为原生壁纸；
+只有应用外观设置的备份不会改变模块背景。
 
-仓库建立不代表已有稳定版。预览版需要真机验收，不同签名的 APK 不能互相覆盖更新。
-更新不再自动重启作用域，由使用者决定何时重启并加载新模块代码。
+更新不会自动重启作用域。不同签名的 APK 无法互相覆盖，现有预览包沿用当前签名，
+正式发布密钥需要单独配置，不能把 release 构建视为已经完成正式签名。
+参见[发布流程](docs/releasing.md)。
 
 ## 构建
 
+需要 JDK 21+、Android SDK 37 和 build-tools 37.0.0。
+
 ```sh
-git clone --recurse-submodules https://github.com/pku-zhb/hypermusiccover-duo.git
+git clone https://github.com/pku-zhb/hypermusiccover-duo.git
 cd hypermusiccover-duo
+```
+
+维护者已配置的 Mac 环境使用：
+
+```sh
 tools/build.sh :app:testDebugUnitTest :app:assembleDebug
 ```
 
-需要 JDK 21+、Android SDK 37 和 build-tools 37.0.0。本机脚本复用已安装工具链，
-构建、测试报告和临时文件放在 `/Volumes/Harbor/DevCache/hypermusiccover-duo/`。
-可用 `JAVA_HOME`、`ANDROID_HOME`、`GRADLE_USER_HOME` 指定其他工具链。
-发布签名配置见英文 README；没有发布密钥时产物只使用调试签名。
+其他环境请设置 `JAVA_HOME`、`ANDROID_HOME`，并指定源码目录之外的绝对构建路径：
 
-保留的 `hyper-canvas` 是上游可选依赖，其提供方目前只信任 Enhanced 包名；
-需要连同主程序身份与签名契约一起适配，不能仅靠重新编译恢复使用。
+```sh
+export HMC_BUILD_ROOT=/absolute/path/to/duo-build
+./gradlew -I tools/gradle-init.gradle :app:testDebugUnitTest :app:assembleDebug
+```
 
-## 维护、反馈与许可
+维护脚本把构建输出与临时文件放在指定外置构建卷，未挂载时停止执行。
+签名材料不得提交到仓库或同步盘，正式构建要求见发布流程。
 
-每完成并验证一个阶段就提交、推送。问题请提交到
-[Duo Issues](https://github.com/pku-zhb/hypermusiccover-duo/issues)，附设备、系统／模块版本、
-内外屏状态和复现步骤。
+## 反馈与许可
 
-可以后台准备预览包，但每次安装前都要重新征得使用者确认。手机界面操作和重启由使用者完成。
+问题请提交到 [Duo Issues](https://github.com/pku-zhb/hypermusiccover-duo/issues)，
+附设备、系统／模块版本、内外屏方向和复现步骤。每轮预览只列本轮变更的验收项目。
 
 感谢 Lewewe、zyl6932、puhboo、juren233、btm_m / HyperChanger 和应用致谢页列出的贡献者。
-遵循 [AGPL-3.0](LICENSE)，保留 [NOTICE](NOTICE) 与依赖许可。本项目不沿用上游捐赠渠道。
+遵循 [AGPL-3.0](LICENSE)，保留 [NOTICE](NOTICE) 与依赖许可。
+捐赠入口等待本项目自己的收款素材，不使用上游收款目标。

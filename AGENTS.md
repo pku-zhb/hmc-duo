@@ -11,9 +11,9 @@ not the destination for project links, updates or bug reports.
   retired code only after checking its callers.
 - Archive previews without sending a Slack attachment unless the owner asks.
   When requested, use `cc-connect send --file` to the current conversation and
-  report delivery only after the CLI confirms success. The version archive is
-  `~/Harbor Drive/02 Personal Files/Miduo/`. Preserve versioned filenames and verify
-  archive copies against the retained APK under `releases/local/`.
+  report delivery only after the CLI confirms success. Use the owner's configured
+  version archive, preserve versioned filenames and verify archive copies against
+  the retained APK under `releases/local/`.
 - Use `tools/build.sh` for local Gradle tasks. Builds, test reports and temporary
   files belong on the mounted Harbor DevCache volume. Never create a missing mount.
 - Keep signing material outside source control and synced storage. A debug-signed
@@ -27,10 +27,8 @@ not the destination for project links, updates or bug reports.
   confirmed causes, plausible contributors and behavior still awaiting acceptance.
 - Source work and host builds do not authorize phone installation, restarts or
   live setting changes. Follow the conversation's current device authorization.
-- The owner granted continuing phone access for this investigation on 2026-11-12,
-  including relevant installation, interaction and scope restarts, until explicitly
-  revoked. Prefer logs, state and frame timing; avoid screenshots when possible,
-  and keep GUI screenshots out of the main conversation when possible.
+- Prefer logs, state and frame timing for authorized phone work. Avoid screenshots
+  when possible, and keep GUI screenshots out of the main conversation when possible.
 - Never reboot the whole phone. Restart only relevant scopes when needed. Use
   ordinary replacement for preview updates, never a reboot-dependent staged install.
   Module code must not restart scopes automatically on package replacement.
@@ -42,6 +40,8 @@ not the destination for project links, updates or bug reports.
 - The vertical capsule is a summary. Full text stays in the expanded native card.
   Preserve grapheme clusters and script shaping.
 
-The `hyper-canvas` submodule is an optional upstream dependency. Its provider
-currently trusts the Enhanced package; keep its UI disabled until host identity
-and signing are migrated together.
+Retired implementation and historical diagnostic documents are kept in a verified
+external development archive. Do not restore archived UI, source or dependencies
+without an explicit new request. Preserve copyright, licences and source attribution.
+Public documentation describes the active scope and separates host checks from
+device acceptance; omit local device identifiers and diagnostic dumps.
