@@ -47,6 +47,20 @@ a later session. The workflow template at `tools/ci-check.yml` is ready, but the
 current GitHub OAuth authorization lacks workflow-management permission; hosted
 CI has not been activated.
 
+## Unreleased follow-up after Preview 12
+
+The owner reported that the battery/network status cluster does not align with the
+capsules and bubbles in AOD. The status overlay inherited native keyguard scaling,
+whereas the rail also compensated the resulting horizontal displacement. This
+source-level mismatch is corrected by sharing the AOD/wake anchor lifecycle
+and converting the status ink center's horizontal correction into its parent's
+local coordinates. Native vertical motion, scale and opacity remain inherited.
+
+This follow-up passed 858 host tests in 140 suites and a debug build. It is not
+part of the archived Preview 12 APK. Device acceptance is
+pending: check the status ink and the capsule/bubble centers during AOD entry,
+steady AOD and wake, including when every card is expanded and no capsule is drawn.
+
 ## Previous acceptance retained
 
 The owner accepted vertical text, ordered content expansion, the empty-space

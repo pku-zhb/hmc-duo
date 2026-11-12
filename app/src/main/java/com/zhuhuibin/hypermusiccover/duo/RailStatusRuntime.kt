@@ -1,5 +1,6 @@
 package com.zhuhuibin.hypermusiccover.duo
 
+import android.graphics.Matrix
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewGroupOverlay
@@ -12,6 +13,13 @@ internal object RailStatusRuntime {
     private var parent: ViewGroup? = null
     private var overlay: ViewGroupOverlay? = null
     private var error = "none"
+    private val containerToWindow = Matrix()
+    private val windowInverse = Matrix()
+    private val point = FloatArray(2)
+    private val values = FloatArray(9)
+    private var holdingX = false
+    private var nativeInkX = Float.NaN
+    private var correctedInkX = Float.NaN
 
     @JvmStatic fun update(window: View, plan: RightRailLayout.Plan) {
         runCatching {
@@ -23,7 +31,10 @@ internal object RailStatusRuntime {
                 plan.content.top, density) ?: run { hide(); return@runCatching }
             var offsetX = 0; var offsetY = 0; var node: View? = container
             while (node != null && node !== window) {
-                offsetX += node.left; offsetY += node.top; node = node.parent as? View
+                val ancestor = node.parent as? View
+                offsetX += node.left - (ancestor?.scrollX ?: 0)
+                offsetY += node.top - (ancestor?.scrollY ?: 0)
+                node = ancestor
             }
             if (node !== window) { hide(); return@runCatching }
             if (parent !== container || view == null) {
@@ -44,7 +55,33 @@ internal object RailStatusRuntime {
                     View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY))
                 status.layout(left.roundToInt(), top.roundToInt(), left.roundToInt()+width, top.roundToInt()+height)
             }
-            status.translationX = left-status.left; status.translationY = top-status.top
+            var correctionX = 0f; var correctionY = 0f
+            holdingX = LockScreenRailRuntime.holdRailX()
+            nativeInkX = Float.NaN; correctedInkX = Float.NaN
+            if (holdingX) {
+                containerToWindow.reset(); container.transformMatrixToGlobal(containerToWindow)
+                windowInverse.reset(); window.transformMatrixToGlobal(windowInverse)
+                if (windowInverse.invert(windowInverse)) {
+                    containerToWindow.postConcat(windowInverse)
+                    val inkOffset = RailStatusLayout.CENTER_X * density / RailStatusLayout.REFERENCE_DENSITY
+                    // Start from canonical layout, excluding our previous translation. The
+                    // visible ring is centered at 98, not half the 205-pixel surface width.
+                    point[0] = left + inkOffset
+                    point[1] = top + bounds.height() / 2f
+                    containerToWindow.mapPoints(point)
+                    containerToWindow.getValues(values)
+                    nativeInkX = point[0]
+                    // Preserve the original physical-pixel rounding in place() at scale 1.
+                    RailStatusLayout.pinX(bounds.left + inkOffset, point[0],
+                        values[Matrix.MSCALE_X], values[Matrix.MSKEW_X],
+                        values[Matrix.MSKEW_Y], values[Matrix.MSCALE_Y])?.let {
+                        correctionX = it.x; correctionY = it.y
+                        correctedInkX = nativeInkX + values[Matrix.MSCALE_X] * it.x + values[Matrix.MSKEW_X] * it.y
+                    }
+                }
+            }
+            status.translationX = left-status.left + correctionX
+            status.translationY = top-status.top + correctionY
             status.visibility = View.VISIBLE
             status.setListening(true)
         }.onFailure {
@@ -56,6 +93,7 @@ internal object RailStatusRuntime {
     }
 
     @JvmStatic fun hide() {
+        holdingX = false; nativeInkX = Float.NaN; correctedInkX = Float.NaN
         view?.apply { visibility = View.INVISIBLE; setListening(false) }
     }
     @JvmStatic fun detach() {
@@ -63,5 +101,6 @@ internal object RailStatusRuntime {
         view?.let { overlay?.remove(it) }
         view = null; parent = null; overlay = null
     }
-    @JvmStatic fun describe() = "${view?.describe() ?: "not attached"} error=$error"
+    @JvmStatic fun describe() = "${view?.describe() ?: "not attached"} holdX=$holdingX " +
+        "nativeInkX=$nativeInkX correctedInkX=$correctedInkX error=$error"
 }
