@@ -24,6 +24,79 @@ internal object NumState {
     private val listeners = CopyOnWriteArrayList<(Boolean) -> Unit>()
     private val artworkScrollStates = java.util.WeakHashMap<Any, ArtworkScrollState>()
     private val presentation = NotificationFoldState()
+    private val exposure = NotificationListExposure()
+    private var exposureQueued = false
+    private var exposureUntil = 0L
+
+    fun shouldClickToList(): Boolean? = runCatching {
+        value(model() ?: return null, "getShouldNotifClickToList") as? Boolean
+    }.getOrNull()
+
+    fun notificationListVisible(): Boolean = NotificationListExposure.isList(
+        state(), shouldClickToList(), MiniPlayerRuntime.notificationRowsVisible())
+
+    /** The native click strategy finishes STACK -> LIST after the first scroll has landed. */
+    private fun clickList() = runCatching {
+        val owner = model() ?: return@runCatching
+        val unit = Class.forName(listOf("kotlin", "Unit").joinToString("."), false,
+            owner.javaClass.classLoader).getField("INSTANCE").get(null)
+        Xp.callMethod(Xp.getObjectField(owner, "_onClicked"), "tryEmit", unit)
+        trace("rail requested native list click")
+    }.onFailure { trace("rail list click unavailable: $it") }
+
+    fun requestList(why: String): Boolean {
+        if (!exposure.opening) exposure.request(SystemClock.uptimeMillis())
+        val result = goTo("LIST", why = why)
+        if (!result.startsWith("scrollY")) {
+            exposure.cancelOpen()
+            return false
+        }
+        LockIslands.refreshPresentation()
+        checkExposureSoon()
+        return true
+    }
+
+    /** Event-driven, bounded settling: no idle frame loop or delayed work after leaving keyguard. */
+    fun checkExposureSoon() {
+        if (!folding || !MiniPlayerRuntime.detachedRail()) return
+        exposureUntil = SystemClock.uptimeMillis() + 2800L
+        queueExposure()
+    }
+
+    private fun queueExposure() {
+        if (exposureQueued) return
+        exposureQueued = true
+        main.postDelayed(exposureCheck, 64L)
+    }
+
+    private val exposureCheck = object : Runnable {
+        override fun run() {
+            exposureQueued = false
+            val active = folding && MiniPlayerRuntime.detachedRail() && Main.screenOnCached() &&
+                Main.onKeyguardNow() && !Main.bouncerShown() && !MiniPlayerScene.aodActive &&
+                !MiniPlayerScene.keyguardGoingAway && LockIslands.foldsToCount()
+            val now = SystemClock.uptimeMillis()
+            val nativeState = state()
+            val before = exposure.holdsIsland
+            when (exposure.observe(now, active, busy(), nativeState, shouldClickToList(),
+                    active && MiniPlayerRuntime.notificationRowsVisible(), presentation.collapsed)) {
+                NotificationListExposure.Action.OPENED -> {
+                    choosePresentation(false)
+                    trace("rail list confirmed visible")
+                }
+                NotificationListExposure.Action.CLICK_LIST -> clickList()
+                NotificationListExposure.Action.RETRY_LIST -> goTo("LIST", why = "rail list remeasure")
+                NotificationListExposure.Action.CAPTURE -> {
+                    choosePresentation(true)
+                    goTo("NUMBER", why = "rail captured hidden native pile")
+                }
+                NotificationListExposure.Action.NONE -> {}
+            }
+            if (before != exposure.holdsIsland) LockIslands.refreshPresentation()
+            if (active && (exposure.opening || now < exposureUntil)) queueExposure()
+        }
+    }
+
 
     /** Seed before entry scrolls, even when ordinary notifications have not arrived yet. */
     fun seedPresentation(collapsed: Boolean, innerLandscape: Boolean) {
@@ -33,13 +106,17 @@ internal object NumState {
         if (folding) forceDefault(true)
     }
 
-    fun beginLockSession() = presentation.beginSession()
+    fun beginLockSession() {
+        presentation.beginSession()
+        exposure.reset()
+    }
 
     /** The saved lock-screen choice, independent of the rows' transient sleep/wake visibility. */
     fun presentationCollapsed(): Boolean = presentation.collapsed
 
-    fun representedByIsland(): Boolean = presentation.representedByIsland(
-        inNumber ?: (state() == "NUMBER"), MiniPlayerRuntime.detachedRail())
+    fun representedByIsland(): Boolean =
+        (MiniPlayerRuntime.detachedRail() && exposure.holdsIsland) || presentation.representedByIsland(
+            inNumber ?: (state() == "NUMBER"), MiniPlayerRuntime.detachedRail())
 
     /** Native AOD geometry callbacks must not call this: only explicit presentation actions do. */
     fun choosePresentation(collapsed: Boolean) {
@@ -178,6 +255,7 @@ internal object NumState {
                     // A repeated NUMBER callback can complete an explicit return after the
                     // previous AOD session already cached true. Reconcile publication anyway.
                     listeners.forEach { runCatching { it(value) } }
+                    checkExposureSoon()
                     result
                 }
             }
@@ -212,6 +290,7 @@ internal object NumState {
                         val before = if (tracking) position() else null
                         val result = chain.proceed()
                         if (tracking && position() != before) LockIslands.notificationArtworkMotion(before)
+                        if (changed) checkExposureSoon()
                         result
                     }
                 }.onFailure { Xp.log("MCNum: $name artwork hook unavailable: $it") }
@@ -254,7 +333,9 @@ internal object NumState {
         if (kotlin.math.abs(stack - target) >= 1f && !pileAt(model, info, target)) return null
         // Swiped up, it is the list being opened: with one notification the list rests where the
         // pile does, and a swipe up from the media card folded straight back (2026-10-24).
-        if (MiniPlayerRuntime.stackSwipedUp) {
+        if (MiniPlayerRuntime.detachedRail() && shouldClickToList() == false &&
+            MiniPlayerRuntime.notificationRowsVisible()) return null
+        if (MiniPlayerRuntime.stackSwipedUp && !MiniPlayerRuntime.detachedRail()) {
             trace("hands up at the pile after a swipe up: left open ($target)")
             return null
         }
@@ -274,6 +355,7 @@ internal object NumState {
         val number = Xp.callMethod(Xp.getObjectField(factory, "numberStrategy"), "get")
         val foldedTop = (Xp.callMethod(number, "calculateTargetYPosition", info) as Number).toFloat()
         choosePresentation(kotlin.math.abs(target - foldedTop) < 1f)
+        checkExposureSoon()
     }
 
     /**
@@ -456,6 +538,7 @@ internal object NumState {
     fun goTo(state: String, anim: Boolean = true, why: String): String = runCatching {
         val model = model() ?: return "no model"
         val stack = MiniPlayerRuntime.stackForProbe() ?: return "no stack"
+        if (state == "NUMBER") exposure.cancelOpen()
         val y = scrollFor(model, state)
         val refactor = Xp.callMethod(Xp.getObjectField(model, "notifContainerRefactor"), "get")
         val scroller = Xp.callMethod(refactor, "getOverScroller")
@@ -543,6 +626,7 @@ internal object NumState {
      * never while the stack is being moved or is the list the user opened.
      */
     fun foldIfPiled(why: String) {
+        checkExposureSoon()
         if (!presentation.autoFold(folding)) return
         main.removeCallbacks(foldCheck)
         foldWhy = why
