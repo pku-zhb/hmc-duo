@@ -441,7 +441,8 @@ public class Main extends XposedModule {
     static volatile boolean sRightRail, sReflowLockContent, sFollowNativeMaterial;
     static volatile boolean sHideChargingHint = true;
     static volatile boolean sHideLockStatusBar = true;
-    static volatile boolean sArtworkClockRow = true;
+    static volatile boolean sArtworkClockRow = true; // Legacy backup compatibility.
+    static volatile int sArtworkClockDestination = ArtworkClockDestination.DATE_ROW;
     static volatile boolean sArtworkClockBeforeDate = true;
     static volatile boolean sForceNotificationFloor = true;
     static volatile boolean sCoverOnTap;
@@ -2132,6 +2133,7 @@ public class Main extends XposedModule {
                     + "\nfollowNativeMaterial=" + (sFollowNativeMaterial ? 1 : 0)
                     + "\nhideLockStatusBar=" + (sHideLockStatusBar ? 1 : 0)
                     + "\nartworkClockRow=" + (sArtworkClockRow ? 1 : 0)
+                    + "\nartworkClockDestination=" + sArtworkClockDestination
                     + "\nartworkClockBeforeDate=" + (sArtworkClockBeforeDate ? 1 : 0)
                     + "\nhideChargingHint=" + (sHideChargingHint ? 1 : 0)
                     + "\nforceNotificationFloor=" + (sForceNotificationFloor ? 1 : 0)
@@ -2310,7 +2312,14 @@ public class Main extends XposedModule {
                         else if ("reflowLockContent".equals(k)) sReflowLockContent = "1".equals(v);
                         else if ("followNativeMaterial".equals(k)) sFollowNativeMaterial = "1".equals(v);
                         else if ("hideLockStatusBar".equals(k)) sHideLockStatusBar = "1".equals(v);
-                        else if ("artworkClockRow".equals(k)) sArtworkClockRow = "1".equals(v);
+                        else if ("artworkClockRow".equals(k)) {
+                            sArtworkClockRow = "1".equals(v);
+                            sArtworkClockDestination = ArtworkClockDestination.fromLegacy(sArtworkClockRow);
+                        }
+                        else if ("artworkClockDestination".equals(k)) {
+                            sArtworkClockDestination = ArtworkClockDestination.normalize(Integer.parseInt(v));
+                            sArtworkClockRow = sArtworkClockDestination == ArtworkClockDestination.DATE_ROW;
+                        }
                         else if ("artworkClockBeforeDate".equals(k)) sArtworkClockBeforeDate = "1".equals(v);
                         else if ("hideChargingHint".equals(k)) sHideChargingHint = "1".equals(v);
                         else if ("forceNotificationFloor".equals(k)) sForceNotificationFloor = "1".equals(v);
@@ -2594,10 +2603,17 @@ public class Main extends XposedModule {
                         setResultData(FoldMusicRuntime.describe());
                     } else if ("railsetting".equals(op)) {
                         String key = i.getStringExtra("key");
-                        if (i.hasExtra("on")) {
+                        if (i.hasExtra("on") || "artworkClockDestination".equals(key) && i.hasExtra("v")) {
                             boolean on = i.getBooleanExtra("on", false);
-                            if ("hideLockStatusBar".equals(key)) { sHideLockStatusBar = on; LockscreenStatusBar.refresh(); }
-                            else if ("artworkClockRow".equals(key)) sArtworkClockRow = on;
+                            if ("artworkClockDestination".equals(key)) {
+                                sArtworkClockDestination = ArtworkClockDestination.normalize(i.getIntExtra("v", ArtworkClockDestination.DATE_ROW));
+                                sArtworkClockRow = sArtworkClockDestination == ArtworkClockDestination.DATE_ROW;
+                            }
+                            else if ("hideLockStatusBar".equals(key)) { sHideLockStatusBar = on; LockscreenStatusBar.refresh(); }
+                            else if ("artworkClockRow".equals(key)) {
+                                sArtworkClockRow = on;
+                                sArtworkClockDestination = ArtworkClockDestination.fromLegacy(on);
+                            }
                             else if ("artworkClockBeforeDate".equals(key)) sArtworkClockBeforeDate = on;
                             else if ("rightRail".equals(key)) sRightRail = on;
                             else if ("reflowLockContent".equals(key)) sReflowLockContent = on;
@@ -3324,6 +3340,7 @@ public class Main extends XposedModule {
                         out.putBoolean("followNativeMaterial", sFollowNativeMaterial);
                         out.putBoolean("hideLockStatusBar", sHideLockStatusBar);
                         out.putBoolean("artworkClockRow", sArtworkClockRow);
+                        out.putInt("artworkClockDestination", sArtworkClockDestination);
                         out.putBoolean("artworkClockBeforeDate", sArtworkClockBeforeDate);
                         out.putBoolean("hideChargingHint", sHideChargingHint);
                         out.putBoolean("forceNotificationFloor", sForceNotificationFloor);

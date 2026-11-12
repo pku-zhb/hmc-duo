@@ -24,7 +24,7 @@ final class CompactClockRowRuntime {
 
     static boolean requested() {
         ScreenGeometry s = Main.screenGeometry();
-        return CompactClockRowLayout.requested(Main.sArtworkClockRow, s.width, s.height,
+        return CompactClockRowLayout.requested(Main.sArtworkClockDestination == ArtworkClockDestination.DATE_ROW, s.width, s.height,
                 s.densityDpi / 160f, Main.coverModeOn(), LockLyrics.playerChosen(),
                 LockLyrics.notificationCompact()) && !ImmersiveHost.holdsClock();
     }
@@ -32,6 +32,20 @@ final class CompactClockRowRuntime {
     static boolean outerDisplay() {
         ScreenGeometry s = Main.screenGeometry();
         return CompactClockRowLayout.outerDisplay(s.width, s.height, s.densityDpi / 160f);
+    }
+
+    /** Never fade a clock target that also owns the date or hide an unresolved time face. */
+    static boolean statusSupported() {
+        View date = Main.visibleDate();
+        if (date == null) return false;
+        boolean found = false;
+        for (View root : Main.clockRoots()) {
+            View target = Main.clockTarget(root);
+            if (target == null) continue;
+            if (descendant(date, target)) return false;
+            found = true;
+        }
+        return found;
     }
 
     /** Clock discovery still measures a face hidden only by our replacement-time crossfade. */
@@ -121,13 +135,7 @@ final class CompactClockRowRuntime {
         }
         float alpha = CompactClockRowLayout.alpha(progress);
         drawnProgress = progress;
-        for (View root : Main.clockRoots()) {
-            View g = Main.clockTarget(root);
-            if (g == null) continue;
-            Alpha lease = clocks.get(g);
-            if (lease == null) { lease = new Alpha(g.getAlpha()); clocks.put(g, lease); }
-            lease.apply(g, 1f - alpha);
-        }
+        applyClockAlpha(1f - alpha);
         DatePose date = dates.get(p.date);
         if (date == null) { date = new DatePose(p.date); dates.put(p.date, date); }
         date.apply(p, progress);
@@ -166,6 +174,26 @@ final class CompactClockRowRuntime {
             time.layout(left, top, left + width, top + height);
         time.setTranslationX(x - left); time.setTranslationY(y - top);
         time.show(alpha * inheritedAlpha, -metrics.top);
+    }
+
+    /** The status time crossfades in place; the native clock keeps its own geometry. */
+    static void applyStatus(float alpha) {
+        if (!(alpha > 0f)) { clear(); return; }
+        if (time != null) time.hide();
+        for (Map.Entry<View, DatePose> item : dates.entrySet()) item.getValue().restore(item.getKey());
+        dates.clear();
+        drawnProgress = 0f;
+        applyClockAlpha(1f - alpha);
+    }
+
+    private static void applyClockAlpha(float alpha) {
+        for (View root : Main.clockRoots()) {
+            View g = Main.clockTarget(root);
+            if (g == null) continue;
+            Alpha lease = clocks.get(g);
+            if (lease == null) { lease = new Alpha(g.getAlpha()); clocks.put(g, lease); }
+            lease.apply(g, alpha);
+        }
     }
 
     static void clear() {

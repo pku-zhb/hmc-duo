@@ -547,16 +547,18 @@ private fun ClockGroup(
 ) {
     val context = LocalContext.current
     Column {
-        SwitchPreference(
-            title = stringResource(R.string.clock_artwork_row),
-            summary = stringResource(R.string.clock_artwork_row_summary),
-            checked = module.artworkClockRow, enabled = enabled,
-            onCheckedChange = {
-                onChange(module.copy(artworkClockRow = it))
-                ModuleBridge.setRailSetting(context, "artworkClockRow", it)
+        WindowDropdownPreference(
+            title = stringResource(R.string.clock_artwork_destination),
+            items = listOf(stringResource(R.string.clock_artwork_shrink),
+                stringResource(R.string.clock_artwork_date), stringResource(R.string.clock_artwork_status)),
+            selectedIndex = module.artworkClockDestination, enabled = enabled,
+            onSelectedIndexChange = {
+                onChange(module.copy(artworkClockDestination = it,
+                    artworkClockRow = it == 1))
+                ModuleBridge.setArtworkClockDestination(context, it)
             },
         )
-        if (module.artworkClockRow) WindowDropdownPreference(
+        if (module.artworkClockDestination == 1) WindowDropdownPreference(
             title = stringResource(R.string.clock_artwork_row_side),
             items = listOf(stringResource(R.string.clock_artwork_row_left), stringResource(R.string.clock_artwork_row_right)),
             selectedIndex = if (module.artworkClockBeforeDate) 0 else 1, enabled = enabled,
@@ -566,7 +568,7 @@ private fun ClockGroup(
             },
         )
         // Cap the collapsed clock at 55% to leave enough space for the big artwork.
-        ValueSlider(
+        if (module.artworkClockDestination == 0) ValueSlider(
             title = stringResource(R.string.clock_size),
             summary = stringResource(R.string.clock_size_summary),
             value = (if (module.clockSize > 0f) module.clockSize else DEFAULT_CLOCK_SIZE)

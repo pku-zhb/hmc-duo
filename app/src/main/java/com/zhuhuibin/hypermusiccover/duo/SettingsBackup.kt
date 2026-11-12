@@ -72,6 +72,17 @@ object SettingsBackup {
             put(extra, value)
         }
     }
+    /** A missing module section must not reset a device's selected clock destination. */
+    internal fun readArtworkClockDestination(json: JSONObject): Int? = when {
+        json.has("artworkClockDestination") -> runCatching {
+            ArtworkClockDestination.normalize(json.getInt("artworkClockDestination"))
+        }.getOrNull()
+        json.has("artworkClockRow") -> runCatching {
+            ArtworkClockDestination.fromLegacy(json.getBoolean("artworkClockRow"))
+        }.getOrNull()
+        else -> null
+    }
+
     /** Older Fold backups stored inactive backdrop switches; importing them must stay native. */
     internal fun readBackdropSettings(json: JSONObject): Map<String, Boolean> {
         val keys = listOf(KEY_HIDE_PLAYER_BACKGROUND, KEY_GLOW_DRIFT, KEY_MESH_BACKDROP)
@@ -119,7 +130,8 @@ object SettingsBackup {
             json.put("hideChargingHint", module.hideChargingHint)
             json.put("forceNotificationFloor", module.forceNotificationFloor)
             json.put("hideLockStatusBar", module.hideLockStatusBar)
-            json.put("artworkClockRow", module.artworkClockRow)
+            json.put("artworkClockRow", module.artworkClockDestination == ArtworkClockDestination.DATE_ROW)
+            json.put("artworkClockDestination", module.artworkClockDestination)
             json.put("artworkClockBeforeDate", module.artworkClockBeforeDate)
             json.put("wallpaperDim", module.wallpaperDim)
             if (module.clockSize > 0f) json.put(KEY_CLOCK_SIZE, module.clockSize.toDouble())
@@ -173,9 +185,10 @@ object SettingsBackup {
                 ModuleBridge.setFoldMusicLayout(context, obj.getBoolean("foldMusicLayout"))
             }
             for (key in listOf("rightRail", "reflowLockContent", "followNativeMaterial", "hideChargingHint",
-                "forceNotificationFloor", "hideLockStatusBar", "artworkClockRow", "artworkClockBeforeDate")) {
+                "forceNotificationFloor", "hideLockStatusBar", "artworkClockBeforeDate")) {
                 if (obj.has(key)) ModuleBridge.setRailSetting(context, key, obj.getBoolean(key))
             }
+            readArtworkClockDestination(obj)?.let { ModuleBridge.setArtworkClockDestination(context, it) }
             if (obj.has(KEY_COVER_STYLE)) {
                 ModuleBridge.setCoverStyle(context, "mode",
                     if (obj.optInt("backdropSchema", 0) >= 1) obj.getInt(KEY_COVER_STYLE).toFloat() else 1f)

@@ -84,6 +84,7 @@ internal object RailStatusRuntime {
             status.translationY = top-status.top + correctionY
             status.visibility = View.VISIBLE
             status.setListening(true)
+            refreshTime()
         }.onFailure {
             hide()
             if (error != it.javaClass.simpleName) {
@@ -94,8 +95,20 @@ internal object RailStatusRuntime {
 
     @JvmStatic fun hide() {
         holdingX = false; nativeInkX = Float.NaN; correctedInkX = Float.NaN
-        view?.apply { visibility = View.INVISIBLE; setListening(false) }
+        view?.apply { visibility = View.INVISIBLE; setTimeAlpha(0f); setListening(false) }
     }
+
+    /** Called after the shared clock pose is written, independent of pre-draw listener order. */
+    @JvmStatic fun refreshTime() {
+        view?.setTimeAlpha(if (timeAvailable()) ClockCollapse.statusTimeAlpha() else 0f)
+    }
+    /** Do not hide the native clock until its destination exists, independent of fade progress. */
+    @JvmStatic fun timeAvailable(): Boolean = LockScreenRailRuntime.active() &&
+        // OverlayViewGroup is not parented to its host; use the retained real host for sight.
+        view?.let { it.isAttachedToWindow && it.visibility == View.VISIBLE } == true &&
+        parent?.let { it.isAttachedToWindow && it.isShown } == true &&
+        Main.keyguardLocked() && !Main.bouncerShown() && !MiniPlayerScene.keyguardGoingAway
+
     @JvmStatic fun detach() {
         hide()
         view?.let { overlay?.remove(it) }

@@ -437,6 +437,10 @@
     <string name="cover_background_artwork">封面背景</string>
     <string name="cover_background_dynamic">动态封面色彩</string>
     <string name="cover_background_blur">背景模糊</string>
+    <string name="clock_artwork_destination">外屏展开封面／歌词时的时间位置</string>
+    <string name="clock_artwork_shrink">原位缩小</string>
+    <string name="clock_artwork_date">收到日期行</string>
+    <string name="clock_artwork_status">显示在右上状态图标</string>
     <string name="clock_artwork_row">时间收进日期行</string>
     <string name="clock_artwork_row_summary">外屏展开封面或歌词时，将大时钟缩入日期行；全屏 AOD 保持此布局。</string>
     <string name="clock_artwork_row_side">小时间位置</string>
