@@ -356,6 +356,7 @@ internal object NumState {
     }
 
     fun addListener(l: (Boolean) -> Unit) { listeners.addIfAbsent(l) }
+    fun removeListener(l: (Boolean) -> Unit) { listeners.remove(l) }
 
     /** The islands take over the ordinary notifications' folding, or give it back. */
     fun setFolding(on: Boolean) {

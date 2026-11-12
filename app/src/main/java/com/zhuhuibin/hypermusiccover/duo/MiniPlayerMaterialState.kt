@@ -6,6 +6,37 @@ package com.zhuhuibin.hypermusiccover.duo
  * reference would change with it and always read as equal. From TakeKazeX's PR #15.
  */
 internal object MiniPlayerMaterialState {
+    /** Compare committed values in follow mode, without replacing the independent OEM recipe. */
+    fun committedSignatureArgs(methodName: String, args: Array<Any?>, viewAt: Int,
+                               glass: FloatArray?, blur: IntArray?,
+                               background: GlassProfile.Background? = null): List<Any?> {
+        val glassAt = if (methodName == "setMiGlassCompat" && glass != null)
+            args.indices.singleOrNull { args[it] is FloatArray } else null
+        val radiusAt = if (methodName == "setMiGlassBlurRadius" && blur?.size == 2)
+            args.indices.filter { args[it] is Int }.takeIf { it.size == 2 } else null
+        val backgroundRadiusAt = if (methodName == "setMiBackgroundBlurRadiusCompat" && background != null)
+            args.indices.singleOrNull { args[it] is Int } else null
+        val scaleAt = if (methodName == "setMiBackgroundBlurScaleRatioCompat" && background != null)
+            args.indices.singleOrNull { args[it] is Float } else null
+        val paletteAt = if (methodName == "applyElementViewBlend" && background != null)
+            args.indices.singleOrNull { args[it] is IntArray } else null
+        val palette = background?.let { state ->
+            val colors = state.colors(); val modes = state.modes()
+            colors.indices.flatMap { listOf(colors[it], modes[it]) }
+        }
+        return args.mapIndexed { index, value ->
+            when {
+                index == viewAt -> null
+                index == glassAt -> snapshot(glass)
+                radiusAt != null && index in radiusAt -> blur!![radiusAt.indexOf(index)]
+                index == backgroundRadiusAt -> background!!.radius
+                index == scaleAt -> background!!.scale
+                index == paletteAt -> palette
+                else -> snapshot(value)
+            }
+        }
+    }
+
     /** Native glass needs both the element and its attached blur container to have bounds. */
     class LayoutGate {
         var appliedGeneration: Int? = null

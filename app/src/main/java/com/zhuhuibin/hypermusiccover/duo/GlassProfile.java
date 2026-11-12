@@ -38,4 +38,32 @@ final class GlassProfile {
                     && nightMode == other.nightMode && awake == other.awake;
         }
     }
+
+    /** Values read from the View's committed background state, not from a caller's arguments. */
+    static final class Background {
+        final int radius, nightMode;
+        final float scale;
+        final boolean awake;
+        private final int[] colors, modes;
+
+        private Background(int radius, float scale, int[] colors, int[] modes, int nightMode, boolean awake) {
+            this.radius = radius; this.scale = scale; this.colors = colors.clone(); this.modes = modes.clone();
+            this.nightMode = nightMode; this.awake = awake;
+        }
+
+        static Background capture(int radius, float scale, int[] colors, int[] modes, int nightMode, boolean awake) {
+            if (radius < 0 || !Float.isFinite(scale) || scale < 0f || colors == null || modes == null ||
+                    colors.length != modes.length) return null;
+            return new Background(radius, scale, colors, modes, nightMode, awake);
+        }
+
+        boolean forScene(int nightMode, boolean awake) { return this.nightMode == nightMode && this.awake == awake; }
+        int[] colors() { return colors.clone(); }
+        int[] modes() { return modes.clone(); }
+        boolean same(Background other) {
+            return other != null && radius == other.radius && Float.compare(scale, other.scale) == 0 &&
+                    nightMode == other.nightMode && awake == other.awake &&
+                    java.util.Arrays.equals(colors, other.colors) && java.util.Arrays.equals(modes, other.modes);
+        }
+    }
 }
