@@ -19,6 +19,15 @@ not automatically verified on every device, display or OS version.
 
 ## Current acceptance scope
 
+### Preview 17 AOD performance
+
+The owner reported severe AOD and native-island animation slowdown with the
+Preview 16 / Lite Preview 3 pair. A read-only CPU sample identified repeated
+reflection and exception construction in Lite, with HMC-side palette/source
+processing amplifying the shared material path. This iteration changes HMC only;
+Lite receives a separate implementation handoff. See the
+[Preview 17 record](releases/preview-17.md). Device improvement is not yet accepted.
+
 ### Preview 16 compatibility handoff
 
 The HMC side now separates default music material ownership, committed native
