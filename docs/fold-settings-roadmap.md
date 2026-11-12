@@ -84,6 +84,11 @@ staging outside synced storage. Build logs and verification receipts remain in
 `/tmp`, not the reading inbox. No phone transfer, installation, restart or live
 verification was performed. Device checks below remain pending the owner's report.
 
+The owner subsequently designated `02 Personal Files/Miduo/` as the default
+user-facing version archive and requested direct cc-connect attachment delivery.
+Preview 7 is also retained there with the same verified hash; preview 3–6 were
+already present in that directory. Future preview archives use that location.
+
 This iteration's device acceptance only:
 
 - With all categories folded, start upward swipes at high, middle and low empty

@@ -9,6 +9,11 @@ not the destination for project links, updates or bug reports.
   Do not accumulate unrelated work until the end.
 - Preserve upstream copyright, licence notices and retained trial APKs. Remove
   retired code only after checking its callers.
+- Deliver preview APK attachments with `cc-connect send --file` to the current
+  conversation. Report delivery only after the CLI confirms success.
+  The default user-facing version archive is
+  `~/Harbor Drive/02 Personal Files/Miduo/`. Preserve versioned filenames and verify
+  archive copies against the retained APK under `releases/local/`.
 - Use `tools/build.sh` for local Gradle tasks. Builds, test reports and temporary
   files belong on the mounted Harbor DevCache volume. Never create a missing mount.
 - Keep signing material outside source control and synced storage. A debug-signed
