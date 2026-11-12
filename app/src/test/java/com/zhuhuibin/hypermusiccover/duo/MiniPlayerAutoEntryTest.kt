@@ -23,7 +23,7 @@ class MiniPlayerAutoEntryTest {
         val normalized = JSONObject(MiniPlayerConfig.normalizedJson(
             """{"enabled":true,"mediaCollapsedDefault":true,"backgroundBlur":true,"notificationDropDp":24}"""))
         assertTrue(normalized.getBoolean(MiniPlayerConfig.MEDIA_COLLAPSED_DEFAULT))
-        assertFalse(normalized.getBoolean(MiniPlayerConfig.BACKGROUND_BLUR))
+        assertFalse(normalized.has("backgroundBlur"))
         org.junit.Assert.assertEquals(24.0, normalized.getDouble(MiniPlayerConfig.NOTIFICATION_DROP), 0.0)
     }
 
@@ -33,9 +33,9 @@ class MiniPlayerAutoEntryTest {
             .getBoolean(MiniPlayerConfig.LIST_WITHOUT_PLAYER))
     }
 
-    @Test fun noteTextScrollingStaysDisabledPendingRedesign() {
-        assertFalse(JSONObject(MiniPlayerConfig.defaultJson()).getBoolean(MiniPlayerConfig.NOTE_TEXT_SCROLL))
-        assertFalse(JSONObject(MiniPlayerConfig.normalizedJson("""{"noteTextScroll":false}"""))
-            .getBoolean(MiniPlayerConfig.NOTE_TEXT_SCROLL))
+    @Test fun archivedNotificationScrollingIsNotReintroducedByImport() {
+        assertFalse(JSONObject(MiniPlayerConfig.defaultJson()).has("noteTextScroll"))
+        assertFalse(JSONObject(MiniPlayerConfig.normalizedJson("""{"noteTextScroll":true}"""))
+            .has("noteTextScroll"))
     }
 }

@@ -99,14 +99,11 @@ final class ClockCollapse {
 
     /** Whether the doze about to start should keep our clock. Read once, at the start of sleep. */
     private static boolean keepInAod() {
-        // Canvas and its artwork backdrop retain the upper clock pose in full-screen AOD.
-        if (LockHold.heldBy(LockHold.Owner.CANVAS) && !Main.coverModeOn()
-                && !ImmersiveHost.holdsClock())
-            return CanvasHostBridge.keepsClockInAod() && Main.fullAodOn();
         // An immersive page as well as the cover: the full-screen doze keeps the page under the
         // clock (ImmersiveHost), and only that doze - the plain one is the OEM's, page and clock
         // alike.
-        return Main.sAodSmall && Main.fullAodOn();
+        return (Main.sAodSmall || CompactClockRowRuntime.requested()
+                && compactRowPlan(Main.visibleDate()) != null) && Main.fullAodOn();
     }
 
     /**
@@ -118,6 +115,19 @@ final class ClockCollapse {
 
     /** Spring position (0 = where the transition started, 1 = its destination) and velocity. */
     private static float sT = 1f, sTv = 0f;
+    /** Native glyph motion, date reflow and the replacement time all use the same spring. */
+    private static float sRowFrom, sRowProgress;
+    private static boolean sRowTarget;
+    private static boolean sRowAvailable;
+    private static CompactClockRowRuntime.Plan sRowPlan;
+
+    static boolean compactRowMoving() { return sRowProgress > 0f || sRowTarget; }
+    static boolean compactRowRequested() { return sRowAvailable; }
+
+    private static CompactClockRowRuntime.Plan compactRowPlan(View date) {
+        return CompactClockRowRuntime.prepare(date, coverDateY(date)
+                + Main.sClockOffsetDp * Main.density());
+    }
     private static Choreographer.FrameCallback sFrame;
     /** A spring whose frames stop - the display going to doze - is landed by this instead. */
     private static final long LAND_ANYWAY_MS = 1500L;
@@ -275,6 +285,11 @@ final class ClockCollapse {
         RectF box = Main.glyphBox(true);
         if (g == null || box == null || box.height() <= 0f) return Float.NaN;
         float bottom = drawnY(g, box.centerX(), box.bottom);
+        if (sRowProgress > 0f && sRowPlan != null) {
+            View date = sRowPlan.date;
+            bottom = Math.max(bottom, drawnY(date, sRowPlan.inkLeft,
+                    sRowPlan.baseline + sRowPlan.text.getPaint().getFontMetrics().descent));
+        }
         Live m = LIVE;
         for (int i = 0; i < m.sigN; i++) {
             Sig s = m.sig[i];
@@ -462,6 +477,9 @@ final class ClockCollapse {
             sExitToAod = false;
             sT = 1f;
             sTv = 0f;
+            sRowTarget = CompactClockRowRuntime.requested()
+                    && compactRowPlan(Main.visibleDate()) != null;
+            sRowProgress = sRowFrom = sRowTarget ? 1f : 0f;
             hold(targetY(floor, natural));
             Main.setCardProgressFrom(1f);
             sGlassP = 1f;
@@ -617,7 +635,7 @@ final class ClockCollapse {
                 // Cover mode without our clock - unlocked, say. Nothing to walk back; watch the
                 // AOD so the wake has a start.
                 sAodHeld = keepInAod()
-                        && (Main.aodArtworkExpanded() || CanvasHostBridge.keepsClockInAod())
+                        && Main.aodArtworkExpanded()
                         && !Float.isNaN(sCoverRestTop);
                 if (sAodHeld) {
                     sFromTop = sCoverRestTop;
@@ -724,6 +742,8 @@ final class ClockCollapse {
         sAodTop = sFromTop;
         sAodUnit = sFromUnit;
         sAodDate = sFromDate;
+        // The date/time row keeps its lit-screen size in full-screen AOD.
+        if (compactRowMoving() || CompactClockRowRuntime.requested()) return;
         if (Main.effectiveCoverStyle().mode != CoverCardStyle.CARD || !Main.coverModeOn()
                 || LockLyrics.wantsCompactArtwork()) return;
         android.graphics.Bitmap art = CoverCardLayer.currentArt();
@@ -828,13 +848,26 @@ final class ClockCollapse {
         float reference = sizeBase(m, full);
         float requested = Float.isNaN(Main.sClockSize) ? Main.sClockHeightDp * Main.density()
                 : Main.sClockSize * reference;
-        boolean nativeSize = FoldMusicRuntime.innerPortrait()
-                || CoverCardStyle.usesNativeClock(aspect) && nativeLandscapeFits(aspect);
+        boolean cardShape = Main.effectiveCoverStyle().mode == CoverCardStyle.CARD;
+        boolean nativeSize = cardShape && (FoldMusicRuntime.innerPortrait()
+                || CoverCardStyle.usesNativeClock(aspect) && nativeLandscapeFits(aspect));
         float unit = ClockSizePolicy.coverUnit(requested, reference, full,
-                CoverCardStyle.clockScale(aspect), Main.MIN_CLOCK_K, nativeSize ? 1f : 0f);
+                cardShape ? CoverCardStyle.clockScale(aspect) : 1f,
+                Main.MIN_CLOCK_K, nativeSize ? 1f : 0f);
         if (unit > full) unit = full;
         unit = fitPortraitCoverClock(m, unit, full);
         float bottom = artworkContentBottom(m, unit);
+        if (CompactClockRowRuntime.requested()) {
+            CompactClockRowRuntime.Plan row = compactRowPlan(m.date);
+            if (row != null) {
+                bottom = row.bottom;
+                for (int i = 0; i < m.sigN; i++) {
+                    Sig signature = m.sig[i];
+                    if (signature.v != null && signature.v.isShown())
+                        bottom = Math.max(bottom, row.bottom + signature.gap + signature.v.getHeight());
+                }
+            }
+        }
         View g = firstTarget();
         if (g != null && g.getParent() instanceof View) {
             View parent = (View) g.getParent();
@@ -845,6 +878,7 @@ final class ClockCollapse {
 
     /** The size for the page on screen (ClockPageSize), with the card left in its scene. */
     static void refreshArtworkSize() {
+        sRowAvailable = CompactClockRowRuntime.requested() && compactRowPlan(Main.visibleDate()) != null;
         ClockPageSize.update(active(), sPhase == Phase.ON, sPoseUnit, sPoseTop, sPoseDate,
                 ClockCollapse::nativeLandscapeFits, ClockCollapse::refresh);
     }
@@ -877,6 +911,7 @@ final class ClockCollapse {
     }
 
     static void onDetached() {
+        CompactClockRowRuntime.detach();
         sPoseDrawn = false;
         uninstall();
         // A transition that was running has lost its views; land it where it was going.
@@ -1088,6 +1123,7 @@ final class ClockCollapse {
                 + " aod top=" + Main.r1(sAodTop) + " unit=" + Main.r1(sAodUnit)
                 + " scale own=" + Main.r3(sAodOwnScale) + " chain=" + Main.r3(sAodChainScale)
                 + " size " + ClockPageSize.describe()
+                + " row " + CompactClockRowRuntime.describe()
                 + " | last flight: " + sLastFlight;
     }
 
@@ -1682,6 +1718,9 @@ final class ClockCollapse {
         sFallHow = p + (sExitToAod ? "(to AOD)" : "") + " y=" + Main.r1(naturalY())
                 + " | layout: " + layoutNow();
         sPhase = p;
+        sRowFrom = sRowProgress;
+        sRowTarget = p == Phase.ENTER && CompactClockRowRuntime.requested()
+                && compactRowPlan(Main.visibleDate()) != null;
         sT = 0f;
         sTv = 0f;
         sTPeak = 0f;
@@ -1859,6 +1898,10 @@ final class ClockCollapse {
         sAodHoldY = Float.NaN;
         sT = 1f;
         sTv = 0f;
+        sRowFrom = sRowProgress = 0f;
+        sRowTarget = false;
+        sRowAvailable = false;
+        sRowPlan = null;
         sFromTop = Float.NaN;
         sAodTop = Float.NaN;
         clearAodPend();
@@ -1880,6 +1923,7 @@ final class ClockCollapse {
     }
 
     private static void clearTransforms() {
+        CompactClockRowRuntime.clear();
         for (View root : Main.clockRoots()) {
             View g = Main.clockTarget(root);
             if (g == null) continue;
@@ -2556,6 +2600,7 @@ final class ClockCollapse {
         Phase phase = sPhase;
         if (phase == Phase.OFF) return;
         if (MiniPlayerScene.INSTANCE.getKeyguardGoingAway()) {
+            CompactClockRowRuntime.clear();
             sWaking = false;
             // A direct biometric exit must not start a cover entry from this AOD frame.
             // An already running lit-screen transition keeps its existing handoff.
@@ -2568,7 +2613,38 @@ final class ClockCollapse {
         boolean measured;
         android.os.Trace.beginSection("MC c.measure");
         try { measured = measure(m); } finally { android.os.Trace.endSection(); }
-        if (!measured) return;
+        if (!measured) {
+            CompactClockRowRuntime.clear();
+            return;
+        }
+        if (!CompactClockRowRuntime.outerDisplay() && compactRowMoving()) {
+            // Opening the fold must not carry an outer-display row (including a held AOD)
+            // onto the inner clock. Its existing portrait/landscape policy takes over.
+            sRowFrom = sRowProgress = 0f;
+            sRowTarget = false;
+            sRowPlan = null;
+            CompactClockRowRuntime.clear();
+            if (phase == Phase.AOD) {
+                sAodHeld = false;
+                clearTransforms();
+            } else if (phase == Phase.ON || phase == Phase.ENTER) {
+                enter(true, false, "artwork-clock-inner");
+                phase = sPhase;
+            }
+        }
+        boolean wantsRow = CompactClockRowRuntime.requested();
+        sRowPlan = wantsRow || compactRowMoving() ? compactRowPlan(m.date) : null;
+        wantsRow &= sRowPlan != null;
+        // A player-to-artwork page change may keep the cover owner. Reuse its pose spring so
+        // the big clock, date and new time cannot finish on separate timelines.
+        if (phase == Phase.ON && wantsRow != sRowTarget) {
+            enter(true, false, "artwork-clock-row");
+            phase = sPhase;
+        }
+        if (phase != Phase.AOD) {
+            sRowProgress = phase == Phase.ON ? (sRowTarget ? 1f : 0f)
+                    : CompactClockRowLayout.progress(sRowFrom, sRowTarget, sT);
+        }
         refreshArtworkSize();
 
         if (phase == Phase.AOD) {
@@ -2710,6 +2786,12 @@ final class ClockCollapse {
                 float keptDate = ClockPageSize.keptDate();
                 if (!Float.isNaN(keptDate)) coverDate = keptDate;
             }
+        }
+
+        if (sRowTarget && sRowPlan != null) {
+            coverTop = sRowPlan.top;
+            coverUnit = (sRowPlan.bottom - sRowPlan.top) * m.unit / m.box.height();
+            coverDate = coverDateY(m.date) + offset;
         }
 
         // Notifications. The OEM squeezes its full clock out of their way - down to its minimum
@@ -2894,7 +2976,14 @@ final class ClockCollapse {
             if (Math.abs(g.getTranslationY() - ty) >= 0.25f) g.setTranslationY(ty);
             // The OEM owns anchored X unless the rail has reserved a narrower content area.
             if (m.anchored) {
-                LockScreenRailRuntime.centerClock(g, m.box);
+                if (compactRowMoving()) {
+                    // Do not let the rail's restore lease adopt last frame's row offset as
+                    // an OEM baseline. This pose owns X until its reverse spring lands.
+                    float railX = LockScreenRailRuntime.clockTranslation(g, m.box);
+                    float tx = Float.isFinite(railX) ? railX : 0f;
+                    tx = compactClockX(g, m.box, px, scaleX, tx);
+                    if (Math.abs(g.getTranslationX() - tx) >= 0.25f) g.setTranslationX(tx);
+                } else LockScreenRailRuntime.centerClock(g, m.box);
                 continue;
             }
             // Remembered for the release: a style that swaps faces under us (oriental A) leaves
@@ -2932,6 +3021,7 @@ final class ClockCollapse {
                 inkL = inkL0 + (midX - (inkL0 + m.box.width() * scaleX / 2f)) * k;
             }
             float tx = inkL - inkL0;
+            tx = compactClockX(g, m.box, px, scaleX, tx);
             if (Math.abs(g.getTranslationX() - tx) >= 0.25f) g.setTranslationX(tx);
         }
         if (!m.anchored) {
@@ -2940,7 +3030,7 @@ final class ClockCollapse {
         }
         // The other styles lay their own date out, and it is only moved to follow the offset -
         // unless it sits inside the clock, which carries it already.
-        if (m.anchored && m.date != null && !Float.isNaN(date)) {
+        if ((m.anchored || sRowProgress > 0f) && m.date != null && !Float.isNaN(date)) {
             float dty = date - m.dateTop;
             if (Math.abs(m.date.getTranslationY() - dty) >= 0.25f) {
                 m.date.setTranslationY(dty);
@@ -2964,6 +3054,21 @@ final class ClockCollapse {
             float sty = sInkBottom + s.gap - s.top;
             if (Math.abs(s.v.getTranslationY() - sty) >= 0.25f) s.v.setTranslationY(sty);
         }
+        CompactClockRowRuntime.apply(sRowPlan, sRowProgress);
+        if (sRowPlan != null && sRowProgress > 0f) {
+            // Include the date's descent, not the old multi-line native face's empty box.
+            float rowBottom = date + sRowPlan.baseline
+                    + sRowPlan.text.getPaint().getFontMetrics().descent * sRowPlan.date.getScaleY();
+            if (Float.isFinite(rowBottom)) sInkBottom = Math.max(sInkBottom, rowBottom);
+        }
+    }
+
+    private static float compactClockX(View clock, RectF box, float pivot, float scale, float nativeX) {
+        if (!(sRowProgress > 0f) || sRowPlan == null) return nativeX;
+        float center = parentLeft(clock) + clock.getLeft() + pivot
+                + (box.centerX() - pivot) * scale + nativeX;
+        float destination = sRowPlan.row.timeLeft + sRowPlan.row.timeWidth / 2f;
+        return nativeX + (destination - center) * sRowProgress;
     }
 
     /**

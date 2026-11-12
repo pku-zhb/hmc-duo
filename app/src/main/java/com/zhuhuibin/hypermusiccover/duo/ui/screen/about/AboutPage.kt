@@ -311,6 +311,12 @@ private fun AboutContent(
                             onClick = { uriHandler.openUri("https://github.com/pku-zhb/hypermusiccover-duo/releases") },
                         )
                         ArrowPreference(
+                            title = stringResource(R.string.about_support_duo),
+                            summary = stringResource(R.string.about_support_duo_pending),
+                            enabled = false,
+                            onClick = {},
+                        )
+                        ArrowPreference(
                             title = stringResource(R.string.license_agpl),
                             onClick = { uriHandler.openUri("https://www.gnu.org/licenses/agpl-3.0.txt") },
                         )

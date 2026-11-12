@@ -4,28 +4,14 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class MediaCardConfigTest {
-    @Test fun legacyWaveAndIslandSettingsCannotReactivateHiddenFeatures() {
-        val input = """{"island.btSync":1,"island.btOffset":-100,"island.cover":3,"island.background":5,"island.flow":2,"island.theme":2,"notification.outputWave":1,"notification.visualizer":1,"notification.lockOutputWave":1}"""
+    @Test fun archivedWaveSettingsAreDroppedWhileNativeIslandDefaultsRemain() {
+        val input = """{"island.btSync":1,"island.btOffset":-100,"island.waveColor":3,"island.cover":3,"island.background":5,"island.flow":2,"island.theme":2,"notification.outputWave":1,"notification.visualizer":1,"notification.lockOutputWave":1}"""
         val values = MediaCardConfig.parse(input)
-        for (key in listOf("island.btSync", "island.btOffset", "island.cover", "island.background", "island.flow", "island.theme",
-            "notification.outputWave", "notification.visualizer", "notification.lockOutputWave")) assertEquals(key, 0, values.getValue(key))
+        for (key in listOf("island.btSync", "island.btOffset", "island.waveColor", "notification.outputWave",
+            "notification.visualizer", "notification.lockOutputWave")) assertFalse(key, values.containsKey(key))
+        for (key in listOf("island.cover", "island.background", "island.flow", "island.theme"))
+            assertEquals(key, 0, values.getValue(key))
         assertEquals(values, MediaCardConfig.parse(MediaCardConfig.encode(values)))
-        assertEquals(-250, MediaCardConfig.limit("btOffset", -999))
-        assertEquals(250, MediaCardConfig.limit("btOffset", 999))
-    }
-    @Test fun waveColorDefaultsToTheArtworkGradientAndKeepsTheCustomColour() {
-        val defaults = MediaCardConfig.parse(null)
-        assertEquals(MediaCardConfig.WAVE_GRADIENT, defaults.getValue("island.waveColor"))
-        assertEquals(1 to 2, MediaCardConfig.waveColors(MediaCardConfig.WAVE_GRADIENT, 0, 1, 2))
-        assertEquals(-1 to -1, MediaCardConfig.waveColors(MediaCardConfig.WAVE_WHITE, 0, 1, 2))
-        val dark = MediaCardConfig.WAVE_DARK_COLOR
-        assertEquals(dark to dark, MediaCardConfig.waveColors(MediaCardConfig.WAVE_DARK, 0, 1, 2))
-        val red = 0xFFFF0000.toInt()
-        assertEquals(red to red, MediaCardConfig.waveColors(MediaCardConfig.WAVE_CUSTOM, red, 1, 2))
-        assertEquals(0x40FF0000, MediaCardConfig.limit("waveCustom", 0x40FF0000))
-        assertEquals(3, MediaCardConfig.limit("waveColor", 9))
-        val changed = defaults + ("notification.waveColor" to 3) + ("notification.waveCustom" to red)
-        assertEquals(changed, MediaCardConfig.parse(MediaCardConfig.encode(changed)))
     }
     @Test fun independentProfilesRoundTripWithoutChangingNativeDefaults() {
         val defaults = MediaCardConfig.parse(null)
@@ -66,19 +52,4 @@ class MediaCardConfigTest {
         for (flow in 1..3) assertTrue(MediaCardConfig.customBackground(0, flow))
         for (style in 1..5) assertTrue(MediaCardConfig.customBackground(style, 0))
     }
-    @Test fun outputWavesHaveIndependentLocationsAndDefaultToOff() {
-        val defaults = MediaCardConfig.parse(null)
-        assertEquals("notification.lockOutputWave", MediaCardConfig.outputWaveKey("notification", true))
-        assertEquals("notification.outputWave", MediaCardConfig.outputWaveKey("notification", false))
-        assertEquals("island.outputWave", MediaCardConfig.outputWaveKey("island", true))
-        assertEquals("island.outputWave", MediaCardConfig.outputWaveKey("island", false))
-        assertEquals(0, defaults.getValue("notification.lockOutputWave"))
-        assertEquals(0, defaults.getValue("notification.outputWave"))
-        assertEquals(0, defaults.getValue("island.outputWave"))
-        val changed = defaults + ("notification.lockOutputWave" to 1)
-        assertEquals(defaults, MediaCardConfig.parse(MediaCardConfig.encode(changed)))
-        assertEquals(0, changed.getValue("notification.outputWave"))
-        assertEquals(0, changed.getValue("island.outputWave"))
-    }
-
 }

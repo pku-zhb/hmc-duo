@@ -32,6 +32,7 @@ final class LockScreenLayoutDiagnostics {
             out.put("cardSwipe", Main.cardSwipeState());
             out.put("railDismiss", MiniPlayerRuntime.railDismissState());
             out.put("backdropState", CoverBackdrop.describe());
+            out.put("compactClock", CompactClockRowRuntime.describe());
             out.put("chargingHint", LockScreenChargingHint.INSTANCE.describe());
             out.put("foldLayout", FoldMusicRuntime.describe());
             out.put("cover", Main.coverModeOn());
@@ -66,6 +67,7 @@ final class LockScreenLayoutDiagnostics {
             out.put("shortcutGesture", ShortcutGestureRuntime.describe());
             out.put("shortcutLayout", RailShortcutRuntime.describe());
             out.put("statusCluster", RailStatusRuntime.describe());
+            out.put("statusBar", LockscreenStatusBar.describe());
             out.put("railFooter", NumState.INSTANCE.railFooterState());
             out.put("glass", NativeGlassRelay.describe());
         } catch (Throwable failure) {

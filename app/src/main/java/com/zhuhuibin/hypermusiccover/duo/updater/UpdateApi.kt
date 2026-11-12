@@ -17,7 +17,7 @@ import java.security.MessageDigest
 /**
  * Finding out whether GitHub has a newer release than the one we are running.
  *
- * Only stable releases from the Enhanced fork are considered. The stable line's versionCode is
+ * Only stable releases from the Duo repository are considered. The stable line's versionCode is
  * `(major*10000 + minor*100 + patch) * 1000`. Nightly tags and prereleases are excluded by
  * checking both the tag shape and the `prerelease` flag.
  *
@@ -33,7 +33,7 @@ private const val RELEASES_LIST = "https://api.github.com/repos/$REPO/releases"
  * `v1.2.3`, or a small update on top of it: `v1.2.3-1`, `v1.2.3-rev2`. Numeric parts, each within
  * the width the versionCode packs.
  */
-private val STABLE_TAG = Regex("^v(\\d{1,3})\\.(\\d{1,2})\\.(\\d{1,2})(?:-[A-Za-z]*(\\d{1,3}))?$")
+private val STABLE_TAG = Regex("^v(\\d{1,3})\\.(\\d{1,2})\\.(\\d{1,2})(?:-(?:rev)?(\\d{1,3}))?$")
 
 /** A small update's number in a version name; nightly and dev suffixes are not one, and count as 0. */
 private val REVISION = Regex("^\\d+\\.\\d+\\.\\d+-[A-Za-z]*(\\d{1,3})$")
@@ -49,11 +49,21 @@ internal fun isNewerVersion(remote: String, local: String): Boolean? {
     val l = LEADING_TRIPLE.find(local)?.groupValues?.drop(1)?.map(String::toInt) ?: return null
     val r = LEADING_TRIPLE.find(remote)?.groupValues?.drop(1)?.map(String::toInt) ?: return null
     for (i in 0..2) if (r[i] != l[i]) return r[i] > l[i]
+    val localPreview = Regex("-(preview|alpha|beta|rc)[.-]", RegexOption.IGNORE_CASE).containsMatchIn(local)
+    val remotePreview = Regex("-(preview|alpha|beta|rc)[.-]", RegexOption.IGNORE_CASE).containsMatchIn(remote)
+    if (localPreview != remotePreview) return localPreview
     return revision(remote) > revision(local)
 }
 
 private fun revision(version: String): Int =
     REVISION.find(version)?.groupValues?.get(1)?.toInt() ?: 0
+
+/** A past signer may authorize a successor; the inverse does not authorize a rollback. */
+internal fun acceptsSigningLineage(current: List<String>, candidate: List<String>, history: List<String>): Boolean {
+    if (current.size != 1 || candidate.size != 1) return false
+    return candidate.single() == current.single() ||
+        (history.lastOrNull() == candidate.single() && current.single() in history)
+}
 
 /** One release, as much of it as this app uses. GitHub's release object carries dozens more. */
 internal data class GithubRelease(
@@ -159,7 +169,7 @@ object UpdateApi {
     /**
      * Is this build allowed to update itself at all?
      *
-     * Release checks use the Enhanced repository and the running build's package identity.
+     * Release checks use the Duo repository and the running build's package identity.
      * Downloaded APKs are checked separately by [isOurs].
      *
      * It used to ask `!BuildConfig.DEBUG` as well, and that was the wrong question twice over.
@@ -168,41 +178,24 @@ object UpdateApi {
      * update at all, which is exactly the build an update is being tested on. The signature
      * question moved to [isOurs], where the file it is about actually exists.
      */
-    private const val UPDATES_ENABLED = false
+    private val UPDATES_ENABLED = BuildConfig.OFFICIAL_RELEASE
 
     fun enabled(context: Context): Boolean = UPDATES_ENABLED && context.packageName == BuildConfig.APPLICATION_ID
 
-    /** Accept the requested package only when it is signed by the running Duo build. */
-    fun isOurs(context: Context, file: File, expectedPackage: String = context.packageName): Boolean {
-        val signer = signerOf(context, file, expectedPackage) ?: return false
-        return signer == ownSigner(context)
-    }
-
-    /** SHA-256 of the certificate [file] is signed with, lowercase hex, or null if unreadable. */
-    private fun signerOf(context: Context, file: File, expectedPackage: String): String? = try {
-        context.packageManager
-            .getPackageArchiveInfo(
-                file.absolutePath,
-                PackageManager.PackageInfoFlags.of(PackageManager.GET_SIGNING_CERTIFICATES.toLong()),
-            )
-            ?.takeIf { it.packageName == expectedPackage }
-            ?.signingInfo?.apkContentsSigners?.firstOrNull()
-            ?.toByteArray()?.let(::sha256Hex)
+    /** Accept the installed identity or its forward signing lineage. Android verifies the APK at install. */
+    fun isOurs(context: Context, file: File): Boolean = try {
+        val flags = PackageManager.PackageInfoFlags.of(PackageManager.GET_SIGNING_CERTIFICATES.toLong())
+        val candidate = context.packageManager.getPackageArchiveInfo(file.absolutePath, flags)
+        val own = context.packageManager.getPackageInfo(context.packageName, flags).signingInfo
+        val next = candidate?.takeIf { it.packageName == context.packageName }?.signingInfo
+        if (own == null || next == null || own.hasMultipleSigners() || next.hasMultipleSigners()) false
+        else acceptsSigningLineage(
+            own.apkContentsSigners.map { sha256Hex(it.toByteArray()) },
+            next.apkContentsSigners.map { sha256Hex(it.toByteArray()) },
+            next.signingCertificateHistory.orEmpty().map { sha256Hex(it.toByteArray()) },
+        )
     } catch (_: Exception) {
-        null
-    }
-
-    /** The same, for the app that is running. */
-    private fun ownSigner(context: Context): String? = try {
-        context.packageManager
-            .getPackageInfo(
-                context.packageName,
-                PackageManager.PackageInfoFlags.of(PackageManager.GET_SIGNING_CERTIFICATES.toLong()),
-            )
-            .signingInfo?.apkContentsSigners?.firstOrNull()
-            ?.toByteArray()?.let(::sha256Hex)
-    } catch (_: Exception) {
-        null
+        false
     }
 
     private fun sha256Hex(bytes: ByteArray): String =
@@ -247,7 +240,7 @@ object UpdateApi {
      * The changelog is every stable release newer than the running build, so tapping "update
      * available" reads the whole path from here to the newest - not just the newest release's own
      * notes. A release carrying no APK asset still counts for the changelog, but the newest one
-     * must ship an Enhanced APK. A "new version available" notice whose button cannot
+     * must ship a Duo APK. A "new version available" notice whose button cannot
      * work is worse than silence.
      */
     private fun toUpdateInfo(releases: List<GithubRelease>): UpdateInfo? {
@@ -258,12 +251,13 @@ object UpdateApi {
         val newer = releases
             .mapNotNull(::parseRelease)
             .filter { isNewer(it.versionName, it.versionCode) }
-        val latest = newer.firstOrNull() ?: return null
+        val ordered = newer.sortedByDescending { it.versionCode }
+        val latest = ordered.firstOrNull() ?: return null
         val apkUrl = latest.apkUrl ?: return null
         return UpdateInfo(
             versionName = latest.versionName,
             versionCode = latest.versionCode,
-            notes = accumulatedNotes(newer),
+            notes = accumulatedNotes(ordered),
             apkUrl = apkUrl,
             releaseUrl = latest.releaseUrl,
         )
@@ -282,11 +276,13 @@ object UpdateApi {
         if (release.prerelease) return null
         val match = STABLE_TAG.matchEntire(release.tagName) ?: return null
         val (major, minor, patch, revision) = match.destructured
+        val code = (major.toLong() * 10_000 + minor.toLong() * 100 + patch.toLong()) * 1000 +
+            (revision.toLongOrNull() ?: 0)
+        if (code !in 1..2_100_000_000L) return null
         val apk = releaseApk(release)
         return Release(
             versionName = release.tagName.removePrefix("v"),
-            versionCode = (major.toInt() * 10_000 + minor.toInt() * 100 + patch.toInt()) * 1000 +
-                (revision.toIntOrNull() ?: 0),
+            versionCode = code.toInt(),
             notes = release.body.trim(),
             apkUrl = apk?.url,
             releaseUrl = release.htmlUrl,
@@ -296,9 +292,7 @@ object UpdateApi {
     /** Match the fork's published asset name without selecting an upstream APK by accident. */
     internal fun releaseApk(release: GithubRelease): GithubAsset? =
         release.assets.firstOrNull { it.name == "hypermusiccover-duo-${release.tagName}.apk" }
-            ?: release.assets.firstOrNull {
-                it.name.startsWith("hypermusiccover-duo-v") && it.name.endsWith(".apk")
-            }
+
 
     /**
      * Every version's notes stacked newest-first, each under its own `# vX.Y.Z` heading and cut at

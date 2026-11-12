@@ -43,18 +43,22 @@ final class CoverGlow {
             if (now != null && !now.isRecycled()) palette(now);
         }
         boolean base = now != null && !now.isRecycled() && sRegions != null && Main.coverModeOn()
-                && Main.effectiveCoverStyle().mode == CoverCardStyle.CARD
-                && !CoverBackdrop.hidden();
+                && !CoverBackdrop.hidden() && Main.onKeyguardNow()
+                && LockscreenSurfacePolicy.visible(Main.keyguardLocked(),
+                        MiniPlayerScene.INSTANCE.getKeyguardGoingAway());
         boolean drift = Main.sGlowDrift;
         // The mesh is a way of moving the colours; standing still they are always the regions.
         boolean mesh = drift && Main.sMeshBackdrop;
-        boolean on = base && (!drift || (Main.screenOnCached() && Main.coverCardVisible()
-                && ClockCollapse.phase() != ClockCollapse.Phase.AOD));
+        boolean on = base && drift && Main.screenOnCached() && Main.coverCardVisible()
+                && ClockCollapse.phase() != ClockCollapse.Phase.AOD;
         if (sRegions != null && (sSpec == null || sSpecDrift != drift || sSpecMesh != mesh)) {
             sSpec = mesh ? meshSpec() : spec(drift);
             sSpecDrift = drift;
             sSpecMesh = mesh;
         }
+        // Video engines do not expose the still-wallpaper GL draw callback. Render the same
+        // mesh locally rather than accepting the switch with no visible output.
+        VideoBackdropMesh.show(on && mesh && Main.sVideoWallpaper, sSpec);
         if (on != sSentOn || drift != sSentDrift || sSpec != sSentSpec) {
             sSentOn = on;
             sSentDrift = drift;

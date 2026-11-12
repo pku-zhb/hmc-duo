@@ -48,8 +48,6 @@ data class AppSettings(
 
         fun load(context: Context): AppSettings {
             val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            // Retire the hidden tab flag left by earlier Fold and upstream builds.
-            if (prefs.contains("ab_tab_unlocked")) prefs.edit { remove("ab_tab_unlocked") }
             return AppSettings(
                 themeMode = prefs.getString(KEY_THEME_MODE, "System") ?: "System",
                 isFloatingNavbar = prefs.getBoolean(KEY_FLOATING_NAVBAR, false),

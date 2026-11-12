@@ -29,8 +29,6 @@ final class LockHold {
     enum Owner {
         /** The album cover. Its entry fades the card on the clock's spring. */
         COVER(true),
-        /** Canvas keeps the native-size clock at the top while its player stays expanded. */
-        CANVAS(false),
         /** A full-screen immersive page: ImmersiveHost. */
         IMMERSIVE(false);
 

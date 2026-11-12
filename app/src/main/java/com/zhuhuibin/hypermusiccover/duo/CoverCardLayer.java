@@ -18,7 +18,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.ViewTreeObserver;
 
-/** The module's own square artwork. The OEM clock and media card remain above this layer. */
+/** Foreground artwork for both shapes; OEM clock, player and shortcut controls stay above it. */
 final class CoverCardLayer extends View implements Choreographer.FrameCallback {
     private static CoverCardLayer sView;
     private static volatile Prepared sPending;
@@ -74,7 +74,7 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
             return false;
         }
         CoverMorphMotion.Box box = CoverMorphMotion.cardBox(drawX, drawY, drawSide,
-                scale.value * (RISE_FROM + (1f - RISE_FROM) * rise), shownAspect());
+                artworkScale() * (RISE_FROM + (1f - RISE_FROM) * rise), shownAspect());
         aodArtworkBounds.set(box.x, box.y, box.x + box.w, box.y + box.h);
         ClockCollapse.boundsOnScreen(this, aodArtworkBounds);
         boolean overlaps = AodArtworkPolicy.clockOverlapsArtwork(aodClockBounds.left,
@@ -280,16 +280,15 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
         sStyle = config;
         CoverCardLayer v = sView;
         if (v != null) {
+            boolean shapeChanged = v.style.mode != config.mode;
             v.style = config;
-            // The pre-draw guard runs on every frame of the shade window, lock screen or not.
-            // Only the square needs it, so the full-screen cover does not pay for it.
-            if (config.mode == CoverCardStyle.CARD) {
-                if (v.getParent() instanceof ViewGroup) v.watchGeometry((ViewGroup) v.getParent());
-                v.start();
-            } else {
-                v.unwatchGeometry();
-                v.hideImmediately();
+            // Both shapes share generation ownership, first-frame handoff and unlock guards.
+            if (v.getParent() instanceof ViewGroup) v.watchGeometry((ViewGroup) v.getParent());
+            if (shapeChanged) {
+                v.lockPlace = v.bigCoverPlace = v.restPlace = v.lastGoal = null;
+                v.railScreenPlace = null;
             }
+            v.start();
         }
     }
 
@@ -318,7 +317,8 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
             int cw = Math.min(w, Math.round(h * aspect));
             int ch = Math.min(h, Math.round(w / aspect));
             Rect crop = new Rect((w - cw) / 2, (h - ch) / 2, (w + cw) / 2, (h + ch) / 2);
-            float down = Math.min(1f, 512f / Math.max(cw, ch));
+            float limit = Main.effectiveCoverStyle().mode == CoverCardStyle.FULL ? 1024f : 512f;
+            float down = Math.min(1f, limit / Math.max(cw, ch));
             art = Bitmap.createBitmap(Math.max(1, Math.round(cw * down)),
                     Math.max(1, Math.round(ch * down)), Bitmap.Config.ARGB_8888);
             new Canvas(art).drawBitmap(readable, crop,
@@ -692,8 +692,13 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
 
     static float renderedScale(ViewGroup layer) {
         CoverCardLayer v = sView;
-        return v != null && v.getParent() == layer ? v.scale.value
+        return v != null && v.getParent() == layer ? v.artworkScale()
                 : (sPlayingState ? CardSpring.PLAYING : CardSpring.PAUSED);
+    }
+
+    private float artworkScale() {
+        // Immersive artwork reaches the content edges; the play spring cannot spill into rail.
+        return style.mode == CoverCardStyle.FULL ? Math.min(1f, scale.value) : scale.value;
     }
 
     /** A hidden card is kept drawing internally until it can take the morph without a jump. */
@@ -760,7 +765,7 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
         super.onAttachedToWindow();
         // A detached/re-attached keyguard layer gets a new ViewTreeObserver. Keep the guard even
         // when SystemUI reuses this same card view for the shade.
-        if (style.mode == CoverCardStyle.CARD && getParent() instanceof ViewGroup) {
+        if (getParent() instanceof ViewGroup) {
             watchGeometry((ViewGroup) getParent());
         }
     }
@@ -826,14 +831,20 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
      * Both as drawn, not as laid out: a swipe zooms the clock's and the card's containers and
      * not this layer, so a place taken from their layout sat still while they came in round it.
      */
+    /** Shared with the moving artwork so its landing and the settled renderer use one box. */
+    static CoverCardStyle.Rect place(View host, CoverCardStyle config,
+                                     float clock, float media, float aspect) {
+        if (FoldMusicRuntime.sideBySide()) return FoldMusicRuntime.artwork(host, aspect);
+        CoverCardStyle.Rect placed = LockScreenRailRuntime.artwork(host, config, clock, media, aspect);
+        return config.mode == CoverCardStyle.FULL ? placed
+                : FoldMusicRuntime.capPortraitArtwork(host, placed);
+    }
+
     private CoverCardStyle.Rect placeNow() {
-        if (FoldMusicRuntime.sideBySide()) return FoldMusicRuntime.artwork(this, shownAspect());
         float clock = ClockCollapse.contentBottomFor(this);
         float media = ClockCollapse.unzoomY(this, Main.coverCardMediaTop());
-        int[] loc = tmpLoc;
-        getLocationOnScreen(loc);
-        return FoldMusicRuntime.capPortraitArtwork(this, LockScreenRailRuntime.artwork(this, style,
-                clock - loc[1], media - loc[1], shownAspect()));
+        getLocationOnScreen(tmpLoc);
+        return place(this, style, clock - tmpLoc[1], media - tmpLoc[1], shownAspect());
     }
 
     /**
@@ -929,7 +940,8 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
                 return false;
             }
         }
-        goal = FoldMusicRuntime.capPortraitArtwork(this, goal);
+        if (style.mode == CoverCardStyle.CARD)
+            goal = FoldMusicRuntime.capPortraitArtwork(this, goal);
         if (goal == null) return false;
         carry(goal, carries(phase));
         if (Float.isNaN(drawX) || opacity <= 0f) {
@@ -1073,7 +1085,7 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
         if (phase != ClockCollapse.Phase.AOD) aodSince = 0L;
         else if (aodSince == 0L) aodSince = nowNs;
         boolean inAod = Main.coverCardInAod();
-        boolean visible = style.mode == CoverCardStyle.CARD && Main.coverCardVisible();
+        boolean visible = Main.coverCardVisible();
         if (aodExpandPending && inAod && visible) {
             aodExpandPending = false;
             CoverMorphMotion.Box thumbnail = Main.coverMorphThumbnail();
@@ -1177,8 +1189,8 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
         }
         boolean backdrop = Main.coverCardBackdropInAod() && current != null
                 && current.aodBackdrop != null;
-        // Wallpaper mode and Canvas own their AOD backdrop; never overlay an artwork wash.
-        if (CoverBackdrop.hidden() || CanvasHostBridge.ownsVideoBackdrop()) wash.hideNow();
+        // Native wallpaper owns its AOD background; never overlay an artwork wash.
+        if (CoverBackdrop.hidden()) wash.hideNow();
         else wash.show(backdrop);
         int visibility = opacity > 0f || target > 0f ? VISIBLE : GONE;
         if (getVisibility() != visibility) setVisibility(visibility);
@@ -1211,14 +1223,15 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
         float density = getResources().getDisplayMetrics().density;
         if (Float.isNaN(drawX)) return;
         CoverMorphMotion.Box actual = CoverMorphMotion.cardBox(drawX, drawY,
-                drawSide, scale.value * (RISE_FROM + (1f - RISE_FROM) * rise), shownAspect());
+                drawSide, artworkScale() * (RISE_FROM + (1f - RISE_FROM) * rise), shownAspect());
         square.set(actual.x, actual.y, actual.x + actual.w, actual.y + actual.h);
         float radius = style.radius(Math.min(actual.w, actual.h));
         int turned = canvas.save();
         applyFlip(canvas, square.centerX(), square.centerY());
         // The shadow is keyed on the corner at the RESTING side, not the moving one - see
         // CoverCardStyle.cornerShare, and the note on shadowTile below.
-        drawShadow(canvas, square, style.cornerShare(drawSide), opacity, paint);
+        if (style.mode == CoverCardStyle.CARD)
+            drawShadow(canvas, square, style.cornerShare(drawSide), opacity, paint);
         int save = canvas.save();
         clipPath.reset();
         clipPath.addRoundRect(square, radius, radius, Path.Direction.CW);
@@ -1233,12 +1246,14 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
             drawWaitingArt(canvas, current, fadeFraction(), skipTreatment, currentWaitNode);
         }
         canvas.restoreToCount(save);
-        paint.setStyle(Paint.Style.STROKE);
-        paint.setStrokeWidth(density);
-        paint.setColor(0x40FFFFFF);
-        paint.setAlpha(Math.round(opacity * 64f));
-        canvas.drawRoundRect(square, radius, radius, paint);
-        paint.setStyle(Paint.Style.FILL);
+        if (style.mode == CoverCardStyle.CARD) {
+            paint.setStyle(Paint.Style.STROKE);
+            paint.setStrokeWidth(density);
+            paint.setColor(0x40FFFFFF);
+            paint.setAlpha(Math.round(opacity * 64f));
+            canvas.drawRoundRect(square, radius, radius, paint);
+            paint.setStyle(Paint.Style.FILL);
+        }
         canvas.restoreToCount(turned);
     }
 

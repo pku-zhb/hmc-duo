@@ -11,11 +11,11 @@ public class LyricsButtonPolicyTest {
         assertFalse(LyricsButtonPolicy.offer(true, true, false, true, true));
     }
     @Test public void railNeverChoosesTheLegacyHiddenSlot() {
-        for (boolean canvas : new boolean[]{false, true}) for (boolean compact : new boolean[]{false, true})
-            assertFalse(LyricsButtonPolicy.beside(true, canvas, compact));
+        for (boolean compact : new boolean[]{false, true})
+            assertFalse(LyricsButtonPolicy.beside(true, compact));
         assertFalse(LyricsButtonPolicy.animate(true));
         assertTrue(LyricsButtonPolicy.animate(false));
-        assertTrue(LyricsButtonPolicy.beside(false, true, false));
+        assertTrue(LyricsButtonPolicy.beside(false, true));
         assertFalse(LyricsButtonPolicy.offer(false, true, true, true, false));
     }
 }

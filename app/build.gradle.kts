@@ -19,6 +19,16 @@ fun signingValue(key: String, env: String): String? =
     keystoreProperties.getProperty(key) ?: System.getenv(env)
 
 val releaseStorePath = signingValue("storeFile", "SIGNING_STORE_FILE")
+val officialRelease = providers.gradleProperty("mcOfficialRelease").orNull == "true"
+if (officialRelease) {
+    require(!releaseStorePath.isNullOrBlank() && rootProject.file(releaseStorePath).isFile) {
+        "Official builds require a release keystore outside source control."
+    }
+    for ((key, env) in listOf("storePassword" to "SIGNING_STORE_PASSWORD",
+        "keyAlias" to "SIGNING_KEY_ALIAS", "keyPassword" to "SIGNING_KEY_PASSWORD")) {
+        require(!signingValue(key, env).isNullOrBlank()) { "Missing official signing input: $env" }
+    }
+}
 
 android {
     namespace = "com.zhuhuibin.hypermusiccover.duo"
@@ -32,11 +42,12 @@ android {
             ?: "com.zhuhuibin.hypermusiccover.duo"
         manifestPlaceholders["mcAppLabel"] = (findProperty("mcAppLabel") as String?)
             ?: "@string/app_name"
+        buildConfigField("boolean", "OFFICIAL_RELEASE", officialRelease.toString())
         minSdk = 35
         targetSdk = 37
         // Build properties can override the release version for local test builds.
-        versionCode = (findProperty("mcVersionCode") as String?)?.toInt() ?: 20010
-        versionName = ((findProperty("mcVersionName") as String?) ?: "0.2.0-preview.10") +
+        versionCode = (findProperty("mcVersionCode") as String?)?.toInt() ?: 20011
+        versionName = ((findProperty("mcVersionName") as String?) ?: "0.2.0-preview.11") +
                 ((findProperty("mcVersionSuffix") as String?) ?: "")
     }
 

@@ -2,20 +2,20 @@ package com.zhuhuibin.hypermusiccover.duo;
 
 /** Availability boundaries shared by UI commands, saved state and imported settings. */
 final class FoldSettingsPolicy {
-    static final boolean FULL_COVER_AVAILABLE = false;
-    static final boolean BACKGROUND_SWITCH_AVAILABLE = false;
+    static final boolean FULL_COVER_AVAILABLE = true;
+    static final boolean BACKGROUND_SWITCH_AVAILABLE = true;
 
     static CoverCardStyle coverStyle(CoverCardStyle saved) {
-        return FULL_COVER_AVAILABLE || saved.mode == CoverCardStyle.CARD ? saved
-                : new CoverCardStyle(CoverCardStyle.CARD, saved.fill, saved.pos, saved.corner);
+        return saved;
     }
 
     static boolean wallpaperBackground(boolean requested) {
         return BACKGROUND_SWITCH_AVAILABLE && requested;
     }
 
-    static boolean nativeBackdrop(boolean rightRail) {
-        return !BACKGROUND_SWITCH_AVAILABLE || rightRail;
+    /** Background choice never follows foreground shape or the shortcut rail. */
+    static boolean nativeBackdrop(boolean requested) {
+        return requested;
     }
 
     private FoldSettingsPolicy() {}

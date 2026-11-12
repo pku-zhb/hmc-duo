@@ -55,17 +55,16 @@ final class StatusBarArtwork {
 
     private static boolean ownsColors() {
         MiniPlayerScene scene = MiniPlayerScene.INSTANCE;
-        boolean canvas = CanvasHostBridge.ownsVideoBackdrop();
         return StatusBarContrast.ownsColors(
-                canvas || Main.sCoverMode && !CoverBackdrop.nativeWallpaperScene(), Main.keyguardLocked(),
+                Main.sCoverMode && !CoverBackdrop.nativeWallpaperScene(), Main.keyguardLocked(),
                 scene.getBlocksMiniPlayer() || scene.getControlCenterIsActive()
                         || scene.getKeyguardGoingAway(),
-                scene.getAodActive(), canvas || CoverBackdrop.hidden() ? 0d : sLuminance);
+                scene.getAodActive(), CoverBackdrop.hidden() ? 0d : sLuminance);
     }
 
-    /** Canvas and wallpaper-backed artwork use white icons over their dimmed backdrop. */
+    /** Wallpaper-backed artwork use white icons over their dimmed backdrop. */
     private static boolean darkIcons() {
-        return !CanvasHostBridge.ownsVideoBackdrop() && !CoverBackdrop.hidden()
+        return !CoverBackdrop.hidden()
                 && StatusBarContrast.darkIcons(sLuminance);
     }
 

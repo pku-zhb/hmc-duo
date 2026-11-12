@@ -199,6 +199,7 @@ object NumStateProbe {
         for (s in listOf("NUMBER", "STACK", "LIST")) part("to$s") { scrollFor(model, s) }
         part("info") { value(model, "getOnUpdateChildSampleStackInfo") }
         part("bottom") { NumState.bottomOnKeyguard() }
+        part("presentation") { NumState.presentationForProbe() }
         sb.append("|| count: ")
         find(stack.rootView) { it.javaClass.name.endsWith("NotificationNumStateView") }.forEach { v ->
             sb.append(box(v)).append(" text=").append(texts(v)).append("; ")

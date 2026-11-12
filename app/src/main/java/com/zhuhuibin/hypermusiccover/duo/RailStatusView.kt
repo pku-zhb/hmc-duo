@@ -6,15 +6,13 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.Matrix
-import android.text.format.DateFormat
 import android.view.MotionEvent
 import android.view.View
 import kotlin.math.asin
 import kotlin.math.cos
 import kotlin.math.sin
-import java.util.Calendar
 
-/** Display-only clock, battery arc and network cluster, drawn in the native keyguard overlay. */
+/** Display-only battery arc and network cluster, drawn in the native keyguard overlay. */
 internal class RailStatusView(context: Context) : View(context) {
     private val ink = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.WHITE
@@ -60,12 +58,10 @@ internal class RailStatusView(context: Context) : View(context) {
         quadTo(-8.7f, 11.9f, -7f, 10.3f); close()
     }
     private var status = RailStatusSnapshot()
-    private var time = ""
-    private var timeBucket = Long.MIN_VALUE
     private val source = RailStatusSource(context) { next ->
         val changed = status != next
         status = next
-        refreshTime(force = true)
+        refreshDescription()
         if (changed) invalidate()
     }
     private var listening = false
@@ -81,21 +77,12 @@ internal class RailStatusView(context: Context) : View(context) {
     fun setListening(value: Boolean) {
         if (listening == value) return
         listening = value
-        if (value) { source.start(); refreshTime(force = true) } else source.stop()
+        if (value) { source.start(); refreshDescription() } else source.stop()
     }
-    fun refreshTime(force: Boolean = false) {
-        val now = System.currentTimeMillis()
-        if (!force && timeBucket == now / 60_000L) return
-        timeBucket = now / 60_000L
-        val clock = Calendar.getInstance().apply { timeInMillis = now }
-        val hour = if (DateFormat.is24HourFormat(context)) clock.get(Calendar.HOUR_OF_DAY)
-            else clock.get(Calendar.HOUR).let { if (it == 0) 12 else it }
-        // The reference uses an unpadded hour and ASCII vector digits; minute stays padded.
-        time = "$hour:${clock.get(Calendar.MINUTE).toString().padStart(2, '0')}"
+    private fun refreshDescription() {
         val zh = resources.configuration.locales[0].language == "zh"
         val power = if (status.battery < 0) "—" else "${status.battery}%"
-        contentDescription = if (zh) "$time，电量 $power" else "$time, battery $power"
-        invalidate()
+        contentDescription = if (zh) "电量 $power" else "Battery $power"
     }
     fun describe() = "visible=${visibility == VISIBLE} ${source.describe()}"
 
@@ -105,7 +92,6 @@ internal class RailStatusView(context: Context) : View(context) {
         val scale = resources.displayMetrics.density / RailStatusLayout.REFERENCE_DENSITY
         canvas.scale(scale, scale)
         ink.color = Color.WHITE
-        drawGlyphs(canvas, time, 29.986198f, 98f, 64.400604f)
         drawBattery(canvas)
         drawNetwork(canvas)
         canvas.restoreToCount(checkpoint)

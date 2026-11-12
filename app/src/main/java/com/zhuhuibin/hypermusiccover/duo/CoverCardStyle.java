@@ -71,7 +71,7 @@ final class CoverCardStyle {
     }
 
     static CoverCardStyle defaults() {
-        return new CoverCardStyle(FULL, FIXED_FILL, FIXED_POS, Float.NaN);
+        return new CoverCardStyle(CARD, FIXED_FILL, FIXED_POS, Float.NaN);
     }
 
     CoverCardStyle with(String key, float value) {
@@ -91,6 +91,7 @@ final class CoverCardStyle {
      * override is set, a share of the side instead.
      */
     float radius(float side) {
+        if (mode == FULL) return 0f;
         float half = side * 0.5f;
         if (Float.isFinite(corner)) return half * corner;
         float r = sMediaCardRadiusPx;
@@ -168,10 +169,13 @@ final class CoverCardStyle {
                 ? clockBottom : height * 0.18f) + gap;
         // A stale card rectangle from a previous lock session can put the art over the OEM
         // media card on wake. Wait for this session's measured boundary instead.
-        if (!Float.isFinite(mediaTop) || mediaTop <= height / 3f
-                || mediaTop > height) return null;
-        float bottom = mediaTop - gap;
-        float room = Math.min((width - 2f * gap) / widthRatio,
+        if (mode == CARD && (!Float.isFinite(mediaTop) || mediaTop <= height / 3f
+                || mediaTop > height)) return null;
+        // The immersive foreground uses the content domain below the date/clock row. Native
+        // cards remain above it; its width has already excluded Duo's shortcut rail.
+        float bottom = mode == FULL ? height - gap : mediaTop - gap;
+        float sideGap = mode == FULL ? 0f : gap;
+        float room = Math.min((width - 2f * sideGap) / widthRatio,
                 (bottom - top) / heightRatio);
         float least = 96f * density;
         if (room < least || !Float.isFinite(room)) return null;

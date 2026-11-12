@@ -16,7 +16,8 @@ final class CoverBackdrop {
         String state = "hidden=" + hidden() + " cover=" + Main.coverModeOn()
                 + " locked=" + Main.keyguardLocked() + " dim=" + Main.sWallpaperDim
                 + " target=" + dimTarget + " compact=" + LockLyrics.wantsCompactArtwork()
-                + " lyrics=" + LockLyrics.hasLyrics() + " window=" + LockLyrics.wantsWindow();
+                + " lyrics=" + LockLyrics.hasLyrics() + " window=" + LockLyrics.wantsWindow()
+                + " videoMesh=" + VideoBackdropMesh.describe();
         if (view == null) return state + " layer=none";
         state += " alpha=" + view.getAlpha() + " shown=" + view.isShown()
                 + " size=" + view.getWidth() + "x" + view.getHeight();
@@ -30,12 +31,11 @@ final class CoverBackdrop {
     }
 
     static boolean hidden() {
-        return Main.sHidePlayerBackground || Main.coverOnTapResting() || nativeForRailCard();
+        return Main.sHidePlayerBackground || Main.coverOnTapResting();
     }
 
     static boolean nativeForRailCard() {
-        return SquareCardWallpaperPolicy.nativeBackdrop(FoldSettingsPolicy.nativeBackdrop(Main.sRightRail),
-                Main.effectiveCoverStyle().mode == CoverCardStyle.CARD);
+        return FoldSettingsPolicy.nativeBackdrop(Main.sHidePlayerBackground);
     }
 
     static boolean nativeWallpaperScene() {
@@ -79,6 +79,7 @@ final class CoverBackdrop {
 
     /** Lifecycle/scene transitions own visibility, not a condition inside the cached drawing. */
     static void refreshVisibility() {
+        VideoBackdropMesh.refreshVisibility();
         if (dimLayer == null) return;
         boolean eligible = LockscreenSurfacePolicy.visible(Main.keyguardLocked(),
                 MiniPlayerScene.INSTANCE.getKeyguardGoingAway()) && Main.onKeyguardNow();
@@ -93,14 +94,15 @@ final class CoverBackdrop {
     }
 
     private static void updateDim() {
-        if (dimLayer == null && !hidden()) return;
         android.view.ViewGroup layer = CoverPush.coverLayer();
         if (layer == null) return;
         android.view.ViewGroup parent = layer;
         android.view.View below = null;
         int rootId = layer.getResources().getIdentifier("keyguard_root_view", "id", "com.android.systemui");
         // AOD scales and clips the keyguard root. A sibling covers the original wallpaper bounds.
-        for (Object current = layer; rootId != 0 && current instanceof android.view.View;
+        // Video artwork lives inside SystemUI, so its dim must sit above that local backdrop.
+        boolean localBackdrop = Main.sVideoWallpaper && !hidden();
+        for (Object current = layer; !localBackdrop && rootId != 0 && current instanceof android.view.View;
                 current = ((android.view.View) current).getParent()) {
             android.view.View view = (android.view.View) current;
             if (view.getId() == rootId && view.getParent() instanceof android.view.ViewGroup) {
@@ -130,7 +132,7 @@ final class CoverBackdrop {
         refreshVisibility();
         boolean dimScene = Main.coverModeOn() && (!LockLyrics.wantsCompactArtwork()
                 || LockLyrics.hasLyrics() && LockLyrics.wantsWindow());
-        float alpha = hidden() && dimScene && LockscreenSurfacePolicy.visible(Main.keyguardLocked(),
+        float alpha = dimScene && LockscreenSurfacePolicy.visible(Main.keyguardLocked(),
                 MiniPlayerScene.INSTANCE.getKeyguardGoingAway()) && Main.onKeyguardNow()
                 ? Main.sWallpaperDim / 100f : 0f;
         if (alpha == dimTarget) return;

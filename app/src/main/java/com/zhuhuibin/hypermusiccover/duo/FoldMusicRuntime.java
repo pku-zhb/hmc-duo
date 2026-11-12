@@ -127,7 +127,7 @@ final class FoldMusicRuntime {
                 && !MiniPlayerScene.INSTANCE.getKeyguardGoingAway()) return;
         boolean wanted = !failed && wideCandidate() && Main.coverModeOn()
                 && Main.screenOnCached() && Main.onKeyguardNow() && Main.keyguardLocked()
-                && !Main.bouncerShown() && !CanvasHostBridge.active()
+                && !Main.bouncerShown()
                 && !LockIslands.INSTANCE.spreadingNow() && LockLyrics.wantsAttached()
                 && LockLyrics.hasLyrics();
         FoldMusicLayout.Columns next = null;

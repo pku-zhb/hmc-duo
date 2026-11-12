@@ -18,7 +18,7 @@ final class ClockBackdropContrast {
     static boolean ownsContrast() {
         return Main.screenOnCached() && Main.keyguardLocked()
                 && !CoverBackdrop.nativeWallpaperScene()
-                && (Main.sCoverMode || CanvasHostBridge.ownsVideoBackdrop());
+                && Main.sCoverMode;
     }
 
     static void install(ClassLoader loader) {

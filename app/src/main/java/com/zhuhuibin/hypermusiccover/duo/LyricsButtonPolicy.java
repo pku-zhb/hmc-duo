@@ -5,8 +5,8 @@ final class LyricsButtonPolicy {
     static boolean offer(boolean rail, boolean cover, boolean enabled, boolean content, boolean pageAllows) {
         return enabled && content && (rail || cover) && (rail || pageAllows);
     }
-    static boolean beside(boolean rail, boolean canvas, boolean compact) {
-        return !rail && (canvas || compact);
+    static boolean beside(boolean rail, boolean compact) {
+        return !rail && compact;
     }
     static boolean animate(boolean rail) { return !rail; }
     private LyricsButtonPolicy() {}

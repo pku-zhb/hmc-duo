@@ -47,7 +47,6 @@ internal object RailStatusRuntime {
             status.translationX = left-status.left; status.translationY = top-status.top
             status.visibility = View.VISIBLE
             status.setListening(true)
-            status.refreshTime()
         }.onFailure {
             hide()
             if (error != it.javaClass.simpleName) {

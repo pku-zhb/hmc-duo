@@ -70,7 +70,7 @@ object UpdateInstaller {
     /** Cleared and rewritten on each attempt, so at most one APK is ever held. */
     private const val DOWNLOAD_DIR = "updates"
 
-    private const val ROOT_COPY = "/data/local/tmp/hmce-update.apk"
+    private const val ROOT_COPY = "/data/local/tmp/hmc-duo-update.apk"
 
     /**
      * Process-scoped, deliberately not the composition's.
@@ -107,7 +107,8 @@ object UpdateInstaller {
     private var cancelled = false
 
     /** [apkUrl] is the release asset's own URL; the hosts to try it through are worked out here. */
-    fun start(context: Context, apkUrl: String, fileName: String, expectedPackage: String = context.packageName, reuseCached: Boolean = false) {
+    fun start(context: Context, apkUrl: String, fileName: String) {
+        require(fileName.matches(Regex("hypermusiccover-duo-v[0-9A-Za-z.-]+\\.apk"))) { "Invalid release filename" }
         if (inFlight) return
         inFlight = true
         lastOutcome = null
@@ -116,21 +117,12 @@ object UpdateInstaller {
         val app = context.applicationContext
         scope.launch {
             val outcome = try {
-                val cached = File(File(app.cacheDir, DOWNLOAD_DIR), fileName)
-                val file = if (reuseCached && cached.isFile && UpdateApi.isOurs(app, cached, expectedPackage)) {
-                    cached
-                } else download(app, apkUrl, fileName)
-                if (!UpdateApi.isOurs(app, file, expectedPackage)) {
+                val file = download(app, apkUrl, fileName)
+                if (!UpdateApi.isOurs(app, file)) {
                     file.delete()
                     InstallOutcome.NotOurs
                 } else {
-                    if (expectedPackage != app.packageName) {
-                        val version = app.packageManager.getPackageArchiveInfo(file.absolutePath, 0)?.versionName
-                        app.getSharedPreferences("extension_downloads", 0).edit()
-                            .putString(expectedPackage, version)
-                            .putString("${expectedPackage}.file", file.name).apply()
-                    }
-                    if ((expectedPackage == app.packageName && rootInstall(file)) || handOff(app, file)) {
+                    if (rootInstall(file) || handOff(app, file)) {
                         InstallOutcome.HandedOff
                     } else {
                         saveToDownloads(app, file)?.let { InstallOutcome.SavedToDownloads(it) }
@@ -233,9 +225,8 @@ object UpdateInstaller {
      * Installs without asking, when root is granted. False sends the APK to [handOff] instead.
      *
      * Copied out first: system_server is not allowed to read this app's cache directory. A
-     * successful install kills this process, so the scope restart is left to [UpdateReceiver] in
-     * the new build rather than chained here; a root shell started from this app is killed with
-     * it on root managers that run su inside the caller's cgroup.
+     * successful install may kill this process. No scope is restarted automatically; the owner
+     * chooses when the new module code should load.
      */
     private fun rootInstall(file: File): Boolean {
         val script = "cp '${file.absolutePath}' $ROOT_COPY && chmod 644 $ROOT_COPY && pm install -r $ROOT_COPY; " +
