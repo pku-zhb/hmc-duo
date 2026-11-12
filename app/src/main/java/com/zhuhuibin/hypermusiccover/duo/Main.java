@@ -1454,9 +1454,9 @@ public class Main extends XposedModule {
                 Object[] args = chain.getArgs().toArray();
                 if (args.length == 1 && args[0] instanceof Float) {
                     float v = (Float) args[0];
+                    WallpaperHandoffDiagnostics.black(v, MiniPlayerScene.INSTANCE.getKeyguardGoingAway(), sScreenOn);
                     if (v != sLastWallpaperBlack) {
                         sLastWallpaperBlack = v;
-                        WallpaperHandoffDiagnostics.black(v, MiniPlayerScene.INSTANCE.getKeyguardGoingAway(), sScreenOn);
                         sBlackRoot = chain.getThisObject();
                         if (sVerbose) {
                             Xp.log(TAG + "wallpaperBlack=" + v + " on "
