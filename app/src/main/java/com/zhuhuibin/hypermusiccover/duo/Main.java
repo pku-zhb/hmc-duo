@@ -7596,13 +7596,14 @@ public class Main extends XposedModule {
     /** One fresh lock session chooses a page, without replaying a capsule-linked morph. */
     static void selectLockscreenStartupView(int view) {
         CoverMorphLayer.cancel();
+        FoldMusicRuntime.selectPage(view);
         if (view < MiniPlayerConfig.VIEW_ARTWORK) {
             sTapSuppressed = true;
             if (sCoverMode) setCoverEnabled(false, false, false);
             LockLyrics.setPlayerChosen(view == MiniPlayerConfig.VIEW_PLAYER);
         } else {
             sTapSuppressed = false;
-            LockLyrics.selectStartupPage(view == MiniPlayerConfig.VIEW_LYRICS, sTrackKey, sWatched);
+            LockLyrics.selectStartupPage(RailMusicPagePolicy.showsLyrics(view), sTrackKey, sWatched);
             if (!sCoverMode) setCoverEnabled(true, false, false);
             else refreshCoverGeometry();
         }
@@ -7886,18 +7887,19 @@ public class Main extends XposedModule {
     }
 
     static boolean coverMorphCardMode() {
-        return true; // Both foreground styles use the local generation-aware layer.
+        return !CoverCardLayer.fullScene();
     }
 
     /** A manual entry must keep its moving artwork until the asynchronous backdrop can take it. */
     static boolean coverMorphHandoffReady(boolean cardMode) {
+        if (!cardMode) return CoverCardLayer.fullSceneHandoffReady();
         long artAt = sCtArt;
         if (artAt == 0L) return false;
-        long afterArt = cardMode ? 120L : fadeMsFor(sClockResponse) + 140L;
+        long afterArt = 120L;
         return android.os.SystemClock.uptimeMillis() - artAt >= afterArt;
     }
 
-    /** Both cover shapes land on the same local foreground geometry used for rendering. */
+    /** Land on the geometry of the actual card or full-screen artwork receiver. */
     static CoverMorphMotion.Box coverMorphTarget(Bitmap art) {
         return coverMorphTarget(art, false);
     }
@@ -7919,6 +7921,9 @@ public class Main extends XposedModule {
         }
         int[] xy = new int[2];
         layer.getLocationOnScreen(xy);
+        if (CoverCardLayer.fullScene()) {
+            return VideoBackdropMesh.fullSceneTarget(art);
+        }
         float mediaTop = coverCardMediaTop();
         if (!Float.isFinite(mediaTop)) {
             View card = findSysuiView("mi_media_controls");
@@ -11462,7 +11467,8 @@ public class Main extends XposedModule {
 
     static int nextRailMusicPage() {
         return RailMusicPagePolicy.next(RailMusicPagePolicy.current(sCoverMode,
-                LockLyrics.requestedLyricsPage()), LockLyrics.sEnabled);
+                LockLyrics.requestedLyricsPage(), FoldMusicRuntime.combinedRequested()),
+                LockLyrics.sEnabled, FoldMusicRuntime.supportsCombinedPage());
     }
 
     static void cycleRailMusicPage() {
@@ -11474,10 +11480,14 @@ public class Main extends XposedModule {
         if (!screenOnCached() || !keyguardShowing() || !onKeyguardNow() || bouncerUp()
                 || controlCenterUp() || chargeAnimUp() || !sCardShowing
                 || MiniPlayerScene.INSTANCE.getKeyguardGoingAway()) return;
-        boolean lyrics = page == MiniPlayerConfig.VIEW_LYRICS;
+        boolean lyrics = RailMusicPagePolicy.showsLyrics(page);
         // A pending lyric lookup must not turn the first click into a no-op. The selected
         // page waits for its content, and the next click can still return to the native clock.
         if (lyrics && !LockLyrics.sEnabled) return;
+        boolean wasCompact = LockLyrics.wantsCompactArtwork();
+        FoldMusicRuntime.selectPage(page);
+        boolean compact = lyrics && !(page == RailMusicPagePolicy.ARTWORK_AND_LYRICS
+                && FoldMusicRuntime.supportsCombinedPage());
         MiniPlayerRuntime.forgetRestoreScene();
         MiniPlayerRuntime.keepMusicExpanded();
         if (page == MiniPlayerConfig.VIEW_PLAYER) {
@@ -11487,7 +11497,7 @@ public class Main extends XposedModule {
             if (sCoverMode) setCoverEnabled(false, true, false);
             LockLyrics.refresh();
         } else {
-            if (sCoverMode && LockLyrics.wantsCompactArtwork() != lyrics) beginCompactArtworkMorph(!lyrics);
+            if (sCoverMode && wasCompact != compact) beginCompactArtworkMorph(!compact);
             else CoverMorphLayer.cancel();
             String key = trackKey(sWatched);
             if (key.isEmpty()) key = sTrackKey;

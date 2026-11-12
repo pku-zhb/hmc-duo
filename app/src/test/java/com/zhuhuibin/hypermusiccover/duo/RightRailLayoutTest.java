@@ -38,7 +38,7 @@ public class RightRailLayoutTest {
         assertEquals(413, (portrait.pill.top+portrait.pill.bottom)/2, .001f);
         RightRailLayout.Plan landscape = RightRailLayout.plan(850, 650, 1, 0, 24, 0, 24, 0);
         FoldMusicLayout.Columns music = FoldMusicLayout.columns(landscape.content.right, 650,
-                1, 650, 0, 24, 0, 24, 110, 130, 560);
+                1, 650, 0, 24, 0, 24, 110, new FoldMusicLayout.Box(11.25f, 340, 464.25f, 470), 560);
         assertNotNull(music);
         assertTrue(music.lyrics.right < landscape.pill.left);
     }

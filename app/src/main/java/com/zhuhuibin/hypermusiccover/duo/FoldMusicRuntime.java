@@ -4,11 +4,9 @@ import android.graphics.Insets;
 import android.graphics.Matrix;
 import android.graphics.RectF;
 import android.view.View;
-import android.view.ViewGroup;
 import android.view.ViewTreeObserver;
-import android.view.WindowInsets;
 
-/** Opt-in wide-window layout. Owns only music geometry; never writes notification geometry. */
+/** Opt-in wide-window artwork and lyrics, anchored to the native player header. */
 final class FoldMusicRuntime {
     private FoldMusicRuntime() {}
 
@@ -17,9 +15,7 @@ final class FoldMusicRuntime {
     private static ViewTreeObserver.OnPreDrawListener listener;
     private static volatile FoldMusicLayout.Columns columns;
     private static String reason = "not attached";
-    private static View player;
-    private static int originalWidth, writtenWidth;
-    private static float originalX, originalY, writtenX, writtenY;
+    private static boolean combinedChosen;
     private static final Matrix toScreen = new Matrix(), fromScreen = new Matrix();
     private static final RectF scratch = new RectF();
     private static final int[] at = new int[2];
@@ -28,7 +24,7 @@ final class FoldMusicRuntime {
     private static boolean lastEnabled;
 
     static boolean sideBySide() {
-        return columns != null && Main.sFoldMusicLayout && Main.screenOnCached();
+        return columns != null && combinedRequested() && Main.screenOnCached();
     }
 
     static boolean wideCandidate() {
@@ -36,6 +32,17 @@ final class FoldMusicRuntime {
         return Main.sFoldMusicLayout && v != null && FoldMusicLayout.wideWindow(
                 v.getWidth(), v.getHeight(), v.getResources().getDisplayMetrics().density,
                 v.getResources().getConfiguration().smallestScreenWidthDp);
+    }
+
+    static boolean supportsCombinedPage() { return wideCandidate(); }
+
+    static boolean combinedRequested() {
+        return combinedChosen && supportsCombinedPage() && LockLyrics.requestedLyricsPage();
+    }
+
+    static void selectPage(int page) {
+        combinedChosen = page == RailMusicPagePolicy.ARTWORK_AND_LYRICS;
+        refresh();
     }
 
     static boolean innerPortrait() {
@@ -85,7 +92,6 @@ final class FoldMusicRuntime {
                 failed = true;
                 reason = "layout unavailable: " + error.getClass().getSimpleName();
                 publish(null);
-                restorePlayer();
                 Xp.w(Main.TAG + "fold music: " + error);
             }
             return true;
@@ -100,7 +106,6 @@ final class FoldMusicRuntime {
         observer = null;
         listener = null;
         publish(null);
-        restorePlayer();
         CompactPlayerRuntime.restore();
         root = null;
         reason = "not attached";
@@ -122,14 +127,12 @@ final class FoldMusicRuntime {
             lastHeight = v.getHeight();
             lastEnabled = Main.sFoldMusicLayout;
         }
-        // Keep the exiting card's measured child geometry until its header leaves the screen.
+        // Keep the outgoing artwork/lyric plan until the native header leaves the screen.
         if (columns != null && MiniPlayerRuntime.railMediaExitActive() && Main.keyguardLocked()
                 && !MiniPlayerScene.INSTANCE.getKeyguardGoingAway()) return;
-        boolean wanted = !failed && wideCandidate() && Main.coverModeOn()
+        boolean wanted = !failed && combinedRequested() && Main.coverModeOn()
                 && Main.screenOnCached() && Main.onKeyguardNow() && Main.keyguardLocked()
-                && !Main.bouncerShown()
-                && !LockIslands.INSTANCE.spreadingNow() && LockLyrics.wantsAttached()
-                && LockLyrics.hasLyrics();
+                && !Main.bouncerShown() && !LockIslands.INSTANCE.spreadingNow();
         FoldMusicLayout.Columns next = null;
         if (wanted) {
             View card = CompactPlayerRuntime.currentCard();
@@ -138,86 +141,37 @@ final class FoldMusicRuntime {
                     && card.getHeight() > 0 && card.getParent() instanceof View) {
                 v.getLocationOnScreen(at);
                 float clock = ClockCollapse.contentBottomFor(v) - at[1];
-                Insets insets = Insets.NONE;
-                WindowInsets windowInsets = v.getRootWindowInsets();
-                if (windowInsets != null) insets = windowInsets.getInsetsIgnoringVisibility(
-                        WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
+                // Use the same stable cutout/navigation domain as the native stack owner.
+                Insets insets = RailWindowInsets.read(v);
                 // Keep the native shortcut row's space. A missing row gets a conservative margin.
                 float shortcutTop = LockScreenRailRuntime.reflowing() && Main.sForceNotificationFloor ? Float.NaN
                         : v.getHeight() - insets.bottom - 80f * v.getResources().getDisplayMetrics().density;
                 float contentWidth = LockScreenRailRuntime.reflowing()
                         ? LockScreenRailRuntime.contentWidth() : v.getWidth();
-                next = FoldMusicLayout.columns(contentWidth, v.getHeight(),
-                        v.getResources().getDisplayMetrics().density,
-                        v.getResources().getConfiguration().smallestScreenWidthDp,
-                        insets.left, insets.top, LockScreenRailRuntime.reflowing() ? 0 : insets.right, insets.bottom,
-                        clock, card.getHeight(), shortcutTop);
-                if (next != null) {
-                    if (player != card) {
-                        restorePlayer();
-                        player = card;
-                        originalWidth = card.getLayoutParams().width;
-                        writtenWidth = originalWidth;
-                        originalX = writtenX = card.getTranslationX();
-                        originalY = writtenY = card.getTranslationY();
-                    }
-                    if (!placePlayer(next.player)) next = null;
-                } else if (columns != null) {
-                    // A reflowed card that no longer fits must not oscillate between widths.
-                    failed = true;
-                    reason = "reflowed player no longer fits; toggle to retry";
+                // Read the entire native header's placement; never translate its child away
+                // from the parent's clipping/touch frame or the live rows below it.
+                if (map(card, v, new FoldMusicLayout.Box(0, 0, card.getWidth(), card.getHeight()), scratch)) {
+                    FoldMusicLayout.Box nativePlayer = new FoldMusicLayout.Box(
+                            scratch.left, scratch.top, scratch.right, scratch.bottom);
+                    next = FoldMusicLayout.columns(contentWidth, v.getHeight(),
+                            v.getResources().getDisplayMetrics().density,
+                            v.getResources().getConfiguration().smallestScreenWidthDp,
+                            insets.left, insets.top, LockScreenRailRuntime.reflowing() ? 0 : insets.right,
+                            insets.bottom, clock, nativePlayer, shortcutTop);
                 }
             }
-            if (!failed) reason = next == null ? "waiting for measured clock/player room" : "wide lyrics";
+            if (!failed) reason = next == null ? "waiting for measured clock/player room" : "combined artwork and lyrics";
         } else if (!failed) {
             reason = !Main.sFoldMusicLayout ? "disabled" : !wideCandidate()
                     ? "single-column window" : "outside wide lyric scene";
         }
         publish(next);
-        if (next == null) restorePlayer();
     }
 
     private static void publish(FoldMusicLayout.Columns next) {
         boolean modeChanged = (columns == null) != (next == null);
         columns = next;
         if (modeChanged) Main.refreshCoverGeometry();
-    }
-
-    private static boolean placePlayer(FoldMusicLayout.Box box) {
-        View card = player;
-        View parent = (View) card.getParent();
-        if (!map(root, parent, box, scratch)) return false;
-        ViewGroup.LayoutParams lp = card.getLayoutParams();
-        // Preserve an OEM rewrite as the baseline restored on exit.
-        if (lp.width != writtenWidth) originalWidth = lp.width;
-        if (card.getTranslationX() != writtenX) originalX = card.getTranslationX();
-        if (card.getTranslationY() != writtenY) originalY = card.getTranslationY();
-        int width = Math.max(1, Math.round(scratch.width()));
-        if (lp.width != width) {
-            lp.width = width;
-            card.setLayoutParams(lp);
-        }
-        writtenWidth = width;
-        writtenX = scratch.left - card.getLeft();
-        writtenY = scratch.top - card.getTop();
-        if (Math.abs(card.getTranslationX() - writtenX) >= 0.25f) card.setTranslationX(writtenX);
-        else writtenX = card.getTranslationX();
-        if (Math.abs(card.getTranslationY() - writtenY) >= 0.25f) card.setTranslationY(writtenY);
-        else writtenY = card.getTranslationY();
-        return true;
-    }
-
-    private static void restorePlayer() {
-        View card = player;
-        player = null;
-        if (card == null) return;
-        ViewGroup.LayoutParams lp = card.getLayoutParams();
-        if (lp != null && lp.width == writtenWidth && lp.width != originalWidth) {
-            lp.width = originalWidth;
-            card.setLayoutParams(lp);
-        }
-        if (card.getTranslationX() == writtenX) card.setTranslationX(originalX);
-        if (card.getTranslationY() == writtenY) card.setTranslationY(originalY);
     }
 
     private static boolean map(View source, View target, FoldMusicLayout.Box box, RectF result) {
@@ -249,7 +203,7 @@ final class FoldMusicRuntime {
 
     static String describe() {
         FoldMusicLayout.Columns c = columns;
-        return "fold enabled=" + Main.sFoldMusicLayout + " active=" + (c != null)
+        return "fold enabled=" + Main.sFoldMusicLayout + " combined=" + combinedRequested() + " active=" + (c != null)
                 + " reason=" + reason + " screen=" + Main.screenWidth() + "x" + Main.screenHeight()
                 + " revision=" + Main.screenGeometry().revision
                 + " " + CompactPlayerRuntime.describe()

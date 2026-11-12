@@ -799,6 +799,8 @@ final class ClockCollapse {
     }
 
     private static boolean nativeLandscapeFits(float aspect) {
+        // The combined page needs its room before the asynchronous lyric lookup completes.
+        if (FoldMusicRuntime.combinedRequested()) return false;
         if (FoldMusicRuntime.wideCandidate() && LockLyrics.wantsAttached()
                 && LockLyrics.hasLyrics()) return false;
         // AOD keeps the lit-screen decision; its own layout must not restart this animation.

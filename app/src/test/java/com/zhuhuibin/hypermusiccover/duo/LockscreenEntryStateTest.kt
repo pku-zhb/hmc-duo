@@ -42,7 +42,7 @@ class LockscreenEntryStateTest {
         val cfg = JSONObject(MiniPlayerConfig.normalizedJson("""{"enabled":true,"startupMode":0,"startupMusicView":1}"""))
         assertEquals(0, MiniPlayerConfig.startupMode(cfg, false))
         assertEquals(1, MiniPlayerConfig.startupMode(cfg, true))
-        assertEquals(2, MiniPlayerConfig.startupMusicView(cfg, true))
+        assertEquals(MiniPlayerConfig.VIEW_ARTWORK_AND_LYRICS, MiniPlayerConfig.startupMusicView(cfg, true))
         assertTrue(MiniPlayerConfig.automaticCoverAllowed(cfg.toString(), true))
         assertFalse(MiniPlayerConfig.automaticCoverAllowed(cfg.toString(), false))
         val state = LockscreenEntryState()
@@ -118,6 +118,28 @@ class LockscreenEntryStateTest {
             val second = JSONObject(MiniPlayerConfig.normalizedJson(first))
             assertEquals(show, second.getBoolean(MiniPlayerConfig.SHOW_ALL_LOCKSCREEN_NOTIFICATIONS))
             assertEquals(retain, second.getBoolean(MiniPlayerConfig.RETAIN_LOCKSCREEN_NOTIFICATIONS))
+        }
+    }
+
+    @Test fun landscapeLegacyCombinedChoiceMigratesOnceWhileNewLyricsRemainsIndependent() {
+        val old = JSONObject(MiniPlayerConfig.normalizedJson("""{"landscapeMusicView":2,"startupMusicView":2}"""))
+        assertEquals(3, MiniPlayerConfig.startupMusicView(old, true))
+        assertEquals(2, MiniPlayerConfig.startupMusicView(old, false))
+        assertEquals(old.toString(), MiniPlayerConfig.normalizedJson(old.toString()))
+        for (page in 0..3) {
+            val next = JSONObject(MiniPlayerConfig.normalizedJson(old.put("landscapeMusicView", page).toString()))
+            assertEquals(page, MiniPlayerConfig.startupMusicView(next, true))
+            assertEquals(next.toString(), MiniPlayerConfig.normalizedJson(next.toString()))
+        }
+    }
+
+    @Test fun lastLockSnapshotsMigrateOnlyOldLandscapeCombinedPages() {
+        val legacy = """{"collapsed":0,"musicView":2}"""
+        assertEquals(3, LockscreenSnapshot.decode(legacy, true)!!.musicView)
+        assertEquals(2, LockscreenSnapshot.decode(legacy, false)!!.musicView)
+        for (page in 0..3) {
+            val snapshot = LockscreenSnapshot(0, page)
+            assertEquals(page, LockscreenSnapshot.decode(snapshot.encode(), true)!!.musicView)
         }
     }
 

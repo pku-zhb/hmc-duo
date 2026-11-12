@@ -48,6 +48,8 @@ final class VideoBackdropMesh extends View implements Choreographer.FrameCallbac
     private boolean revealPending;
     private long fadeStarted, frames, lastDrawAt;
     private float renderAlpha;
+    private float fullArtworkAlpha;
+    private long lastFrameAt;
     private float lastVideoAlpha = Float.NaN;
     private ViewGroup ownerLayer;
     private ViewTreeObserver observer;
@@ -79,6 +81,8 @@ final class VideoBackdropMesh extends View implements Choreographer.FrameCallbac
                 + " bounds=" + location[0] + "," + location[1] + "," + v.getWidth() + "x" + v.getHeight()
                 + " bitmap=" + (source == null ? "none" : source.getWidth() + "x" + source.getHeight())
                 + " shader=" + (v.shader == null ? "none" : "ready")
+                + " shape=" + (CoverCardLayer.fullScene() ? "full-band" : "card")
+                + " bandAlpha=" + v.fullArtworkAlpha
                 + (failure == null ? "" : " fallback=" + failure);
     }
 
@@ -113,21 +117,8 @@ final class VideoBackdropMesh extends View implements Choreographer.FrameCallbac
     }
 
     private void attach(ViewGroup layer) {
-        ViewGroup host = layer;
-        View below = null;
-        // The doze scales/clips the keyguard root. Still artwork must use its full-size sibling,
-        // just like the existing AOD wash. Video's original overlay is inside the root instead.
-        if (!Main.sVideoWallpaper) {
-            int id = layer.getResources().getIdentifier("keyguard_root_view", "id", "com.android.systemui");
-            for (Object at = layer; id != 0 && at instanceof View; at = ((View) at).getParent()) {
-                View candidate = (View) at;
-                if (candidate.getId() == id && candidate.getParent() instanceof ViewGroup) {
-                    host = (ViewGroup) candidate.getParent();
-                    below = candidate;
-                    break;
-                }
-            }
-        }
+        View below = fullScreenRoot(layer);
+        ViewGroup host = below == null ? layer : (ViewGroup) below.getParent();
         ownerLayer = layer;
         if (getParent() == host) { watch(host); return; }
         hide();
@@ -145,6 +136,47 @@ final class VideoBackdropMesh extends View implements Choreographer.FrameCallbac
         }
         host.addView(this, index, new ViewGroup.LayoutParams(-1, -1));
         watch(host);
+    }
+
+    private static View fullScreenRoot(ViewGroup layer) {
+        // The doze scales/clips the keyguard root. Still artwork must use its full-size sibling,
+        // just like the existing AOD wash. Video's original overlay is inside the root instead.
+        if (!Main.sVideoWallpaper) {
+            int id = layer.getResources().getIdentifier("keyguard_root_view", "id", "com.android.systemui");
+            for (Object at = layer; id != 0 && at instanceof View; at = ((View) at).getParent()) {
+                View candidate = (View) at;
+                if (candidate.getId() == id && candidate.getParent() instanceof ViewGroup) {
+                    return candidate;
+                }
+            }
+        }
+        return null;
+    }
+
+    /** The morph lands on this receiver, which can be outside the zoomed cover-layer subtree. */
+    static CoverMorphMotion.Box fullSceneTarget(android.graphics.Bitmap artwork) {
+        if (artwork == null || artwork.isRecycled()) return null;
+        ViewGroup layer = CoverPush.coverLayer();
+        if (layer == null) return null;
+        View below = fullScreenRoot(layer);
+        ViewGroup host = below == null ? layer : (ViewGroup) below.getParent();
+        VideoBackdropMesh v = view;
+        View receiver = v != null && v.ownerLayer == layer && v.getParent() == host
+                && v.getWidth() > 0 && v.getHeight() > 0 ? v : host;
+        int insetX = receiver == host ? host.getPaddingLeft() : 0;
+        int insetY = receiver == host ? host.getPaddingTop() : 0;
+        int width = receiver.getWidth() - insetX
+                - (receiver == host ? host.getPaddingRight() : 0);
+        int height = receiver.getHeight() - insetY
+                - (receiver == host ? host.getPaddingBottom() : 0);
+        CoverFullScenePolicy.Band band = CoverFullScenePolicy.band(width, height,
+                artwork.getWidth(), artwork.getHeight(), Main.sBias);
+        if (band == null) return null;
+        RectF destination = new RectF(insetX + band.left, insetY + band.top,
+                insetX + band.left + band.width, insetY + band.top + band.height);
+        ClockCollapse.boundsOnScreen(receiver, destination);
+        return new CoverMorphMotion.Box(destination.left, destination.top,
+                destination.width(), destination.height());
     }
 
     private void watch(ViewGroup host) {
@@ -177,7 +209,8 @@ final class VideoBackdropMesh extends View implements Choreographer.FrameCallbac
     private boolean eligible() {
         return wanted && isAttachedToWindow() && ownerLayer == CoverPush.coverLayer()
                 && ownerLayer.isAttachedToWindow() && CoverCardLayer.currentBackdrop() != null
-                && ArtworkBackdropState.eligible(!CoverBackdrop.hidden(), Main.coverModeOn(),
+                && ArtworkBackdropState.eligible(!CoverBackdrop.hidden() || CoverCardLayer.fullScene(),
+                        Main.coverModeOn(),
                         Main.screenOnCached() && ClockCollapse.phase() != ClockCollapse.Phase.AOD,
                         Main.keyguardLocked(), MiniPlayerScene.INSTANCE.getKeyguardGoingAway(),
                         Main.onKeyguardNow());
@@ -205,7 +238,28 @@ final class VideoBackdropMesh extends View implements Choreographer.FrameCallbac
 
     private boolean needsFrames() {
         return !state.revealed() || renderAlpha < 0.999f || dynamic && shader != null
-                || CoverCardLayer.backdropTransitioning();
+                || CoverCardLayer.backdropTransitioning()
+                || Math.abs(fullArtworkAlpha - fullArtworkTarget()) > 0.001f;
+    }
+
+    private static float fullArtworkTarget() {
+        return CoverCardLayer.fullSceneArtworkVisible() ? 1f : 0f;
+    }
+
+    static boolean fullSceneHandoffReady(int generation) {
+        VideoBackdropMesh v = view;
+        return v != null && v.eligible() && v.state.source() == generation
+                && v.state.drawn() == generation && v.state.revealed()
+                && v.renderAlpha >= .995f && v.fullArtworkAlpha >= .995f;
+    }
+
+    static boolean artworkAt(float x, float y) {
+        VideoBackdropMesh v = view;
+        if (v == null || !v.eligible() || !v.isShown() || v.fullArtworkAlpha < .5f) return false;
+        int[] at = new int[2];
+        v.getLocationOnScreen(at);
+        return x >= at[0] && y >= at[1] && x < at[0] + v.getWidth()
+                && y < at[1] + v.getHeight();
     }
 
     private void schedule() {
@@ -222,6 +276,8 @@ final class VideoBackdropMesh extends View implements Choreographer.FrameCallbac
         revealPending = false;
         fadeStarted = 0L;
         renderAlpha = 0f;
+        fullArtworkAlpha = 0f;
+        lastFrameAt = 0L;
         lastVideoAlpha = Float.NaN;
         state.hide();
         if (getVisibility() != INVISIBLE) setVisibility(INVISIBLE);
@@ -230,6 +286,12 @@ final class VideoBackdropMesh extends View implements Choreographer.FrameCallbac
     @Override public void doFrame(long now) {
         scheduled = false;
         if (!eligible()) { hide(); return; }
+        float dt = lastFrameAt == 0L ? 1f / 60f
+                : Math.min(.05f, Math.max(0f, (now - lastFrameAt) / 1e9f));
+        lastFrameAt = now;
+        float target = fullArtworkTarget();
+        fullArtworkAlpha += (target - fullArtworkAlpha) * Math.min(1f, dt / .06f);
+        if (Math.abs(target - fullArtworkAlpha) < .001f) fullArtworkAlpha = target;
         if (state.revealed()) {
             float t = Math.min(1f, (SystemClock.uptimeMillis() - fadeStarted) / 240f);
             renderAlpha = t * t * (3f - 2f * t);
@@ -253,8 +315,10 @@ final class VideoBackdropMesh extends View implements Choreographer.FrameCallbac
                 ? canvas.saveLayerAlpha(bounds, Math.round(255f * alpha)) : canvas.save();
         boolean drawn = false;
         try {
-            drawn = CoverCardLayer.drawBackdrop(canvas, bounds, paint);
-            if (drawn && dynamic && shader != null) {
+            // FULL consists of a sharp feathered band over a separate fill. Native-background
+            // mode omits only the fill; it does not remove the user's foreground artwork.
+            drawn = CoverBackdrop.hidden() || CoverCardLayer.drawBackdrop(canvas, bounds, paint);
+            if (drawn && !CoverBackdrop.hidden() && dynamic && shader != null) {
                 try {
                     shader.setFloatUniform("size", getWidth(), getHeight());
                     shader.setFloatUniform("time", (SystemClock.uptimeMillis() % 600_000L) / 1000f);
@@ -267,6 +331,8 @@ final class VideoBackdropMesh extends View implements Choreographer.FrameCallbac
                     Xp.w(Main.TAG + "local mesh draw failed; retaining static artwork: " + error);
                 } finally { paint.setShader(null); }
             }
+            if (CoverCardLayer.fullScene())
+                CoverCardLayer.drawFullSceneArtwork(canvas, bounds, paint, fullArtworkAlpha);
         } finally { canvas.restoreToCount(saved); }
         if (!drawn) return;
         frames++;

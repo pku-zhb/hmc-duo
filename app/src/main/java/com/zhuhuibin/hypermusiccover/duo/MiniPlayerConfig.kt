@@ -13,6 +13,7 @@ object MiniPlayerConfig {
     const val STARTUP_MUSIC_VIEW = "startupMusicView"
     const val LANDSCAPE_STARTUP_MODE = "landscapeStartupMode"
     const val LANDSCAPE_MUSIC_VIEW = "landscapeMusicView"
+    const val LANDSCAPE_PAGE_SCHEMA = "landscapePageSchema"
     const val COLLAPSED_CATEGORIES = "collapsedCategories"
     const val LANDSCAPE_COLLAPSED_CATEGORIES = "landscapeCollapsedCategories"
     const val KEEP_LAST_LOCKSCREEN = "keepLastLockscreen"
@@ -28,6 +29,7 @@ object MiniPlayerConfig {
     const val VIEW_PLAYER = 0
     const val VIEW_ARTWORK = 1
     const val VIEW_LYRICS = 2
+    const val VIEW_ARTWORK_AND_LYRICS = 3
 
     @JvmStatic fun startupMode(config: JSONObject): Int = config.optInt(STARTUP_MODE, START_MUSIC_ONLY)
         .coerceIn(START_COLLAPSED, START_MUSIC_ONLY)
@@ -37,8 +39,16 @@ object MiniPlayerConfig {
         if (innerLandscape) config.optInt(LANDSCAPE_STARTUP_MODE, START_EXPANDED).coerceIn(START_COLLAPSED, START_MUSIC_ONLY)
         else startupMode(config)
     @JvmStatic fun startupMusicView(config: JSONObject, innerLandscape: Boolean): Int =
-        if (innerLandscape) config.optInt(LANDSCAPE_MUSIC_VIEW, VIEW_LYRICS).coerceIn(VIEW_PLAYER, VIEW_LYRICS)
+        if (innerLandscape) landscapeMusicView(config)
         else startupMusicView(config)
+
+    /** Preview 11 used value 2 for the combined landscape scene. Preserve that saved intent. */
+    private fun landscapeMusicView(config: JSONObject): Int {
+        val value = config.optInt(LANDSCAPE_MUSIC_VIEW, VIEW_ARTWORK_AND_LYRICS)
+            .coerceIn(VIEW_PLAYER, VIEW_ARTWORK_AND_LYRICS)
+        return if (config.optInt(LANDSCAPE_PAGE_SCHEMA, 0) < 1 && value == VIEW_LYRICS)
+            VIEW_ARTWORK_AND_LYRICS else value
+    }
     @JvmStatic fun collapsedCategories(config: JSONObject, innerLandscape: Boolean = false): Int {
         val key = if (innerLandscape) LANDSCAPE_COLLAPSED_CATEGORIES else COLLAPSED_CATEGORIES
         val legacy = when (startupMode(config, innerLandscape)) {
@@ -95,7 +105,8 @@ object MiniPlayerConfig {
         STARTUP_MODE to START_MUSIC_ONLY,
         STARTUP_MUSIC_VIEW to VIEW_LYRICS,
         LANDSCAPE_STARTUP_MODE to START_EXPANDED,
-        LANDSCAPE_MUSIC_VIEW to VIEW_LYRICS,
+        LANDSCAPE_MUSIC_VIEW to VIEW_ARTWORK_AND_LYRICS,
+        LANDSCAPE_PAGE_SCHEMA to 1,
         COLLAPSED_CATEGORIES to (COLLAPSE_LIVE or COLLAPSE_NOTIFICATIONS),
         LANDSCAPE_COLLAPSED_CATEGORIES to 0,
         KEEP_LAST_LOCKSCREEN to false,
@@ -148,7 +159,7 @@ object MiniPlayerConfig {
             } else if (key == LANDSCAPE_STARTUP_MODE) {
                 input.optInt(key, START_EXPANDED).coerceIn(START_COLLAPSED, START_MUSIC_ONLY)
             } else if (key == LANDSCAPE_MUSIC_VIEW) {
-                input.optInt(key, VIEW_LYRICS).coerceIn(VIEW_PLAYER, VIEW_LYRICS)
+                landscapeMusicView(input)
             } else if (key == STARTUP_MUSIC_VIEW) {
                 if (!input.has(COLLAPSED_CATEGORIES) && startupMode(input) == START_EXPANDED) VIEW_PLAYER
                 else input.optInt(STARTUP_MUSIC_VIEW, VIEW_LYRICS).coerceIn(VIEW_PLAYER, VIEW_LYRICS)

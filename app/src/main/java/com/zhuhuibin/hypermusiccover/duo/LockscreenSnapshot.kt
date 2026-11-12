@@ -15,19 +15,23 @@ internal data class LockscreenSnapshot(
         else collapsed and MiniPlayerConfig.COLLAPSE_LIVE != 0
 
     fun encode(): String = JSONObject().put("collapsed", collapsed).put("musicView", musicView)
+        .put("musicPageSchema", 1)
         .put("focusKnown", JSONArray(focusKnown.sorted())).put("focusExpanded", JSONArray(focusExpanded.sorted()))
         .put("selected", selected ?: JSONObject.NULL).toString()
 
     companion object {
         fun preference(landscape: Boolean) = if (landscape) "lastLockLandscape" else "lastLockPortrait"
-        fun decode(raw: String?): LockscreenSnapshot? = runCatching {
+        fun decode(raw: String?, landscape: Boolean = false): LockscreenSnapshot? = runCatching {
             val json = JSONObject(raw ?: return null)
             fun keys(name: String): Set<String> = json.optJSONArray(name)?.let { a ->
                 (0 until minOf(a.length(), 100)).mapNotNull { a.optString(it).takeIf(String::isNotEmpty) }.toSet()
             } ?: emptySet()
             val known = keys("focusKnown")
             LockscreenSnapshot(json.getInt("collapsed").coerceIn(0, MiniPlayerConfig.COLLAPSE_ALL),
-                json.getInt("musicView").coerceIn(MiniPlayerConfig.VIEW_PLAYER, MiniPlayerConfig.VIEW_LYRICS),
+                json.getInt("musicView").coerceIn(MiniPlayerConfig.VIEW_PLAYER, MiniPlayerConfig.VIEW_ARTWORK_AND_LYRICS).let { page ->
+                    if (landscape && json.optInt("musicPageSchema", 0) < 1 && page == MiniPlayerConfig.VIEW_LYRICS)
+                        MiniPlayerConfig.VIEW_ARTWORK_AND_LYRICS else page
+                },
                 known, keys("focusExpanded").intersect(known),
                 if (json.isNull("selected")) null else json.optString("selected").takeIf(String::isNotEmpty))
         }.getOrNull()

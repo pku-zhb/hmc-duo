@@ -18,7 +18,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.ViewTreeObserver;
 
-/** Foreground artwork for both shapes; OEM clock, player and shortcut controls stay above it. */
+/** Owned artwork sources and the CARD foreground; FULL is composed behind native controls. */
 final class CoverCardLayer extends View implements Choreographer.FrameCallback {
     private static CoverCardLayer sView;
     private static volatile Prepared sPending;
@@ -29,14 +29,21 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
     private static final class Prepared {
         final Bitmap art;
         final Bitmap aodBackdrop;
+        final Bitmap fullBand;
+        final float fullBias;
+        final boolean cardComposition;
         final int generation;
         final int pushGeneration;
         final boolean temporaryThumbnail;
         final String trackKey;
-        Prepared(Bitmap art, Bitmap aodBackdrop, int generation, int pushGeneration,
+        Prepared(Bitmap art, Bitmap aodBackdrop, Bitmap fullBand, float fullBias, boolean cardComposition,
+                 int generation, int pushGeneration,
                  boolean temporaryThumbnail, String trackKey) {
             this.art = art;
             this.aodBackdrop = aodBackdrop;
+            this.fullBand = fullBand;
+            this.fullBias = fullBias;
+            this.cardComposition = cardComposition;
             this.generation = generation;
             this.pushGeneration = pushGeneration;
             this.temporaryThumbnail = temporaryThumbnail;
@@ -45,6 +52,7 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
         void recycle() {
             art.recycle();
             if (aodBackdrop != null) aodBackdrop.recycle();
+            if (fullBand != null) fullBand.recycle();
         }
     }
 
@@ -303,21 +311,28 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
 
     static void publish(Bitmap source, boolean temporaryThumbnail, int pushGeneration,
                         String expectedKey) {
+        publish(source, temporaryThumbnail, pushGeneration, expectedKey, !fullScene());
+    }
+
+    static void publish(Bitmap source, boolean temporaryThumbnail, int pushGeneration,
+                        String expectedKey, boolean cardComposition) {
         final int generation = ++sGeneration;
         final String trackKey = expectedKey == null ? Main.sTrackKey : expectedKey;
         if (source == null || source.isRecycled()) return;
-        Bitmap readable = null, art = null, aodBackdrop = null;
+        Bitmap readable = null, art = null, aodBackdrop = null, fullBand = null;
+        final boolean full = Main.effectiveCoverStyle().mode == CoverCardStyle.FULL;
+        final float bias = Main.sBias;
         try {
             readable = source.getConfig() == Bitmap.Config.HARDWARE
                     ? source.copy(Bitmap.Config.ARGB_8888, false) : source;
             int w = readable.getWidth(), h = readable.getHeight();
             // The artwork's own shape, cropped only past CoverCardStyle.MAX_ASPECT. It was
             // cropped to a square here, which cut the sides off a video's cover.
-            float aspect = CoverCardStyle.aspect(w, h);
+            float aspect = full ? w / (float) h : CoverCardStyle.aspect(w, h);
             int cw = Math.min(w, Math.round(h * aspect));
             int ch = Math.min(h, Math.round(w / aspect));
             Rect crop = new Rect((w - cw) / 2, (h - ch) / 2, (w + cw) / 2, (h + ch) / 2);
-            float limit = Main.effectiveCoverStyle().mode == CoverCardStyle.FULL ? 1024f : 512f;
+            float limit = full ? 1024f : 512f;
             float down = Math.min(1f, limit / Math.max(cw, ch));
             art = Bitmap.createBitmap(Math.max(1, Math.round(cw * down)),
                     Math.max(1, Math.round(ch * down)), Bitmap.Config.ARGB_8888);
@@ -336,14 +351,25 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
                         / Math.max(screenW, screenH));
                 int backdropW = Math.max(1, Math.round(screenW * fit));
                 int backdropH = Math.max(1, Math.round(screenH * fit));
-                aodBackdrop = CoverCompose.cardBackground(readable, backdropW, backdropH, Main.sFullBlur);
+                aodBackdrop = full && !cardComposition
+                        ? CoverCompose.composedBackdrop(readable, backdropW, backdropH, bias, Main.sFullBlur)
+                        : CoverCompose.cardBackground(readable, backdropW, backdropH, Main.sFullBlur);
+                if (full) {
+                    // Keep the original full-width composition separate from its blurred fill.
+                    // A native background can then retain the sharp band, and the animated mesh
+                    // cannot cover it. The bitmap preserves aspect rather than the card's crop.
+                    fullBand = CoverCompose.feathered(art, art.getWidth(), art.getHeight(),
+                            CoverFullScenePolicy.feather(art.getWidth(), art.getHeight(), screenW));
+                }
             } catch (Throwable t) {
                 Xp.w("[MCCard] local/AOD backdrop preparation failed: " + t);
             }
-            final Prepared p = new Prepared(art, aodBackdrop, generation, pushGeneration,
+            final Prepared p = new Prepared(art, aodBackdrop, fullBand, bias, cardComposition,
+                    generation, pushGeneration,
                     temporaryThumbnail, trackKey);
             art = null;
             aodBackdrop = null;
+            fullBand = null;
             final Prepared old = sPending;
             sPending = p;
             Main.main().post(new Runnable() {
@@ -357,9 +383,12 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
                     if (v == null) return;
                     // The first art has nothing to keep pace with. A swap waits for the
                     // wallpaper to start its own - see releaseHeld() - with a ceiling in case
-                    // that word never comes.
+                    // that word never comes. A page's composition change is already visible
+                    // locally, so do not hold it on a wallpaper acknowledgement for 400ms.
                     Main.main().removeCallbacks(ADOPT_HELD);
-                    if (v.current == null || v.isReadyRectangularUpgrade(sPending)) v.adoptPending();
+                    if (v.current == null || v.isReadyRectangularUpgrade(sPending)
+                            || sPending != null && v.current.cardComposition != sPending.cardComposition)
+                        v.adoptPending();
                     else Main.main().postDelayed(ADOPT_HELD, HOLD_MAX_MS);
                 }
             });
@@ -369,6 +398,7 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
             if (readable != null && readable != source) readable.recycle();
             if (art != null) art.recycle();
             if (aodBackdrop != null) aodBackdrop.recycle();
+            if (fullBand != null) fullBand.recycle();
         }
     }
 
@@ -661,6 +691,55 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
         return sView != null && sView.previous != null;
     }
 
+    /** The explicit landscape combined page owns its columns before they finish measuring. */
+    static boolean fullScene() {
+        return CoverFullScenePolicy.fullScene(Main.effectiveCoverStyle().mode,
+                FoldMusicRuntime.combinedRequested());
+    }
+
+    static boolean fullSceneArtworkVisible() {
+        return fullScene() && Main.coverCardVisible() && !LockLyrics.wantsCompactArtwork();
+    }
+
+    static boolean hasFullSceneArtwork() {
+        CoverCardLayer v = sView;
+        return v != null && v.current != null && v.current.fullBand != null
+                && !v.current.fullBand.isRecycled();
+    }
+
+    /** Release the thumbnail morph only after this track's actual full scene has reached a frame. */
+    static boolean fullSceneHandoffReady() {
+        CoverCardLayer v = sView;
+        return fullScene() && hasFullSceneArtwork() && !v.current.cardComposition && v.previous == null
+                && CoverPush.currentPush(v.current.pushGeneration, v.current.trackKey)
+                && VideoBackdropMesh.fullSceneHandoffReady(v.current.generation);
+    }
+
+    /** Sharp full-width artwork belongs above either the mirrored blur or the dynamic mesh. */
+    static boolean drawFullSceneArtwork(Canvas canvas, RectF bounds, Paint paint, float alpha) {
+        CoverCardLayer v = sView;
+        if (v == null || !hasFullSceneArtwork() || alpha <= 0f) return false;
+        Prepared old = v.previous;
+        boolean crossfade = old != null && old.fullBand != null && !old.fullBand.isRecycled();
+        float fade = crossfade ? v.fadeFraction() : 1f;
+        if (crossfade) drawFullBand(canvas, bounds, paint, old, alpha * (1f - fade));
+        drawFullBand(canvas, bounds, paint, v.current, alpha * fade);
+        paint.setAlpha(255);
+        return true;
+    }
+
+    private static void drawFullBand(Canvas canvas, RectF bounds, Paint paint, Prepared source,
+                                     float alpha) {
+        Bitmap band = source.fullBand;
+        CoverFullScenePolicy.Band layout = CoverFullScenePolicy.band(Math.round(bounds.width()),
+                Math.round(bounds.height()), band.getWidth(), band.getHeight(), source.fullBias);
+        if (layout == null) return;
+        paint.setShader(null);
+        paint.setAlpha(Math.max(0, Math.min(255, Math.round(255f * alpha))));
+        canvas.drawBitmap(band, null, new RectF(bounds.left, bounds.top + layout.top,
+                bounds.right, bounds.top + layout.top + layout.height), paint);
+    }
+
     /** Draw only owned copies on the UI thread, sharing foreground track-change timing. */
     static boolean drawBackdrop(Canvas canvas, RectF bounds, Paint paint) {
         CoverCardLayer v = sView;
@@ -681,6 +760,7 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
 
     /** Whether a point on screen falls on the square as it was last drawn, shown and lit. */
     static boolean artworkAt(float x, float y) {
+        if (fullScene()) return fullSceneArtworkVisible() && VideoBackdropMesh.artworkAt(x, y);
         CoverCardLayer v = sView;
         if (v == null || !v.isShown() || v.getAlpha() < 0.5f || v.square.isEmpty()) return false;
         int[] at = new int[2];
@@ -760,7 +840,7 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
         previous = current;
         current = p;
         boolean newTrack = previous != null && !Main.sameTrack(previous.trackKey, p.trackKey);
-        boolean flip = Main.sCoverFlip && newTrack;
+        boolean flip = !fullScene() && Main.sCoverFlip && newTrack;
         if (flip) startFlip(CoverPush.recentSkipDir());
         // Reveal ready artwork promptly, but fade out the treatment rather than cutting it.
         // Turning over, the old art is kept till the turn is edge-on (doFrame lets it go).
@@ -1120,7 +1200,8 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
         if (phase != ClockCollapse.Phase.AOD) aodSince = 0L;
         else if (aodSince == 0L) aodSince = nowNs;
         boolean inAod = Main.coverCardInAod();
-        boolean visible = Main.coverCardVisible();
+        boolean foregroundCard = style.mode == CoverCardStyle.CARD || FoldMusicRuntime.sideBySide();
+        boolean visible = foregroundCard && Main.coverCardVisible();
         if (aodExpandPending && inAod && visible) {
             aodExpandPending = false;
             CoverMorphMotion.Box thumbnail = Main.coverMorphThumbnail();
@@ -1225,7 +1306,7 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
         boolean backdrop = Main.coverCardBackdropInAod() && current != null
                 && current.aodBackdrop != null;
         // Native wallpaper owns its AOD background; never overlay an artwork wash.
-        if (CoverBackdrop.hidden()) wash.hideNow();
+        if (CoverBackdrop.hidden() && !fullSceneArtworkVisible()) wash.hideNow();
         else wash.show(backdrop);
         int visibility = opacity > 0f || target > 0f ? VISIBLE : GONE;
         if (getVisibility() != visibility) setVisibility(visibility);
@@ -1250,7 +1331,8 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
             hideOutsideKeyguard("card draw");
             return;
         }
-        if (current == null) return;
+        if (current == null || fullScene()
+                || style.mode == CoverCardStyle.FULL && !FoldMusicRuntime.sideBySide()) return;
         // A doze frame may draw before the queued animation frame clears a stale lock-screen
         // opacity. The lyric page must never show the square underneath it in the full AOD.
         if (opacity <= 0f || CoverMorphLayer.cardSuppressed()
@@ -1480,9 +1562,12 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
             }
             if (moving) postInvalidateOnAnimation();
             if (p == null || p.aodBackdrop == null || p.aodBackdrop.isRecycled()) return;
-            paint.setAlpha(Math.round(64f * level));
             bounds.set(0f, 0f, getWidth(), getHeight());
-            canvas.drawBitmap(p.aodBackdrop, null, bounds, paint);
+            int saved = canvas.saveLayerAlpha(bounds, Math.round(64f * level));
+            paint.setAlpha(255);
+            if (!CoverBackdrop.hidden()) canvas.drawBitmap(p.aodBackdrop, null, bounds, paint);
+            if (fullSceneArtworkVisible()) drawFullSceneArtwork(canvas, bounds, paint, 1f);
+            canvas.restoreToCount(saved);
         }
     }
 

@@ -41,6 +41,14 @@ final class MusicPageActionDrawable extends Drawable {
             canvas.drawCircle(12f, 12f, 9f, paint);
             canvas.drawLine(12f, 6f, 12f, 12f, paint);
             canvas.drawLine(12f, 12f, 16f, 14f, paint);
+        } else if (page == RailMusicPagePolicy.ARTWORK_AND_LYRICS) {
+            canvas.drawRoundRect(1.5f, 4f, 11f, 20f, 1.5f, 1.5f, paint);
+            canvas.drawLine(3.5f, 16f, 6f, 12f, paint);
+            canvas.drawLine(6f, 12f, 9f, 16f, paint);
+            canvas.drawLine(14f, 6f, 22f, 6f, paint);
+            canvas.drawLine(14f, 10f, 22f, 10f, paint);
+            canvas.drawLine(14f, 14f, 20f, 14f, paint);
+            canvas.drawLine(14f, 18f, 22f, 18f, paint);
         } else {
             canvas.drawRoundRect(2.5f, 3.5f, 21.5f, 20.5f, 2.8f, 2.8f, paint);
             canvas.drawCircle(16f, 8f, 1.5f, paint);

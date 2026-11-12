@@ -817,6 +817,7 @@ final class LockLyrics {
 
     /** The user's page choice, before temporary notification or AOD overrides. */
     static boolean userWantsCompactArtwork() {
+        if (FoldMusicRuntime.combinedRequested()) return false;
         // The player alone is a choice too: without it a notification that came in grew the
         // square back in the doze, and only on the sleeps that had one.
         return wanted() && hasLyrics() || sArtworkPage.compactWithoutLyrics(sEnabled, hasLyrics())
@@ -824,7 +825,7 @@ final class LockLyrics {
     }
 
     static boolean wantsCompactArtwork() {
-        if (FoldMusicRuntime.sideBySide()) return false;
+        if (FoldMusicRuntime.combinedRequested()) return false;
         return wantsAttached() || compactWithoutLyrics();
     }
 
@@ -1970,7 +1971,8 @@ final class LockLyrics {
         sNotificationCompact = false;
         sTapHidden = !lyrics;
         if (lyrics) {
-            sArtworkPage.preferCompact();
+            if (FoldMusicRuntime.combinedRequested()) sArtworkPage.preferCover();
+            else sArtworkPage.preferCompact();
             if (key != null && !key.isEmpty()) onTrack(key, controller);
         } else sArtworkPage.preferCover();
         refresh();
