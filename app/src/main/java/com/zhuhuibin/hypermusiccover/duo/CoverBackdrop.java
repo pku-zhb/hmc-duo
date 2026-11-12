@@ -17,7 +17,7 @@ final class CoverBackdrop {
                 + " locked=" + Main.keyguardLocked() + " dim=" + Main.sWallpaperDim
                 + " target=" + dimTarget + " compact=" + LockLyrics.wantsCompactArtwork()
                 + " lyrics=" + LockLyrics.hasLyrics() + " window=" + LockLyrics.wantsWindow()
-                + " videoMesh=" + VideoBackdropMesh.describe();
+                + " localBackdrop=[" + VideoBackdropMesh.describe() + "]";
         if (view == null) return state + " layer=none";
         state += " alpha=" + view.getAlpha() + " shown=" + view.isShown()
                 + " size=" + view.getWidth() + "x" + view.getHeight();
@@ -123,8 +123,12 @@ final class CoverBackdrop {
             dimLayer.setImportantForAccessibility(android.view.View.IMPORTANT_FOR_ACCESSIBILITY_NO);
             dimLayer.setAlpha(0f);
             int index = below != null ? parent.indexOfChild(below) : parent.getChildCount();
-            if (below == null) for (int i = 0; i < parent.getChildCount(); i++) {
-                if (parent.getChildAt(i) instanceof CoverCardLayer) { index = i; break; }
+            for (int i = 0; i < index; i++) {
+                android.view.View child = parent.getChildAt(i);
+                if (child instanceof CoverCardLayer || "HMCCoverWash".equals(child.getTag())) {
+                    index = i;
+                    break;
+                }
             }
             parent.addView(dimLayer, index, new android.view.ViewGroup.LayoutParams(-1, -1));
             dimTarget = Float.NaN;

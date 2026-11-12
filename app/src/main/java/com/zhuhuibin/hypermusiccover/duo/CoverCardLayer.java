@@ -326,17 +326,19 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
                     new Paint(Paint.FILTER_BITMAP_FLAG));
             // Shade only the large cover's copy; wallpaper and AOD backdrops keep their brightness.
             if (temporaryThumbnail) new Canvas(art).drawColor(0x33000000);
-            // The AOD's own dimming can flatten the wallpaper almost to black. A small copy of
-            // the same static blur is drawn over it at low alpha only in the full-screen AOD.
-            // Prepare it with the artwork, off the UI thread, then reuse it without animation.
+            // One owned, generation-matched backdrop serves the local lock-screen layer and
+            // the existing faint full-AOD wash. Some Flip builds have no keyguard image engine;
+            // preparing locally cannot depend on that engine accepting a wallpaper upload.
             try {
-                int backdropW = 256;
-                int backdropH = Math.min(768, Math.max(256,
-                        Math.round(backdropW * Main.screenHeight()
-                                / (float) Main.screenWidth())));
+                int screenW = Math.max(1, Main.screenWidth());
+                int screenH = Math.max(1, Main.screenHeight());
+                float fit = Math.min(1f, (Main.sFullBlur <= 0 ? 1280f : 768f)
+                        / Math.max(screenW, screenH));
+                int backdropW = Math.max(1, Math.round(screenW * fit));
+                int backdropH = Math.max(1, Math.round(screenH * fit));
                 aodBackdrop = CoverCompose.cardBackground(readable, backdropW, backdropH, Main.sFullBlur);
             } catch (Throwable t) {
-                Xp.w("[MCCard] AOD backdrop preparation failed: " + t);
+                Xp.w("[MCCard] local/AOD backdrop preparation failed: " + t);
             }
             final Prepared p = new Prepared(art, aodBackdrop, generation, pushGeneration,
                     temporaryThumbnail, trackKey);
@@ -642,6 +644,39 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
         CoverCardLayer v = sView;
         Prepared p = v == null ? null : v.current;
         return p == null || p.art.isRecycled() ? null : p.art;
+    }
+
+    static Bitmap currentBackdrop() {
+        CoverCardLayer v = sView;
+        Prepared p = v == null ? null : v.current;
+        return p == null || p.aodBackdrop == null || p.aodBackdrop.isRecycled() ? null : p.aodBackdrop;
+    }
+
+    static int backdropGeneration() {
+        CoverCardLayer v = sView;
+        return v == null || v.current == null ? -1 : v.current.generation;
+    }
+
+    static boolean backdropTransitioning() {
+        return sView != null && sView.previous != null;
+    }
+
+    /** Draw only owned copies on the UI thread, sharing foreground track-change timing. */
+    static boolean drawBackdrop(Canvas canvas, RectF bounds, Paint paint) {
+        CoverCardLayer v = sView;
+        Bitmap current = currentBackdrop();
+        if (v == null || current == null) return false;
+        paint.setShader(null);
+        paint.setColor(0xFFFFFFFF);
+        Prepared old = v.previous;
+        Bitmap previous = old == null ? null : old.aodBackdrop;
+        boolean crossfade = previous != null && !previous.isRecycled();
+        paint.setAlpha(255);
+        if (crossfade) canvas.drawBitmap(previous, null, bounds, paint);
+        paint.setAlpha(crossfade ? Math.round(255f * v.fadeFraction()) : 255);
+        canvas.drawBitmap(current, null, bounds, paint);
+        paint.setAlpha(255);
+        return true;
     }
 
     /** Whether a point on screen falls on the square as it was last drawn, shown and lit. */
@@ -1353,6 +1388,7 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
 
         Wash(Context context) {
             super(context);
+            setTag("HMCCoverWash");
             setClickable(false);
             setFocusable(false);
             setImportantForAccessibility(IMPORTANT_FOR_ACCESSIBILITY_NO);

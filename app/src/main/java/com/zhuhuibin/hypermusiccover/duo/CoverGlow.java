@@ -56,9 +56,9 @@ final class CoverGlow {
             sSpecDrift = drift;
             sSpecMesh = mesh;
         }
-        // Video engines do not expose the still-wallpaper GL draw callback. Render the same
-        // mesh locally rather than accepting the switch with no visible output.
-        VideoBackdropMesh.show(on && mesh && Main.sVideoWallpaper, sSpec);
+        // Local presentation also covers still wallpapers with no separate keyguard engine.
+        // The wallpaper GL path remains useful for native glass sampling when available.
+        VideoBackdropMesh.show(base, on && mesh, sSpec);
         if (on != sSentOn || drift != sSentDrift || sSpec != sSentSpec) {
             sSentOn = on;
             sSentDrift = drift;
