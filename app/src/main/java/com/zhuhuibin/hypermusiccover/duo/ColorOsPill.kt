@@ -413,10 +413,11 @@ internal object ColorOsPill {
  * The glass of ColorOS's row: the brackets at rest, and through a pull or a switch both islands,
  * the liquid between them and the brackets, as one shape. Worn on the card's material as the
  * pill's own glass is (MiniPlayerRuntime.material: this frame the blur container, [element] the
- * card's recorded calls). Its outline is any path - non-convex outlines clip from API 33 - so the
- * rim follows the waist and the crescents too.
+ * card's recorded calls). The outer path clips the liquid silhouette from API 33. HyperOS
+ * uses a rounded native material carrier inside that mask: the native refraction frame and
+ * the non-convex fusion contour are separate, rather than giving an arbitrary path to its SDF.
  */
-internal class GooGlass(context: Context) : FrameLayout(context) {
+internal class GooGlass(context: Context, private val roundedCarrier: Boolean = false) : FrameLayout(context) {
     private val element = MaterialElement(context)
     private val local = Path()
     private var dressWith: ((ImageView) -> Unit)? = null
@@ -424,9 +425,18 @@ internal class GooGlass(context: Context) : FrameLayout(context) {
     private var requestedAs = -1
     private var sdfWidth = 0
     private var sdfHeight = 0
+    private var carrierRadius = 0f
     private val shape = object : ViewOutlineProvider() {
         override fun getOutline(view: View, outline: Outline) {
             if (local.isEmpty) outline.setEmpty() else outline.setPath(local)
+        }
+    }
+    // A path outline clips correctly, but is not the rounded-rectangle outline consumed by
+    // the native glass SDF. Keep material geometry separate from the fused silhouette mask.
+    private val materialShape = if (!roundedCarrier) shape else object : ViewOutlineProvider() {
+        override fun getOutline(view: View, outline: Outline) {
+            outline.setRoundRect(0, 0, view.width, view.height,
+                carrierRadius.coerceIn(0f, min(view.width, view.height) / 2f))
         }
     }
 
@@ -439,7 +449,7 @@ internal class GooGlass(context: Context) : FrameLayout(context) {
         outlineAmbientShadowColor = Color.TRANSPARENT
         outlineSpotShadowColor = Color.TRANSPARENT
         element.scaleType = ImageView.ScaleType.FIT_XY
-        element.shape = shape
+        element.shape = materialShape
         element.clipToOutline = true
         addView(element, LayoutParams(-1, -1))
         isClickable = false
@@ -472,7 +482,7 @@ internal class GooGlass(context: Context) : FrameLayout(context) {
         if (local.isEmpty || element.width <= 1 || element.height <= 1) return
         if (requestedAs != dressedAs) {
             apply(element)
-            element.outlineProvider = shape
+            element.outlineProvider = materialShape
             element.clipToOutline = true
             dressedAs = requestedAs
             // A recorded card recipe can contain the card's own SDF bounds. The shell's
@@ -490,13 +500,20 @@ internal class GooGlass(context: Context) : FrameLayout(context) {
     }
 
     /** The shape this frame, [path] in screen pixels; [originX]/[originY] are this view's on screen. */
-    fun setPath(path: Path, originX: Float, originY: Float) {
+    fun setPath(path: Path, originX: Float, originY: Float, nativeRadius: Float = 0f) {
+        carrierRadius = nativeRadius.takeIf { it.isFinite() }?.coerceAtLeast(0f) ?: 0f
         local.set(path)
         local.offset(-originX, -originY)
         invalidateOutline()
         element.invalidateOutline()
         applyDressIfReady()
+        // A same-size contour change still needs a fresh RenderNode display list/material clip.
+        element.invalidate()
+        invalidate()
     }
+
+    fun describe(): String = "roundedCarrier=$roundedCarrier material=$dressedAs/$requestedAs " +
+        "size=${element.width}x${element.height} sdf=${sdfWidth}x${sdfHeight} radius=$carrierRadius"
 
     fun clearShape() {
         local.reset()

@@ -84,6 +84,14 @@ finger-driven shift with outgoing/incoming edge fades and no end-to-start wrap.
 The selected item always remains visible. Host tests cover every adjacent transition
 in both directions at all four limits, geometry continuity and the visible count.
 
+The fusion/split shell now separates its non-convex clipping path from a rounded
+native material carrier. The native element receives the same recorded card/glass
+profile as the resting capsule, with live SDF bounds and explicit contour
+invalidation. A diagnostic reports carrier size and material generation. This
+removes the arbitrary-path outline from the native SDF input; the concave neck is
+still an outer clip, so native rim/refraction at that neck requires device review.
+The host build verifies wiring and compilation, not the actual vendor glass shader.
+
 ### Preview 4 feedback and preview 5 candidate (2026-11-12)
 
 The owner accepted the content expansion order, the filled gesture gap, notification
