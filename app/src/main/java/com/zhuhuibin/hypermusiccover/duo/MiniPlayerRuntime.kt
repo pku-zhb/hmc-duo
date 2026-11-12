@@ -64,6 +64,9 @@ object MiniPlayerRuntime {
 
     @JvmStatic fun configJson(context: Context): String = MiniPlayerConfig.fromPreferences(prefs(context))
 
+    fun notificationRowsVisible(): Boolean = live().any { it.notificationRowsVisible() }
+
+
     /** Only automatic cover entry changes; manual entry and existing scenes stay intact. */
     @JvmStatic fun automaticCoverAllowed(context: Context?): Boolean = context == null ||
         MiniPlayerConfig.automaticCoverAllowed(prefs(context).getString("config", null),
@@ -7895,17 +7898,30 @@ private class MiniPlayerController(
     }
 
     /** Test clipped, transformed card bounds, not the full scroller or a stale hidden row. */
+    private fun visibleNativeCardBounds(view: View): android.graphics.RectF? {
+        val rect = android.graphics.Rect()
+        if (!view.isShown || MiniPlayerRuntime.effectiveViewAlpha(view) <= .01f ||
+            !view.getGlobalVisibleRect(rect) || rect.isEmpty) return null
+        val rootXY = IntArray(2).also(view.rootView::getLocationOnScreen)
+        val result = android.graphics.RectF(rect).apply { offset(rootXY[0].toFloat(), rootXY[1].toFloat()) }
+        // ExpandableView clips in dispatchDraw, beyond what getGlobalVisibleRect can report.
+        // Its allocated height can span empty space below the actual notification card.
+        val actual = runCatching { (Xp.callMethod(view, "getActualHeight") as Number).toFloat() }
+            .getOrNull() ?: return result
+        fun clip(name: String) = runCatching { (Xp.callMethod(view, name) as Number).toFloat() }.getOrDefault(0f)
+        var scale = 1f
+        var parent: View? = view
+        while (parent != null) { scale *= abs(parent.scaleY); parent = parent.parent as? View }
+        val xy = IntArray(2).also(view::getLocationOnScreen)
+        val top = xy[1] + clip("getClipTopAmount") * scale
+        val bottom = xy[1] + (actual - clip("getClipBottomAmount")) * scale
+        return result.takeIf { bottom > top && it.intersect(it.left, top, it.right, bottom) }
+    }
+
     fun nativeCardAt(x: Float, y: Float): Boolean {
         if (!MiniPlayerRuntime.detachedRail() || !Main.keyguardLocked() || !Main.onKeyguardNow() ||
             Main.bouncerShown() || MiniPlayerScene.aodActive || MiniPlayerScene.keyguardGoingAway) return false
-        val rect = android.graphics.Rect()
-        fun hit(view: View?): Boolean {
-            if (view == null || !view.isShown || MiniPlayerRuntime.effectiveViewAlpha(view) <= .01f ||
-                !view.getGlobalVisibleRect(rect) || rect.isEmpty) return false
-            val rootXY = IntArray(2).also(view.rootView::getLocationOnScreen)
-            return x >= rect.left + rootXY[0] && x < rect.right + rootXY[0] &&
-                y >= rect.top + rootXY[1] && y < rect.bottom + rootXY[1]
-        }
+        fun hit(view: View?): Boolean = view != null && visibleNativeCardBounds(view)?.contains(x, y) == true
         if (hit(Main.miniPlayerMediaHeader())) return true
         notificationStack()?.let { stack ->
             for (i in 0 until stack.childCount) {
@@ -8224,11 +8240,12 @@ private class MiniPlayerController(
 
     private fun railNotificationsOpen(): Boolean {
         if (!Main.keyguardLocked() || !Main.onKeyguardNow() || MiniPlayerScene.aodActive) return false
-        if (NumState.inNumber == true || NumState.state() == "NUMBER") return false
-        return LockIslands.membersOf(STACK_ISLAND).any { member ->
-            val row = findRow(member)?.first
-            row != null && row.isShown && row.height > 0 && row.alpha > .05f && row.transitionAlpha > .05f
-        }
+        return NumState.notificationListVisible()
+    }
+
+    fun notificationRowsVisible(): Boolean = LockIslands.membersOf(STACK_ISLAND).any { member ->
+        val row = findRow(member)?.first
+        row != null && visibleNativeCardBounds(row)?.height()?.let { it >= dp(20f) } == true
     }
 
     fun collapseRailOne(): Boolean {
@@ -8437,7 +8454,7 @@ private class MiniPlayerController(
     }
 
     private fun openDetachedIsland(key: String, cover: Boolean = false) {
-        railOpening[key] = android.os.SystemClock.uptimeMillis()
+        if (key != STACK_ISLAND) railOpening[key] = android.os.SystemClock.uptimeMillis()
         if (key == MUSIC_ISLAND) finishRailMediaExit(commit = false)
         railClosing.remove(key)
         railDismissOrder.opened(key)

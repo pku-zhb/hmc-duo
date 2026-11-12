@@ -555,6 +555,12 @@ internal object LockIslands {
         // Not scrolled (no model to ask): the island stays, or nothing would be left to tap.
         // [scroll] false: a finger scrolls it (the spread pulled open) - only the island goes.
         if (scroll) beginNotificationListArtwork()
+        if (MiniPlayerRuntime.detachedRail()) {
+            if (scroll) NumState.requestList(why)
+            else NumState.checkExposureSoon()
+            followStack(why)
+            return
+        }
         if (scroll && !NumState.goTo("LIST", why = why).startsWith("scrollY")) {
             notificationArtworkNavigation.reset()
             updateNotificationArtwork()
@@ -898,7 +904,7 @@ internal object LockIslands {
      * Folding stops at that pile first (HyperOS's two steps). ColorOS's capsule has none: the
      * list and the pile go down into it in one (the maintainer, 2026-10-24).
      */
-    fun keepsPileOnFold(): Boolean = keepsCoverStack() && !MiniPlayerRuntime.colorOsStyle()
+    fun keepsPileOnFold(): Boolean = !MiniPlayerRuntime.detachedRail() && keepsCoverStack() && !MiniPlayerRuntime.colorOsStyle()
 
     fun notificationArtworkExpanded(): Boolean {
         if (stackMembers.size <= 1) return false
