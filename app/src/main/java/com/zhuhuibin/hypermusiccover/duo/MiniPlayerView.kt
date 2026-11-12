@@ -1126,9 +1126,9 @@ internal class MiniPlayerView(context: Context) : FrameLayout(context) {
      * The whole content scaled by [scale] about [pivotX] (in the pill's own pixels) on its middle
      * line: ColorOS's leaving island draws its content in along the way it goes.
      */
-    fun setContentScale(scale: Float, pivotX: Float) {
+    fun setContentScale(scale: Float, pivotX: Float, pivotY: Float = height / 2f) {
         content.pivotX = pivotX
-        content.pivotY = height / 2f
+        content.pivotY = pivotY
         content.scaleX = scale
         content.scaleY = scale
     }
