@@ -1070,6 +1070,7 @@ public class Main extends XposedModule {
         // The mini player hangs off the shortcut row, not the clock container.
         MiniPlayerRuntime.install(cl);
         MediaCardRuntime.install(cl);
+        RailStackBounds.install(cl);
         IslandAudioVisualizer.install(cl);
         PaletteThrottle.INSTANCE.install(cl);
         // Draw lasting lock screen status beside the date, clear of the pill.

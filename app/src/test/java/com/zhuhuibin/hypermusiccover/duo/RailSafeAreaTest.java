@@ -10,9 +10,7 @@ public class RailSafeAreaTest {
         assertEquals(164, safe.top, 0);
         assertEquals(2364, safe.right, 0);
         RightRailLayout.Plan p = RightRailLayout.plan(2364, 1672, 2.75f,
-                safe.left, safe.top, 2364 - safe.right, 1672 - safe.bottom,
-                new FoldMusicLayout.Box(2192, 1328, 2324, 1460),
-                new FoldMusicLayout.Box(2192, 1478, 2324, 1610));
+                safe.left, safe.top, 2364 - safe.right, 1672 - safe.bottom, 0);
         assertNotNull(p);
         assertEquals(46 * 2.75f, p.pill.width(), .001f);
         assertTrue(p.companion.top > 164);

@@ -85,6 +85,8 @@ final class LockScreenLayoutDiagnostics {
         int[] at = new int[2]; v.getLocationOnScreen(at);
         out.put("origin", new JSONArray(at));
         out.put("size", new JSONArray(new int[]{v.getWidth(), v.getHeight()}));
+        out.put("measuredSize", new JSONArray(new int[]{v.getMeasuredWidth(), v.getMeasuredHeight()}));
+        out.put("layoutOrigin", new JSONArray(new int[]{v.getLeft(), v.getTop()}));
         out.put("visibility", v.getVisibility());
         out.put("shown", v.isShown());
         out.put("attached", v.isAttachedToWindow());
@@ -101,6 +103,11 @@ final class LockScreenLayoutDiagnostics {
         }
         ViewGroup.LayoutParams lp = v.getLayoutParams();
         if (lp != null) out.put("layoutSize", new JSONArray(new int[]{lp.width, lp.height}));
+        if (lp instanceof ViewGroup.MarginLayoutParams) {
+            ViewGroup.MarginLayoutParams margins = (ViewGroup.MarginLayoutParams) lp;
+            out.put("horizontalMargins", new JSONArray(new int[]{margins.leftMargin, margins.rightMargin,
+                    margins.getMarginStart(), margins.getMarginEnd()}));
+        }
         JSONArray parents = new JSONArray();
         View parent = v.getParent() instanceof View ? (View) v.getParent() : null;
         for (int i = 0; i < 4 && parent != null; i++) {
