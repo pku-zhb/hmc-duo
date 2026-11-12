@@ -19,17 +19,19 @@ import kotlin.math.sqrt
 /**
  * The torch's or the camera's material: a circle of the pill's own glass behind the button.
  *
- * It hangs off the window root just before the lock screen's layer, so the button is drawn over
- * it and the shade and the control centre blur it as they blur the button; the pill, right
- * after that layer, is drawn over both. It is the same container and element pair as the pill
+ * It sits in the native keyguard root just before the shortcuts' branch, so wallpaper depth
+ * cut-outs stay below it and the button is drawn over it. The shade and control centre blur it
+ * as they blur the button. It is the same container and element pair as the pill
  * (MiniPlayerRuntime.material): this frame is the blur container, [element] replays the card's
  * recorded calls. It never takes a touch - the button above it keeps its own.
  */
 internal class ShortcutDisc(context: Context) : FrameLayout(context) {
     private val element = MaterialElement(context)
 
-    private var dressWith: ((ImageView) -> Unit)? = null
-    private var dressedAs = -1
+    private var dressWith: ((ImageView) -> Boolean)? = null
+    private var requestedGeneration = -1
+    private val materialLayout = MiniPlayerMaterialState.LayoutGate()
+    private val retryMaterial = Runnable { applyDress() }
     private var shapeW = 0
     private var shapeH = 0
     private var shapeDx = 0
@@ -66,17 +68,20 @@ internal class ShortcutDisc(context: Context) : FrameLayout(context) {
         // Its own circle, whoever sets another (MaterialElement): the AOD's dim sets the card's.
         element.shape = elementShape
         addView(element, LayoutParams(0, 0))
+        element.addOnAttachStateChangeListener(object : OnAttachStateChangeListener {
+            override fun onViewAttachedToWindow(view: View) = applyDress()
+            override fun onViewDetachedFromWindow(view: View) = clearMaterialAttachment()
+        })
         isClickable = false
         isFocusable = false
         importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
     }
 
-    /** The card's material, applied again only when the card has been dressed anew. */
-    fun dress(generation: Int, apply: (ImageView) -> Unit) {
+    /** Apply a new recipe only after both native glass layers have their first real layout. */
+    fun dress(generation: Int, apply: (ImageView) -> Boolean) {
         dressWith = apply
-        if (generation == dressedAs) return
-        dressedAs = generation
-        if (shapeW > 1 && shapeH > 1) applyDress()
+        requestedGeneration = generation
+        applyDress()
     }
 
     /**
@@ -88,15 +93,13 @@ internal class ShortcutDisc(context: Context) : FrameLayout(context) {
 
     fun setShape(w: Int, h: Int, dx: Int = 0) {
         if (w == shapeW && h == shapeH && dx == shapeDx) return
-        val first = shapeW <= 1 || shapeH <= 1
         shapeW = w
         shapeH = h
         shapeDx = dx
         placeElement()
         invalidateOutline()
         element.invalidateOutline()
-        // A material applied before there was a size draws nothing; it goes on again now.
-        if (first && w > 1 && h > 1) applyDress()
+        applyDress()
     }
 
     /**
@@ -213,14 +216,44 @@ internal class ShortcutDisc(context: Context) : FrameLayout(context) {
         live?.let { if (kotlin.math.abs(it.alpha - alpha) > 0.002f) it.alpha = alpha }
     }
 
-    override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) =
+    override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
         placeElement()
+        // setShape can precede the container's first layout. A shaped element inside a zero
+        // size blur container is not ready, even though the element already has bounds.
+        applyDress()
+    }
+
+    override fun onDetachedFromWindow() {
+        clearMaterialAttachment()
+        super.onDetachedFromWindow()
+    }
+
+    private fun clearMaterialAttachment() {
+        removeCallbacks(retryMaterial)
+        materialLayout.detached()
+    }
+
+    fun materialStatus(): String =
+        "${parent?.javaClass?.simpleName ?: "detached"}:${width}x$height/" +
+            "${element.width}x${element.height}:attached=$isAttachedToWindow/${element.isAttachedToWindow}:" +
+            "material=${materialLayout.status(requestedGeneration)}:" +
+            "recipe=${materialLayout.appliedGeneration ?: "none"}/$requestedGeneration:" +
+            "attempts=${materialLayout.attempts}"
 
     private fun applyDress() {
-        dressWith?.invoke(element)
+        val apply = dressWith ?: return
+        val now = android.os.SystemClock.uptimeMillis()
+        if (!materialLayout.needsApply(requestedGeneration, isAttachedToWindow && element.isAttachedToWindow,
+                width, height, element.width, element.height, now)) return
+        removeCallbacks(retryMaterial)
+        val success = apply(element)
         // The recipe gives the element the card's own corner; the disc's is its own.
         element.outlineProvider = elementShape
         element.clipToOutline = true
+        materialLayout.completed(requestedGeneration, success, android.os.SystemClock.uptimeMillis())
+        materialLayout.retryDelay(requestedGeneration, android.os.SystemClock.uptimeMillis())?.let {
+            postDelayed(retryMaterial, it)
+        }
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean = false
