@@ -95,11 +95,6 @@ object MiniPlayerConfig {
     const val PILL_STYLE = "pillStyle"
     const val STYLE_COLOROS = 0
     const val STYLE_HYPEROS = 1
-    const val RAIL_VISIBLE_LIMIT = "railVisibleLimit"
-
-    @JvmStatic fun railVisibleLimit(config: JSONObject): Int =
-        config.optInt(RAIL_VISIBLE_LIMIT, 3).coerceIn(2, 5)
-
     @JvmStatic fun colorOs(config: JSONObject): Boolean =
         config.optInt(PILL_STYLE, STYLE_COLOROS) == STYLE_COLOROS
 
@@ -140,7 +135,6 @@ object MiniPlayerConfig {
         ADAPTIVE_WIDTH to false,
         STATUS_AT_DATE to false,
         PILL_STYLE to STYLE_COLOROS,
-        RAIL_VISIBLE_LIMIT to 3,
         LIST_WITHOUT_PLAYER to false,
         NOTE_TEXT_SCROLL to false,
         COLOROS_FULL_SIZE to false,
@@ -193,8 +187,6 @@ object MiniPlayerConfig {
                 else input.optInt(STARTUP_MUSIC_VIEW, VIEW_LYRICS).coerceIn(VIEW_PLAYER, VIEW_LYRICS)
             } else if (key == PILL_STYLE) {
                 input.optInt(key, STYLE_COLOROS).coerceIn(STYLE_COLOROS, STYLE_HYPEROS)
-            } else if (key == RAIL_VISIBLE_LIMIT) {
-                railVisibleLimit(input)
             } else if (key == NOTIFICATION_SIZE) {
                 notificationSize(input.optDouble(key, 80.0))
             } else if (key == NOTIFICATION_DROP) {

@@ -204,8 +204,6 @@
     <string name="mini_note_text_scroll_summary">通知岛中过长的标题和内容会滚动显示；关闭后以省略号截断</string>
     <string name="mini_style">岛样式</string>
     <string name="mini_style_summary">胶囊样式与多胶囊切换方式</string>
-    <string name="duo_rail_limit">同时显示数量</string>
-    <string name="duo_rail_limit_summary">包含主胶囊。上下滑动可切换到更多项目；显示 4 或 5 个时缩短胶囊。</string>
     <string name="mini_coloros_full_size">全尺寸按钮</string>
     <string name="mini_coloros_full_size_summary">快捷按钮和胶囊内容恢复原始大小，右侧胶囊外框保持固定</string>
     <string name="mini_style_coloros">ColorOS · 一次一个，滑动切换</string>

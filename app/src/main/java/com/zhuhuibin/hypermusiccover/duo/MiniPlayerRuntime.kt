@@ -2783,7 +2783,7 @@ private class MiniPlayerController(
         val bounds = android.graphics.RectF()
         if (!LockScreenRailRuntime.strip(host, bounds)) return emptyMap()
         val plan = RailIslandStrip.layout(keys, selected, bounds.width(), bounds.height(),
-            density(), colorOs(), MiniPlayerConfig.railVisibleLimit(config)) ?: return emptyMap()
+            density(), colorOs()) ?: return emptyMap()
         railOverflow = plan.hidden
         return plan.slots.associate { it.key to android.graphics.RectF(bounds.left,
             bounds.top + it.top, bounds.right, bounds.top + it.top + it.height) }
@@ -2951,7 +2951,7 @@ private class MiniPlayerController(
 
     private fun adjacentRailIsland(up: Boolean): String? =
         if (colorOs()) RailIslandStrip.cycle(islandKeys, selectedIsland, up)
-        else RailIslandStrip.adjacent(islandKeys, selectedIsland, up)
+        else RailIslandStrip.adjacent(railSlots().keys.toList(), selectedIsland, up)
 
     private fun nudgeRailBoundary(dy: Float) {
         val limited = Math.copySign(MiniCardMorph.rubber(abs(dy), dp(28f).toFloat()), dy)
@@ -13154,7 +13154,11 @@ private class MiniPlayerController(
         val arrived = if (colorOsUpdate) islandKeys.firstOrNull { it !in keysBefore && it !in orderBefore } else null
         val previous = selectedIsland
         val returned = railReturnedSelection?.takeIf { it in islandKeys }
-        val selected = RailSelectionPolicy.select(returned, arrived, selectedIsland, islandKeys) ?: return
+        val wanted = RailSelectionPolicy.select(returned, arrived, selectedIsland, islandKeys) ?: return
+        val strip = android.graphics.RectF()
+        val selected = if (MiniPlayerRuntime.detachedRail() && LockScreenRailRuntime.strip(host, strip))
+            RailIslandStrip.layout(islandKeys, wanted, strip.width(), strip.height(), density(), colorOs())
+                ?.slots?.firstOrNull { it.primary }?.key ?: wanted else wanted
         if (returned != null) railReturnedSelection = null
         selectedIsland = selected
         // From where a running update has the capsule, else its rest.

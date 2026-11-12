@@ -65,7 +65,7 @@ class RailIslandStripTest {
     }
     @Test fun everySelectionFitsAboveShortcutsWithoutChangingVisualOrder() {
         for (selected in keys) {
-            val p = RailIslandStrip.layout(keys, selected, 46f, 460f, 1f, false, 4)!!
+            val p = RailIslandStrip.layout(keys, selected, 46f, 460f, 1f, false)!!
             assertEquals(keys, p.slots.map { it.key })
             assertEquals(0, p.hidden)
             assertTrue(p.slots.first().top >= 0f)
@@ -74,20 +74,15 @@ class RailIslandStripTest {
             assertEquals(selected, p.slots.single { it.primary }.key)
         }
     }
-    @Test fun overflowKeepsTheSelectedSeatVisibleAndEveryItemReachable() {
+    @Test fun overflowHidesOnlyTheTopAndPreservesEveryKeyForLeftSideExpansion() {
         val many = (0..15).map { "focus-$it" }
-        var selected = many.first()
-        val visited = mutableSetOf<String>()
-        repeat(many.size) {
-            visited += selected
-            val p = RailIslandStrip.layout(many, selected, 46f, 460f, 1f, false)!!
-            assertTrue(p.hidden > 0)
-            assertEquals(selected, p.slots.single { it.primary }.key)
-            assertTrue(p.slots.all { it.top >= 0 && it.top + it.height <= 460.001f })
-            if (visited.size < many.size) selected = RailIslandStrip.adjacent(many, selected, false)!!
-        }
-        assertEquals(many.toSet(), visited)
-        assertNull(RailIslandStrip.adjacent(many, selected, false))
+        val p = RailIslandStrip.layout(many, many.first(), 46f, 460f, 1f, false)!!
+        assertEquals(many.takeLast(8), p.slots.map { it.key })
+        assertEquals(8, p.hiddenAbove)
+        assertEquals(0, p.hiddenBelow)
+        assertTrue(p.slots.all { it.height == 46f })
+        assertEquals(many[8], p.slots.single { it.primary }.key)
+        assertEquals(many.first(), RailIslandStrip.expansionTarget(many, "notifications", "music"))
     }
     @Test fun colorOsKeepsOneCapsuleWithTheSameSelectionPriority() {
         val p = RailIslandStrip.layout(keys, "delivery", 46f, 460f, 1f, true)!!
