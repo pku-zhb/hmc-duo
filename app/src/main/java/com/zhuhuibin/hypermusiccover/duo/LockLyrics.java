@@ -598,6 +598,10 @@ final class LockLyrics {
         return sDemo || !sLines.isEmpty() || CACHE.containsKey(sKey);
     }
 
+    static int buttonAvailability() {
+        return LyricsButtonPolicy.availability(sEnabled, hasCurrentLyrics(), sLoading);
+    }
+
     /**
      * Content that can occupy the lyric page.  The BPM companion deliberately only joins this
      * once lookup has settled with no rows, so a normal song never briefly opens its companion
@@ -1953,7 +1957,8 @@ final class LockLyrics {
         if (sStill) drawStill();
         CoverCardLayer.refresh();
         int buttonState = (sEnabled ? 1 : 0) | (hasDisplayContent() ? 2 : 0)
-                | (wantsCompactArtwork() ? 4 : 0) | (lyricsShowing() ? 8 : 0);
+                | (wantsCompactArtwork() ? 4 : 0) | (lyricsShowing() ? 8 : 0)
+                | (buttonAvailability() << 4);
         if (buttonState != sLyricsButtonState) {
             sLyricsButtonState = buttonState;
             Main.refreshLyricsButton();
@@ -2126,7 +2131,7 @@ final class LockLyrics {
                 + " playerChosen=" + sPlayerChosen + " notificationCompact=" + sNotificationCompact
                 + " lyricButton={" + LyricsButton.describe() + "}"
                 + " demo=" + sDemo + " key=" + sKey + " lines=" + sLines.size()
-                + " has=" + hasLyrics() + " loading=" + sLoading
+                + " has=" + hasLyrics() + " loading=" + sLoading + " buttonAvailability=" + buttonAvailability()
                 + " bpmEnabled=" + sBpmEnabled + " bpmAllowed=" + Main.bpmPlayerAllowed(sController)
                 + " bpmCapture=" + BpmEstimator.capturing() + " bpm=" + sBpm
                 + " (" + sWhy + ") src=" + srcName(sSource)

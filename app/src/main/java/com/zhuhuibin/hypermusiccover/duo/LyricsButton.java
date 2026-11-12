@@ -112,6 +112,7 @@ final class LyricsButton {
         if (railCycle) {
             if (pageDrawable == null) pageDrawable = new MusicPageActionDrawable();
             pageDrawable.setPage(Main.nextRailMusicPage());
+            pageDrawable.setLyricsAvailability(LockLyrics.buttonAvailability());
             if (button.getDrawable() != pageDrawable) button.setImageDrawable(pageDrawable);
         } else if (button.getDrawable() != notesDrawable) button.setImageDrawable(notesDrawable);
         if (!animate) {
@@ -151,8 +152,17 @@ final class LyricsButton {
                     : next == RailMusicPagePolicy.LYRICS ? (chinese ? "显示歌词" : "Show lyrics")
                     : next == RailMusicPagePolicy.ARTWORK_AND_LYRICS ? (chinese ? "显示封面和歌词" : "Show artwork and lyrics")
                     : (chinese ? "返回锁屏时钟" : "Return to lock-screen clock");
+            int availability = LyricsButtonPolicy.actionAvailability(next, LockLyrics.buttonAvailability());
+            if (availability == LyricsButtonPolicy.LOADING)
+                description = chinese ? "歌词加载中，点击切换" : "Lyrics loading; tap to switch";
+            else if (availability == LyricsButtonPolicy.UNAVAILABLE)
+                description = chinese ? "当前歌曲暂无歌词，仍可继续切换" : "No lyrics for this track; page switching remains available";
             button.setContentDescription(description);
-        } else button.setContentDescription(chinese ? (hide ? "隐藏歌词" : "显示歌词") : (hide ? "Hide lyrics" : "Show lyrics"));
+            button.setTooltipText(description);
+        } else {
+            button.setContentDescription(chinese ? (hide ? "隐藏歌词" : "显示歌词") : (hide ? "Hide lyrics" : "Show lyrics"));
+            button.setTooltipText(null);
+        }
         // The title gives the button room only while it is drawn by the title, eased across the
         // whole swap so the title glides rather than jumping.
         return railCycle ? 0f : (SIZE_DP + GAP_DP) * card.getResources().getDisplayMetrics().density * progress * titleShare;
