@@ -25,6 +25,7 @@ internal object NumState {
     private val artworkScrollStates = java.util.WeakHashMap<Any, ArtworkScrollState>()
     private val presentation = NotificationFoldState()
     private val exposure = NotificationListExposure()
+    private val nativeGesture = NotificationGestureIntent()
     private val openingProgress = NotificationOpeningProgress()
     private var openingVisualComplete = false
     private var exposureQueued = false
@@ -55,10 +56,24 @@ internal object NumState {
     fun observeNativeTouch(event: android.view.MotionEvent) {
         if (!folding || !MiniPlayerRuntime.detachedRail() || !Main.screenOnCached() ||
             !Main.onKeyguardNow() || Main.bouncerShown() || MiniPlayerScene.aodActive ||
-            MiniPlayerScene.keyguardGoingAway) return
-        if (event.actionMasked == android.view.MotionEvent.ACTION_MOVE) exposure.interacted()
-        if (event.actionMasked == android.view.MotionEvent.ACTION_UP ||
-            event.actionMasked == android.view.MotionEvent.ACTION_CANCEL) checkExposureSoon()
+            MiniPlayerScene.keyguardGoingAway) {
+            nativeGesture.clear()
+            return
+        }
+        val action = event.actionMasked
+        if (action == android.view.MotionEvent.ACTION_DOWN) {
+            val slop = Main.sAppCtx?.let { android.view.ViewConfiguration.get(it).scaledTouchSlop } ?: 12
+            nativeGesture.begin(event.rawX, event.rawY, position(), slop.toFloat(), state(), collapseVisualProgress())
+        } else if (action == android.view.MotionEvent.ACTION_MOVE || action == android.view.MotionEvent.ACTION_UP) {
+            if (nativeGesture.needsNativeEvidence(event.rawX, event.rawY) &&
+                nativeGesture.moved(event.rawX, event.rawY, position(), state(), collapseVisualProgress()))
+                exposure.interacted()
+        }
+        if (action == android.view.MotionEvent.ACTION_UP || action == android.view.MotionEvent.ACTION_CANCEL) {
+            if (action == android.view.MotionEvent.ACTION_UP) nativeGesture.finish(event.rawX, event.rawY)
+            else nativeGesture.clear()
+            checkExposureSoon()
+        }
     }
 
     fun requestList(why: String): Boolean {
@@ -135,6 +150,7 @@ internal object NumState {
     fun beginLockSession() {
         presentation.beginSession()
         exposure.reset()
+        nativeGesture.clear()
         openingVisualComplete = false
     }
 
@@ -152,6 +168,13 @@ internal object NumState {
 
     /** Native AOD geometry callbacks must not call this: only explicit presentation actions do. */
     fun choosePresentation(collapsed: Boolean) {
+        // A native HANDS_UP can reverse an in-flight island opening without calling goTo.
+        // Its latest collapse choice must cancel LIST retargets and stale gesture evidence.
+        if (collapsed) {
+            exposure.cancelOpen()
+            nativeGesture.clear()
+            openingVisualComplete = false
+        }
         val changed = presentation.choose(collapsed)
         if (!collapsed) main.removeCallbacks(foldCheck)
         if (changed || folding && !forcedDefault) forceDefault(folding)
@@ -388,7 +411,10 @@ internal object NumState {
         val number = Xp.callMethod(Xp.getObjectField(factory, "numberStrategy"), "get")
         val foldedTop = (Xp.callMethod(number, "calculateTargetYPosition", info) as Number).toFloat()
         exposure.interacted()
-        val folded = kotlin.math.abs(target - foldedTop) < 1f
+        val folded = if (MiniPlayerRuntime.detachedRail())
+            nativeGesture.collapsedAtRelease(target, foldedTop,
+                shouldClickToList(), MiniPlayerRuntime.notificationRowsVisible())
+            else kotlin.math.abs(target - foldedTop) < 1f
         if (folded && MiniPlayerRuntime.detachedRail()) {
             openingVisualComplete = false
             MiniPlayerRuntime.beginNativeNotificationReturn()
