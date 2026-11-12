@@ -238,7 +238,20 @@ internal class ShortcutDisc(context: Context) : FrameLayout(context) {
             "${element.width}x${element.height}:attached=$isAttachedToWindow/${element.isAttachedToWindow}:" +
             "material=${materialLayout.status(requestedGeneration)}:" +
             "recipe=${materialLayout.appliedGeneration ?: "none"}/$requestedGeneration:" +
-            "attempts=${materialLayout.attempts}"
+            "attempts=${materialLayout.attempts}:shown=$isShown:" +
+            "alpha=$alpha/$transitionAlpha:element=${element.alpha}/${element.transitionAlpha}:" +
+            "effective=${effectiveAlpha(element)}"
+
+    private fun effectiveAlpha(view: View): Float {
+        var result = 1f
+        var node: View? = view
+        while (node != null) {
+            if (node.visibility != View.VISIBLE) return 0f
+            result *= node.alpha * node.transitionAlpha
+            node = node.parent as? View
+        }
+        return result
+    }
 
     private fun applyDress() {
         val apply = dressWith ?: return
