@@ -13,6 +13,16 @@ final class LyricsButtonPolicy {
         return RailMusicPagePolicy.showsLyrics(page) ? availability : AVAILABLE;
     }
 
+    /** A retained AOD card still needs its page glyph even though gestures cannot start. */
+    static boolean visible(boolean awakeGestureEligible, boolean rail, boolean fullScreenAod,
+                           boolean blocked) {
+        return !blocked && (awakeGestureEligible || rail && fullScreenAod);
+    }
+
+    static boolean interactive(boolean visible, boolean screenOn, boolean dozing) {
+        return visible && screenOn && !dozing;
+    }
+
     static boolean offer(boolean rail, boolean cover, boolean enabled, boolean content, boolean pageAllows) {
         return enabled && content && (rail || cover) && (rail || pageAllows);
     }

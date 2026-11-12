@@ -4,6 +4,23 @@ import org.junit.Test;
 import static org.junit.Assert.*;
 
 public class LyricsButtonPolicyTest {
+    @Test public void retainedAodCardKeepsPageGlyphWhileItsGesturesAreDisabled() {
+        assertTrue(LyricsButtonPolicy.visible(true, true, false, false));
+        assertTrue(LyricsButtonPolicy.visible(false, true, true, false));
+        assertFalse(LyricsButtonPolicy.interactive(true, false, true));
+        // The wake's interactive flag can arrive before the native doze exit callback.
+        assertFalse(LyricsButtonPolicy.interactive(true, true, true));
+        assertTrue(LyricsButtonPolicy.interactive(true, true, false));
+    }
+
+    @Test public void ordinaryAodBouncerAndControlCenterDoNotAcquirePageButtons() {
+        assertFalse(LyricsButtonPolicy.visible(false, true, false, false));
+        assertFalse(LyricsButtonPolicy.visible(false, false, true, false));
+        assertFalse(LyricsButtonPolicy.visible(false, true, true, true));
+        assertFalse(LyricsButtonPolicy.visible(true, true, false, true));
+        assertFalse(LyricsButtonPolicy.interactive(false, true, false));
+    }
+
     @Test public void newTrackTransitionsThroughPendingMissingAndLateProviderContent() {
         assertEquals(LyricsButtonPolicy.AVAILABLE, LyricsButtonPolicy.availability(true, true, false));
         // Presentation can retain the previous page, but this song has no answer yet.

@@ -398,12 +398,13 @@
     <string name="cover_background_artwork">Artwork</string>
     <string name="cover_background_dynamic">Animated artwork colours</string>
     <string name="cover_background_blur">Background blur</string>
-    <string name="clock_artwork_destination">Outer-screen time with artwork or lyrics</string>
+    <string name="clock_artwork_destination">Time with artwork or lyrics</string>
+    <string name="clock_artwork_destination_summary">Applies to the outer screen and inner landscape. Full-screen AOD keeps the selected layout.</string>
     <string name="clock_artwork_shrink">Shrink in place</string>
     <string name="clock_artwork_date">Join the date row</string>
     <string name="clock_artwork_status">Show in the status cluster</string>
     <string name="clock_artwork_row">Time beside the date</string>
-    <string name="clock_artwork_row_summary">On the outer screen, cover and lyrics shrink the clock into the date row. Full-screen AOD keeps this row.</string>
+    <string name="clock_artwork_row_summary">On the outer screen and inner landscape, cover and lyrics shrink the clock into the date row. Full-screen AOD keeps this row.</string>
     <string name="clock_artwork_row_side">Time position</string>
     <string name="clock_artwork_row_left">Left of the date</string>
     <string name="clock_artwork_row_right">Right of the date</string>

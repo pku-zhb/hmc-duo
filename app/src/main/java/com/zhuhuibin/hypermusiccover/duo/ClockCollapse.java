@@ -133,7 +133,7 @@ final class ClockCollapse {
     private static boolean sManualMotion;
 
     private static boolean statusClockAvailable() {
-        return CompactClockRowRuntime.outerDisplay() && RailStatusRuntime.timeAvailable()
+        return CompactClockRowRuntime.supportsDisplay() && RailStatusRuntime.timeAvailable()
                 && CompactClockRowRuntime.statusSupported()
                 && Main.keyguardLocked() && !Main.bouncerShown() && !Main.controlCenterShown()
                 && !MiniPlayerScene.INSTANCE.getKeyguardGoingAway()
@@ -433,8 +433,18 @@ final class ClockCollapse {
 
     static boolean clockBoundsOnScreen(RectF bounds) {
         View view = firstTarget();
+        if (view == null || !view.isShown()) return false;
+        float alpha = 1f;
+        for (View v = view; v != null;
+             v = v.getParent() instanceof View ? (View) v.getParent() : null) {
+            // Measurement intentionally keeps an alpha-hidden native clock discoverable.
+            // Collision is about drawn pixels: a status/date replacement must not leave
+            // that invisible full-size box forcing the artwork back into its thumbnail.
+            alpha = NativeMediaControlPolicy.effectiveAlpha(alpha, v.getAlpha(), v.getTransitionAlpha());
+            if (!AodArtworkPolicy.clockCanOcclude(alpha)) return false;
+        }
         RectF ink = Main.glyphBox(true);
-        if (view == null || !view.isShown() || ink == null || ink.isEmpty()) return false;
+        if (ink == null || ink.isEmpty()) return false;
         bounds.set(ink);
         boundsOnScreen(view, bounds);
         return !bounds.isEmpty();
@@ -531,7 +541,7 @@ final class ClockCollapse {
         install();
         sPoseDrawn = false;
         if (!animate || Main.sContainer == null) {
-            if (was == Phase.OFF && !wake && CompactClockRowRuntime.outerDisplay()) {
+            if (was == Phase.OFF && !wake && CompactClockRowRuntime.supportsDisplay()) {
                 captureFrom();
                 captureNativePose(natural);
             }
@@ -584,7 +594,7 @@ final class ClockCollapse {
         sExitToAod = false;
         // A wake's glyphs already settle after the size, on the OEM's own animation; a toggle's
         // are given the same tail. See TOGGLE_GLYPH_RESPONSE.
-        sManualMotion = !wake && CompactClockRowRuntime.outerDisplay() && sFlightFrom != null;
+        sManualMotion = !wake && CompactClockRowRuntime.supportsDisplay() && sFlightFrom != null;
         start(Phase.ENTER, wake ? Float.NaN : TOGGLE_GLYPH_RESPONSE);
         // The OEM's own ink box as last measured - the reading that says whether its wake
         // animation had already begun when this entry was taken. LIVE, never a measurement of
@@ -621,7 +631,7 @@ final class ClockCollapse {
         // The entry's glyph tail, mirrored. Not by sizing for the full clock first: the glyphs
         // are still squeezed and relatively far wider, and at full height they ran off both
         // edges of the screen (recording 18:44). The pose follows the OEM's live clock instead.
-        sManualMotion = CompactClockRowRuntime.outerDisplay() && sFlightFrom != null;
+        sManualMotion = CompactClockRowRuntime.supportsDisplay() && sFlightFrom != null;
         start(Phase.EXIT, EXIT_GLYPH_RESPONSE);
         Xp.log(TAG + "clock: exit y " + Main.r1(sYFrom) + " -> " + Main.r1(sYTo));
     }
@@ -2719,9 +2729,9 @@ final class ClockCollapse {
             CompactClockRowRuntime.clear();
             return;
         }
-        if (!CompactClockRowRuntime.outerDisplay() && (compactRowMoving() || statusClockMoving())) {
-            // Opening the fold must not carry an outer-display row (including a held AOD)
-            // onto the inner clock. Its existing portrait/landscape policy takes over.
+        if (!CompactClockRowRuntime.supportsDisplay() && (compactRowMoving() || statusClockMoving())) {
+            // The inner portrait clock retains its existing layout. Outer and inner landscape
+            // share the configured destination, with new bounds measured for each display.
             sRowFrom = sRowProgress = 0f;
             sRowTarget = false;
             sStatusFrom = sStatusProgress = 0f;
@@ -2732,7 +2742,7 @@ final class ClockCollapse {
                 sAodHeld = false;
                 clearTransforms();
             } else if (phase == Phase.ON || phase == Phase.ENTER) {
-                enter(true, false, "artwork-clock-inner");
+                enter(true, false, "artwork-clock-inner-portrait");
                 phase = sPhase;
             }
         }
