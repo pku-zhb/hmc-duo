@@ -12,17 +12,23 @@ not automatically verified on every device, display or OS version.
 | Layout and gestures | Duo-owned card bounds and shortcut geometry, native secure camera/flashlight launch, empty-space expansion/collapse, and native interactions on actual cards. |
 | Capsules | HyperOS spring/fusion/split motion and bounded switching; ColorOS switching; automatic size reduction and top overflow hiding. |
 | Notifications | Independent lock-screen visibility/retention, per-category collapse defaults and last-state restoration. Native visibility is tracked separately from shared-stack state; capsule animation follows native movement while exposure verification retains retry ownership. |
-| Clock and status | Independent status-bar visibility, outer-screen compact time/date row with a side preference, and a display-only battery/network cluster. Full-screen AOD can retain the compact row; ordinary AOD uses native presentation. |
+| Clock and status | Independent status-bar visibility. Outer-screen artwork/lyrics can shrink the clock, join it to the date row with a side preference, or fade the time into the display-only battery/network cluster. Full-screen AOD retains the selected compact presentation; ordinary AOD uses native presentation. Status and capsule columns share their horizontal AOD/wake anchor. |
 | Inner screen | Portrait/landscape handling, fixed bounded landscape card widths, category defaults and an explicit combined artwork/lyrics page. Preview 12 layout changes await device acceptance. |
 | Delivery | Duo release identity, preview-compatible signing path, guarded official signing and the project's own update feed. Production key configuration remains a separate owner setup step. |
 | Settings | Export/import with legacy normalization; credentials stay on-device. Donation controls await owner-provided payment assets. |
 
 ## Current acceptance scope
 
-Preview 12 is an offline iteration following the owner's Preview 11 feedback.
-The final candidate passed 851 host tests in 140 suites and both APK builds.
-See the [Preview 12 record](releases/preview-12.md) for causes, evidence limits and
-its focused acceptance list. The revised phone behavior has not been accepted.
+Preview 13 is an offline follow-up for artwork exit, three outer-screen clock
+destinations, reversible clock motion and status-cluster AOD alignment. The
+candidate passed 876 host tests in 143 suites and both APK builds; the APK also
+passed package, integrity, alignment and preview-signature checks. See the
+[Preview 13 record](releases/preview-13.md) for the focused acceptance list.
+It has not been installed or reloaded on the disconnected phone.
+
+The [Preview 12 record](releases/preview-12.md) retains the previous offline
+iteration's causes and evidence limits. Its revised phone behavior has not been
+accepted; it does not need a repeated checklist in every later preview.
 
 Before disconnection, the inner-landscape stack measured 2096 px with Duo reflow
 and 1246 px with only that reflow disabled. The new 453 dp cap is an explicit Duo
@@ -31,10 +37,12 @@ native animation geometry. Notification expansion and scrolling were captured,
 but the intermittent missing representative was not reliably reproduced. Its
 changes address source-level state gaps rather than a claimed device pass.
 
-This preview's acceptance scope is limited to full-screen composition, inner
-landscape layout/four-state cycling, notification representation during native
-scrolling and adjacent-seat HyperOS splits. The previous AOD shortcut material
-transition was accepted by the owner and is not requested again.
+Preview 12's pending scope covers full-screen composition, inner-landscape
+layout/four-state cycling, notification representation during native scrolling
+and adjacent-seat HyperOS splits. Preview 13 adds only the artwork-close,
+clock-destination/motion and status alignment checks linked above. The previous
+AOD shortcut material transition was accepted by the owner and is not requested
+again.
 
 Native glass/refraction may still sample the original wallpaper instead of local
 artwork; this known layer-composition limitation remains open. Long-paused
@@ -47,7 +55,7 @@ a later session. The workflow template at `tools/ci-check.yml` is ready, but the
 current GitHub OAuth authorization lacks workflow-management permission; hosted
 CI has not been activated.
 
-## Unreleased follow-up after Preview 12
+## Status alignment included in Preview 13
 
 The owner reported that the battery/network status cluster does not align with the
 capsules and bubbles in AOD. The status overlay inherited native keyguard scaling,
@@ -56,10 +64,10 @@ source-level mismatch is corrected by sharing the AOD/wake anchor lifecycle
 and converting the status ink center's horizontal correction into its parent's
 local coordinates. Native vertical motion, scale and opacity remain inherited.
 
-This follow-up passed 858 host tests in 140 suites and a debug build. It is not
-part of the archived Preview 12 APK. Device acceptance is
-pending: check the status ink and the capsule/bubble centers during AOD entry,
-steady AOD and wake, including when every card is expanded and no capsule is drawn.
+The isolated alignment change passed 858 host tests in 140 suites and a debug
+build before its inclusion in Preview 13. Device acceptance remains pending:
+check the status ink and the capsule/bubble centers during AOD entry, steady AOD
+and wake, including when every card is expanded and no capsule is drawn.
 
 ## Previous acceptance retained
 

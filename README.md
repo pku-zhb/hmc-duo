@@ -18,10 +18,11 @@ other devices is not established.
 - Duo-owned card geometry and a right-hand flashlight/camera column. Enlarged touch
   targets use the same coordinates as the animations; the system retains secure launch
   and cancellation. MiDuo and MiDuo Notification are not required.
-- A display-only battery/network cluster, an independent lock-screen status-bar
-  switch, and a compact time/date row for outer-screen artwork and lyrics. The time
-  can sit on either side of the date. Ordinary AOD retains the native presentation;
-  the compact row is also available in full-screen AOD.
+- A display-only battery/network cluster and an independent lock-screen status-bar
+  switch. Outer-screen artwork and lyrics offer three clock destinations: shrink,
+  join the date row, or fade into the status cluster. The date-row time can sit on
+  either side of the date. Ordinary AOD retains the native presentation; full-screen
+  AOD can retain the selected compact time.
 - HyperOS and ColorOS vertical capsule styles. Tap a capsule or bubble to open its
   card; swipe to switch. HyperOS stops at the first/last item, follows the drag with
   a spring, and joins/splits native-material bubbles. More than three items shorten
