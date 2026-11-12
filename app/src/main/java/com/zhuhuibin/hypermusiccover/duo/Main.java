@@ -8943,10 +8943,17 @@ public class Main extends XposedModule {
         sArtVeil.update(art, veil && !fixedControls, veil ? coverMorphThumbnailRadius() : 0f);
         if (!onKeyguard) LyricsButton.release();
         boolean lyricsButton = onKeyguard && !sCardForced
+                && LockscreenSurfacePolicy.visible(keyguardLocked(),
+                    MiniPlayerScene.INSTANCE.getKeyguardGoingAway())
                 && (railLyrics || LyricsButtonPolicy.offer(false, sCoverMode, LockLyrics.sEnabled,
                     LockLyrics.hasDisplayContent(), fullScreenLyrics || !LockLyrics.wantsCompactArtwork()
                         || LockLyrics.playerChosen() || LockLyrics.wantsAttached()))
-                && coverMorphEligible() && sCardShowing && card.isShown();
+                && LyricsButtonPolicy.visible(coverMorphStillEligible(), railLyrics,
+                    MiniPlayerScene.INSTANCE.getFullScreenAodActive()
+                        || !sScreenOn && ClockCollapse.phase() == ClockCollapse.Phase.AOD
+                            && ClockCollapse.aodFullScreen(),
+                    bouncerUp() || controlCenterUp())
+                && sCardShowing && card.isShown();
         // It leads the title over the big cover; a long press on the thumbnail toggles lyrics.
         float lyricsInset = LyricsButton.update(card, lyricsButton,
                 !railLyrics && lyricsButton && !fullScreenLyrics && LockLyrics.wantsCompactArtwork());

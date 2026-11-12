@@ -29,9 +29,9 @@ final class CompactClockRowRuntime {
                 LockLyrics.notificationCompact()) && !ImmersiveHost.holdsClock();
     }
 
-    static boolean outerDisplay() {
+    static boolean supportsDisplay() {
         ScreenGeometry s = Main.screenGeometry();
-        return CompactClockRowLayout.outerDisplay(s.width, s.height, s.densityDpi / 160f);
+        return CompactClockRowLayout.supportsDisplay(s.width, s.height, s.densityDpi / 160f);
     }
 
     /** Never fade a clock target that also owns the date or hide an unresolved time face. */
@@ -126,7 +126,7 @@ final class CompactClockRowRuntime {
     private static Plan unavailable(String why) { reason = why; lastPlan = null; return null; }
 
     static void apply(Plan p, float progress) {
-        if (p == null || !(progress > 0f) || !outerDisplay() || !Main.keyguardLocked()
+        if (p == null || !(progress > 0f) || !supportsDisplay() || !Main.keyguardLocked()
                 || MiniPlayerScene.INSTANCE.getKeyguardGoingAway() || Main.bouncerShown()
                 || MiniPlayerScene.INSTANCE.getCustomAodActive()
                 || MiniPlayerScene.INSTANCE.getBlocksMiniPlayer()) {

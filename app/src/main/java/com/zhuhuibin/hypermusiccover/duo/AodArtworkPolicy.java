@@ -2,6 +2,11 @@ package com.zhuhuibin.hypermusiccover.duo;
 
 /** Restore only notification-constrained big artwork, never a user-selected compact page. */
 final class AodArtworkPolicy {
+    /** Near-transparent native glyphs cannot occlude artwork while a replacement time is shown. */
+    static boolean clockCanOcclude(float drawnAlpha) {
+        return Float.isFinite(drawnAlpha) && drawnAlpha > 0.01f;
+    }
+
     /** Edge contact and invalid measurements must not collapse artwork. */
     static boolean clockOverlapsArtwork(float left, float top, float right, float bottom,
                                          float artLeft, float artTop, float artRight, float artBottom) {

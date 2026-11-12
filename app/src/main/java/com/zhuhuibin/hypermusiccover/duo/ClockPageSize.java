@@ -60,7 +60,7 @@ final class ClockPageSize {
             sProgress = 1f;
             return;
         }
-        // The outer artwork row shares ClockCollapse's one spring, including cover-to-lyrics
+        // The artwork row shares ClockCollapse's one spring, including cover-to-lyrics
         // page changes. A second size animator must not restart beneath that same transition.
         if (ClockCollapse.compactRowRequested() || ClockCollapse.compactRowMoving()) {
             if (sAnimator != null) sAnimator.cancel();

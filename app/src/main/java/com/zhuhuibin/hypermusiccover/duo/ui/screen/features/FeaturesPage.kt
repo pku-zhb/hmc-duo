@@ -549,6 +549,7 @@ private fun ClockGroup(
     Column {
         WindowDropdownPreference(
             title = stringResource(R.string.clock_artwork_destination),
+            summary = stringResource(R.string.clock_artwork_destination_summary),
             items = listOf(stringResource(R.string.clock_artwork_shrink),
                 stringResource(R.string.clock_artwork_date), stringResource(R.string.clock_artwork_status)),
             selectedIndex = module.artworkClockDestination, enabled = enabled,

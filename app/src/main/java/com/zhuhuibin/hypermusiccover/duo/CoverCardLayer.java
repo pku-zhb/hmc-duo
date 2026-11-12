@@ -810,6 +810,13 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
         int[] at = new int[2];
         w.getLocationOnScreen(at);
         chain.append(" wash[vis=").append(w.getVisibility() == VISIBLE)
+                .append(" want=").append(w.want).append(" level=").append(w.level())
+                .append(" ready=").append(v.current != null && v.current.aodBackdrop != null
+                    && !v.current.aodBackdrop.isRecycled())
+                .append(" draws=").append(w.backdropDraws)
+                .append(" lastDraw=").append(w.lastBackdropDraw)
+                .append(" drawAlpha=").append(w.lastBackdropAlpha)
+                .append(" drawGeneration=").append(w.lastBackdropGeneration)
                 .append(' ').append(w.getWidth()).append('x').append(w.getHeight())
                 .append(" s=").append(w.getScaleX()).append('/').append(w.getScaleY())
                 .append(" pivot=").append(w.getPivotX()).append(',').append(w.getPivotY())
@@ -1507,6 +1514,8 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
         private boolean want;
         private float from;
         private long changedAt;
+        private long backdropDraws, lastBackdropDraw;
+        private int lastBackdropAlpha, lastBackdropGeneration = -1;
 
         /** 0..1, how much of the wash is up right now. */
         private float level() {
@@ -1584,9 +1593,17 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
             if (moving) postInvalidateOnAnimation();
             if (p == null || p.aodBackdrop == null || p.aodBackdrop.isRecycled()) return;
             bounds.set(0f, 0f, getWidth(), getHeight());
-            int saved = canvas.saveLayerAlpha(bounds, Math.round(64f * level));
+            int alpha = Math.round(64f * level);
+            int saved = canvas.saveLayerAlpha(bounds, alpha);
             paint.setAlpha(255);
-            if (!CoverBackdrop.hidden()) canvas.drawBitmap(p.aodBackdrop, null, bounds, paint);
+            if (!CoverBackdrop.hidden()) {
+                canvas.drawBitmap(p.aodBackdrop, null, bounds, paint);
+                // Record only when pixels enter the display list; VISIBLE alone is not proof.
+                backdropDraws++;
+                lastBackdropDraw = SystemClock.uptimeMillis();
+                lastBackdropAlpha = alpha;
+                lastBackdropGeneration = p.generation;
+            }
             if (fullSceneArtworkVisible()) drawFullSceneArtwork(canvas, bounds, paint, 1f);
             canvas.restoreToCount(saved);
         }

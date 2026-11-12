@@ -122,8 +122,10 @@ final class LyricsButton {
                     || button.getAlpha() != target || show && (button.getScaleX() != 1f || button.getScaleY() != 1f);
             requested = show;
             progress = target;
-            button.setClickable(show);
-            button.setFocusable(show);
+            boolean interactive = LyricsButtonPolicy.interactive(show, Main.screenOnCached(),
+                    MiniPlayerScene.INSTANCE.getAodActive());
+            button.setClickable(interactive);
+            button.setFocusable(interactive);
             button.setImportantForAccessibility(show ? View.IMPORTANT_FOR_ACCESSIBILITY_YES
                     : View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
             if (changed) applyLook();

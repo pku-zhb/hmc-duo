@@ -4,10 +4,26 @@ import org.junit.Test;
 import static org.junit.Assert.*;
 
 public class CompactClockRowLayoutTest {
-    @Test public void artworkAndLyricsUseOuterDisplayButNeverInnerDisplay() {
+    @Test public void artworkAndLyricsHonorTheSamePreferenceOnOuterAndInnerLandscape() {
         assertTrue(CompactClockRowLayout.requested(true, 1168, 1712, 2.75f, true, false, false));
-        assertFalse(CompactClockRowLayout.requested(true, 2488, 2224, 2.75f, true, false, false));
+        assertTrue(CompactClockRowLayout.requested(true, 2488, 2224, 2.75f, true, false, false));
         assertFalse(CompactClockRowLayout.requested(true, 2224, 2488, 2.75f, true, false, false));
+    }
+
+    @Test public void orientationChangesUseTheCurrentDisplayRatherThanThePreviousScreen() {
+        float[][] windows = {{1168,1712}, {2488,2224}, {2224,2488}, {2488,2224}, {1168,1712}};
+        boolean[] expected = {true, true, false, true, true};
+        for (int i = 0; i < windows.length; i++) {
+            assertEquals(expected[i], CompactClockRowLayout.supportsDisplay(
+                    windows[i][0], windows[i][1], 2.75f));
+        }
+    }
+
+    @Test public void innerLandscapeStillHonorsSceneAndUserChoice() {
+        assertFalse(CompactClockRowLayout.requested(false, 2488, 2224, 2.75f, true, false, false));
+        assertFalse(CompactClockRowLayout.requested(true, 2488, 2224, 2.75f, false, false, false));
+        assertFalse(CompactClockRowLayout.requested(true, 2488, 2224, 2.75f, true, true, false));
+        assertFalse(CompactClockRowLayout.requested(true, 2488, 2224, 2.75f, true, false, true));
     }
 
     @Test public void systemAndPlayerPagesRetainTheirNativeClock() {
@@ -21,6 +37,8 @@ public class CompactClockRowLayoutTest {
         assertFalse(CompactClockRowLayout.requested(true, 0, 800, 1, true, false, false));
         assertFalse(CompactClockRowLayout.requested(true, 400, 800, 0, true, false, false));
         assertFalse(CompactClockRowLayout.requested(true, Float.NaN, 800, 1, true, false, false));
+        assertFalse(CompactClockRowLayout.supportsDisplay(Float.POSITIVE_INFINITY, 800, 1));
+        assertFalse(CompactClockRowLayout.supportsDisplay(2488, 2224, Float.NaN));
     }
 
     @Test public void timeDefaultsBeforeDateWithinContentBounds() {
@@ -43,6 +61,22 @@ public class CompactClockRowLayoutTest {
         assertEquals(16, row.timeLeft, 0.001f);
         assertEquals(284, row.dateLeft + 360 * row.scale, 0.001f);
         assertEquals(8 * row.scale, row.dateLeft - row.timeLeft - row.timeWidth, 0.001f);
+    }
+
+    @Test public void innerLandscapeDateRowRemainsTogetherAndInsideTheContentColumn() {
+        float density = 2.75f;
+        float left = 16 * density, right = 800 * density;
+        for (boolean before : new boolean[]{true, false}) {
+            CompactClockRowLayout.Row row = CompactClockRowLayout.place(left, right, 164, 580,
+                    8 * density, before);
+            assertNotNull(row);
+            assertEquals(1, row.scale, .001f);
+            assertTrue(row.timeLeft >= left && row.timeLeft + row.timeWidth <= right);
+            assertTrue(row.dateLeft >= left && row.dateLeft + 580 * row.scale <= right);
+            float gap = before ? row.dateLeft - row.timeLeft - row.timeWidth
+                    : row.timeLeft - row.dateLeft - 580 * row.scale;
+            assertEquals(8 * density, gap, .001f);
+        }
     }
 
     @Test public void replacementTimeAppearsOnlyAsTheNativeFaceArrives() {

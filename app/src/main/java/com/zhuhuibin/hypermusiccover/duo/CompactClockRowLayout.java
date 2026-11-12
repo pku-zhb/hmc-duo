@@ -6,13 +6,15 @@ final class CompactClockRowLayout {
 
     static boolean requested(boolean enabled, float width, float height, float density,
                              boolean cover, boolean player, boolean notifications) {
-        return enabled && outerDisplay(width, height, density) && cover && !player && !notifications;
+        return enabled && supportsDisplay(width, height, density) && cover && !player && !notifications;
     }
 
-    static boolean outerDisplay(float width, float height, float density) {
+    /** The same artwork-clock preference applies to the outer screen and the wide inner screen. */
+    static boolean supportsDisplay(float width, float height, float density) {
         return width > 0f && height > 0f && density > 0f
                 && Float.isFinite(width) && Float.isFinite(height)
-                && Float.isFinite(density) && Math.min(width, height) / density < 600f;
+                && Float.isFinite(density)
+                && (Math.min(width, height) / density < 600f || width > height);
     }
 
     static final class Row {
