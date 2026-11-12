@@ -15,8 +15,9 @@ internal class GlassContourRim(private val density: Float) {
         fun size(samples: Int) {
             count = (samples + 1) * 4
             if (vertices.size < count) {
-                vertices = FloatArray(count)
-                colors = IntArray(count / 2)
+                val capacity = Integer.highestOneBit(count - 1) shl 1
+                vertices = FloatArray(capacity)
+                colors = IntArray(capacity / 2)
             }
         }
     }
@@ -38,7 +39,8 @@ internal class GlassContourRim(private val density: Float) {
             if (!length.isFinite() || length <= 1f) continue
             val count = ceil(length / (density * .8f).coerceAtLeast(1f)).toInt().coerceIn(12, 2048)
             if (points.size < count * 2) {
-                points = FloatArray(count * 2); tangents = FloatArray(count * 2)
+                val capacity = Integer.highestOneBit(count * 2 - 1) shl 1
+                points = FloatArray(capacity); tangents = FloatArray(capacity)
             }
             for (i in 0 until count) {
                 measure.getPosTan(length * i / count, position, tangent)
