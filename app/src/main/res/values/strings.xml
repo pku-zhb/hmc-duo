@@ -228,8 +228,6 @@
     <string name="mini_note_text_scroll_summary">Long notification titles and text scroll in the island; off, they are cut with an ellipsis</string>
     <string name="mini_style">Island style</string>
     <string name="mini_style_summary">Island style and switching between multiple islands</string>
-    <string name="duo_rail_limit">Visible islands</string>
-    <string name="duo_rail_limit_summary">Includes the primary capsule. Swipe up or down to reach additional items. Four or five items use a shorter capsule.</string>
     <string name="mini_coloros_full_size">Full-size buttons</string>
     <string name="mini_coloros_full_size_summary">Restore shortcut buttons and island content to full size. The right-side island frame stays fixed.</string>
     <string name="mini_style_coloros">ColorOS · one at a time, swipe to switch</string>

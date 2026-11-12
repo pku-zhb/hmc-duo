@@ -108,6 +108,10 @@ internal class MiniPlayerView(context: Context) : FrameLayout(context) {
         if (!changed && (!on || verticalGeometryWidth == restWidth() && verticalGeometryHeight == restHeight())) return
         if (!on && vertical) finishRailContentTransition(false)
         vertical = on
+        if (!on) {
+            textColumn.visibility = View.VISIBLE
+            toggle.visibility = if (toggleShown) View.VISIBLE else View.GONE
+        }
         if (!on && lastHeightRadiusDp > 0) toggle.scaleType = ImageView.ScaleType.CENTER
         textColumn.orientation = if (on) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL
         textColumn.layoutDirection = if (on) View.LAYOUT_DIRECTION_RTL else View.LAYOUT_DIRECTION_LTR
@@ -1292,20 +1296,28 @@ internal class MiniPlayerView(context: Context) : FrameLayout(context) {
         val full = RightRailLayout.face(restWidth().toFloat(), restHeight().toFloat(), density,
             secondShown > .001f)
         val face = full ?: RightRailLayout.face(restWidth().toFloat(), restHeight().toFloat(), density, false)
-            ?: return false
         verticalGeometryWidth = restWidth()
         verticalGeometryHeight = restHeight()
         fun params(box: FoldMusicLayout.Box) = LayoutParams(box.width().roundToInt(),
             box.height().roundToInt(), Gravity.TOP or Gravity.LEFT).apply {
             leftMargin = box.left.roundToInt(); topMargin = box.top.roundToInt()
         }
-        slot.layoutParams = params(face.artwork)
-        textColumn.layoutParams = params(face.text)
-        toggle.layoutParams = params(face.action)
-        toggle2.layoutParams = params(face.secondAction)
+        val iconSize = (restWidth() * ShortcutDisc.ICON_SHARE).roundToInt()
+        slot.layoutParams = if (face != null) params(face.artwork) else
+            LayoutParams(iconSize, iconSize, Gravity.TOP or Gravity.LEFT).apply {
+                leftMargin = (restWidth() - iconSize) / 2
+                topMargin = (restHeight() - iconSize) / 2
+            }
+        textColumn.visibility = if (face != null) View.VISIBLE else View.GONE
+        toggle.visibility = if (face != null && toggleShown) View.VISIBLE else View.GONE
+        if (face != null) {
+            textColumn.layoutParams = params(face.text)
+            toggle.layoutParams = params(face.action)
+            toggle2.layoutParams = params(face.secondAction)
+        }
         toggle2.visibility = if (full != null && secondShown > .001f) View.VISIBLE else View.GONE
         toggle.scaleType = ImageView.ScaleType.FIT_CENTER
-        val radius = face.artwork.width() / 2f
+        val radius = (face?.artwork?.width() ?: iconSize.toFloat()) / 2f
         artworkRadiusPx = radius
         slot.background = if (artworkBare) null else rounded(Color.rgb(55, 55, 55), radius)
         slot.outlineProvider = object : ViewOutlineProvider() {
