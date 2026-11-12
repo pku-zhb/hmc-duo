@@ -2187,10 +2187,10 @@ object MiniPlayerRuntime {
      * no such ancestor - the element alone drew nothing at all - so the pill is made a
      * container the way ElementSurfaceModel.updateBlurContainer makes one.
      */
-    internal fun material(view: ImageView, classLoader: ClassLoader) {
-        NativeGlassRelay.register(view)
+    internal fun material(view: ImageView, classLoader: ClassLoader): Boolean {
         val ctx = view.context
-        runCatching {
+        return runCatching {
+            NativeGlassRelay.register(view)
             val res = ctx.resources
             fun id(type: String, name: String): Int =
                 res.getIdentifier(name, type, "com.android.systemui").also {
@@ -2226,7 +2226,8 @@ object MiniPlayerRuntime {
             dressedViews.add(view)
             // Dressed in the AOD - a small island coming up there: dimmed as the rest are.
             aodDimArgs?.let { run { dimView(view, it) } }
-        }.onFailure { error ->
+            true
+        }.getOrElse { error ->
             val cause = (error as? java.lang.reflect.InvocationTargetException)?.targetException ?: error
             if (!materialFailed) {
                 materialFailed = true
@@ -2234,6 +2235,7 @@ object MiniPlayerRuntime {
             }
             view.background = null
             view.setImageDrawable(GradientDrawable().apply { setColor(0x9E1F2324.toInt()) })
+            false
         }
     }
 }
@@ -2417,7 +2419,7 @@ private class MiniPlayerController(
             if (group != null) smallIsland?.let { placeSmallIsland(null, it.transitionAlpha) }
             return
         }
-        if (shortcutRow?.get()?.isAttachedToWindow != true) findRow()?.let { shortcutRow = WeakReference(it) }
+        resolveShortcutHierarchy()
         val row = shortcutRow?.get() ?: return
         val keyguardRoot = followRoot?.get()
         followHost.reset()
@@ -11928,6 +11930,9 @@ private class MiniPlayerController(
      * animation matrix, which the OEM does not write and drawnCentre does not read.
      */
     private fun updateDiscs() {
+        // Shortcuts exist even with every card expanded or no media session. Resolve their
+        // native layer without waiting for a visible capsule to call followShortcuts().
+        resolveShortcutHierarchy()
         // First, so that the discs below see the buttons as they will be drawn.
         holdButtonsThroughDoze()
         // The torch's and the camera's circles: ColorOS's are smaller than the capsule is tall.
@@ -12246,6 +12251,13 @@ private class MiniPlayerController(
         }
     }
 
+    private fun resolveShortcutHierarchy() {
+        if (shortcutRow?.get()?.isAttachedToWindow == true &&
+            followRoot?.get()?.isAttachedToWindow == true) return
+        followRoot = null
+        shortcutRow = findRow()?.let { WeakReference(it) }
+    }
+
     /** keyguard_bottom_area above the torch, and keyguard_root_view above that. */
     private fun findRow(): View? {
         var row: View? = null
@@ -12278,6 +12290,7 @@ private class MiniPlayerController(
     fun surfaceState(): String = "exitHidden=$exitSurfacesHidden hold=$holdButtons rowHold=$rowHeldOff " +
         "mediaExit=${railMediaExit != null} lastExit=$lastRailExit frames=$lastRailExitFrames " +
         "musicSelected=${selectedIsland == MUSIC_ISLAND} discs=${discs.count { it?.visibility == View.VISIBLE }} " +
+        "discMaterials=${discs.joinToString(";") { it?.materialStatus() ?: "absent" }} " +
         "exitPillHeld=$railExitPillWasVisible exitHiddenBeforeRestore=$lastRailExitHiddenBeforeRestore returnOwned=${railCollapsedToken != null}"
 
     fun onKeyguardExit() {
