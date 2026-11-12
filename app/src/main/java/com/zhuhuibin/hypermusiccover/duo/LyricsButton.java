@@ -55,6 +55,9 @@ final class LyricsButton {
         if (host != card) release();
         canvasControls = controls;
         railCycle = MiniPlayerRuntime.detachedRail() && !controls;
+        // Artwork is already a native click target. The other two actions replace its pixels
+        // in that same slot; they never add a second control beside the title.
+        if (railCycle && !ArtworkThumbnailPolicy.replaceWithPageAction(true, Main.nextRailMusicPage())) show = false;
         boolean animate = LyricsButtonPolicy.animate(MiniPlayerRuntime.detachedRail());
         if (!animate) {
             if (animator != null) animator.cancel();
@@ -153,7 +156,7 @@ final class LyricsButton {
         } else button.setContentDescription(chinese ? (hide ? "隐藏歌词" : "显示歌词") : (hide ? "Hide lyrics" : "Show lyrics"));
         // The title gives the button room only while it is drawn by the title, eased across the
         // whole swap so the title glides rather than jumping.
-        return (SIZE_DP + GAP_DP) * card.getResources().getDisplayMetrics().density * progress * titleShare;
+        return railCycle ? 0f : (SIZE_DP + GAP_DP) * card.getResources().getDisplayMetrics().density * progress * titleShare;
     }
 
     private static void startSwap() {
@@ -209,6 +212,29 @@ final class LyricsButton {
 
     static void place(View card, TextView title, TextView artist, View artwork) {
         if (button == null || host != card || title == null || progress <= 0f || gone()) return;
+        if (railCycle) {
+            if (artwork == null || artwork.getWidth() <= 0 || artwork.getHeight() <= 0) return;
+            float left = position(card, artwork, true);
+            float top = position(card, artwork, false);
+            if (!Float.isFinite(left) || !Float.isFinite(top)) return;
+            int w = artwork.getWidth(), h = artwork.getHeight();
+            ViewGroup.LayoutParams lp = button.getLayoutParams();
+            if (lp.width != w || lp.height != h) {
+                lp.width = w; lp.height = h;
+                button.setLayoutParams(lp);
+            }
+            // This runs before drawing: update both the geometry and click target immediately,
+            // without waiting one frame for the native parent to lay out its overlay child.
+            button.measure(View.MeasureSpec.makeMeasureSpec(w, View.MeasureSpec.EXACTLY),
+                    View.MeasureSpec.makeMeasureSpec(h, View.MeasureSpec.EXACTLY));
+            button.layout(button.getLeft(), button.getTop(), button.getLeft() + w, button.getTop() + h);
+            button.setTranslationX(left - button.getLeft());
+            button.setTranslationY(top - button.getTop());
+            button.setTranslationZ(Math.max(0f, artwork.getZ()) + .01f);
+            int color = title.getCurrentTextColor();
+            if (tint != color) { tint = color; button.setImageTintList(ColorStateList.valueOf(color)); }
+            return;
+        }
         Layout layout = title.getLayout();
         if (layout == null || layout.getLineCount() == 0) return;
         float density = card.getResources().getDisplayMetrics().density;
@@ -279,7 +305,7 @@ final class LyricsButton {
 
     /** Shown, or on its way in, beside the title rather than under the thumbnail. */
     static boolean byTitle() {
-        return button != null && requested && !besideControls;
+        return button != null && requested && !railCycle && !besideControls;
     }
 
     static boolean contains(float x, float y) {

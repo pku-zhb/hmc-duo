@@ -8864,6 +8864,7 @@ public class Main extends XposedModule {
         // controls anchored to the native thumbnail/title layout throughout the page change.
         float hideP = ArtworkThumbnailPolicy.hideProgress(fixedControls,
                 fullScreenLyrics || sMcHideArt ? p * (1f - exc) : 0f);
+        if (ArtworkThumbnailPolicy.replaceWithPageAction(fixedControls, nextRailMusicPage())) hideP = 1f;
         View art = sCardArt;
         if (art != null) {
             // INVISIBLE at the far end, not GONE: the constraints around it are the card's
@@ -8934,8 +8935,8 @@ public class Main extends XposedModule {
             MediaTextInset.update((TextView) sCardArtist, 0f);
             MediaTextInset.releaseControls(card);
         }
-        alignCardTextLeft(card, (TextView) sCardTitle, hideP, fixedControls ? 0f : lyricsInset);
-        alignCardTextLeft(card, (TextView) sCardArtist, hideP, fixedControls ? 0f : lyricsInset);
+        alignCardTextLeft(card, (TextView) sCardTitle, fixedControls ? 0f : hideP, fixedControls ? 0f : lyricsInset);
+        alignCardTextLeft(card, (TextView) sCardArtist, fixedControls ? 0f : hideP, fixedControls ? 0f : lyricsInset);
         LyricsButton.place(card, (TextView) sCardTitle, (TextView) sCardArtist, sCardArt);
         applyTitleTap((TextView) sCardTitle, sMcTitleTap && sCoverMode && onKeyguard);
         if (onKeyguard && !sCardForced) sampleCardRect(card, p);
