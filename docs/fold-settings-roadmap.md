@@ -50,15 +50,15 @@ The first host-validated input/notification changes are:
 - All native card/list streams keep their owner from DOWN, including vertical
   scrolling, horizontal notification dismissal, taps, long presses and media controls.
   List gaps belong to the same region. Only the clock/empty band above the first
-  visible card expands or collapses content. A native list drag releases the short
-  placement pin; it does not enter the rail collapse recognizer. The native artwork
+  visible card expands or collapses content. With all cards folded, the measured
+  clock bottom plus 32 dp bounds that band instead of claiming the entire screen.
+  A native list drag releases the short placement pin; it does not enter the rail collapse recognizer. The native artwork
   slot retains its explicitly requested page-cycle action.
 - A notification-return timeout no longer changes the user's collapsed choice to
   expanded. A single bounded native settle attempt and final publication reconciliation
   replace the premature cancellation. Repeated native NUMBER callbacks still publish.
-
 - Notification retention now follows the inspected local HyperLight implementation
-  (`f4.java` / `i11.java`, `notif_lockscreen_notif_keep`): clear the shared
+  (`f4.java` / `i11.java`, `lockscreen_keep_notifications_enabled`): clear the shared
   `mHasShownAfterUnlock` marker before both `shouldHideNotification` overloads,
   without restoring it before grouping/counting consumers run. The direct OEM
   `forceHideOnKeyguard` entry remains a backstop. Show-all bypasses only
@@ -91,6 +91,45 @@ invalidation. A diagnostic reports carrier size and material generation. This
 removes the arbitrary-path outline from the native SDF input; the concave neck is
 still an outer clip, so native rim/refraction at that neck requires device review.
 The host build verifies wiring and compilation, not the actual vendor glass shader.
+
+Black flashing remains unresolved by the owner's preview-5 report. Offline
+inspection confirms that the stock `notifyKeyguardGoingAway(false)` is used by
+normal remote-animation completion as well as cancellation/re-show paths. That
+alone does not identify which layer produces the black frame. Preview 6 keeps the
+existing exit-state and wallpaper-dim guards; no speculative wallpaper or unlock
+animation override was added, and there is no new device verification.
+
+Preview 6 host validation: all 755 tests in 128 suites pass, with zero
+failures, errors or skips. Debug and Release builds pass, including release R8 and
+vital lint. APK metadata verifies `com.zhuhuibin.hypermusiccover.duo`, version
+`20006` / `0.2.0-preview.6`. Its debug signing certificate matches the retained
+preview 5; it remains a development preview, not a production-key release.
+
+Retained artifact: `releases/local/hypermusiccover-duo-0.2.0-preview.6.apk`,
+4,178,269 bytes, SHA-256
+`432c2d21e546d46a39bb0f0a622b3ac440f107697089d654a5596420b19c1fcf`.
+The owner's `00 Temp` contains a byte-verified copy; preview 3, 4 and 5 copies remain.
+Build logs, decompilation evidence and verification metadata stay in DevCache or
+`/tmp`, outside synced storage. No phone install, UI operation, setting change,
+restart or live debugging was performed for preview 6.
+
+Owner acceptance after a separately authorized installation should cover:
+
+- Leave music/live cards folded, expand many notifications, then scroll the list,
+  dismiss the lowest row sideways, tap and long-press rows, and drag the media seek
+  bar. These streams must stay native without shortcut jitter. Clock-band up/down
+  gestures should expand/return one category in the accepted order.
+- With HyperLight's corresponding options off, enable Duo show-all and retention;
+  check the same notifications across unlock/relock and AOD/wake, including a
+  collapsed notification island reappearing after return.
+- Cycle the native artwork slot through artwork, lyrics and clock; text position
+  must stay fixed, with no second control beside the thumbnail.
+- Try limits 2/3/4/5 with more available items than the limit. Traverse both ends,
+  reverse a partial drag and return an expanded card. The selected capsule remains
+  visible, top-control clearance stays free, and the sequence does not wrap.
+- Inspect glass/refraction during fusion and split, not only at rest. This shader
+  appearance is unverified by the host build. AOD direct-unlock black flashing
+  remains a separate open issue.
 
 ### Preview 4 feedback and preview 5 candidate (2026-11-12)
 
