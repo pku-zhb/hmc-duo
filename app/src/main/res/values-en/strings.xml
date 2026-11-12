@@ -328,6 +328,7 @@
     <string name="media_hide_source">Hide source app icon</string>
     <string name="media_hide_device">Hide output device button</string>
     <string name="media_background_style">Player background</string>
+    <string name="media_native_material_summary">With default background and motion and the system theme, the music card keeps the current system or module material. Artwork, lyrics and controls remain independent. For a custom background, turn off other modules’ music-material control.</string>
     <string name="media_background_mosaic">Cover collage</string>
     <string name="media_background_blur">Blurred cover</string>
     <string name="media_background_radial">Radial gradient</string>

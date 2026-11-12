@@ -4,6 +4,16 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class MediaCardConfigTest {
+    @Test fun nativeMaterialIsIndependentOfContentAndGeometryChoices() {
+        val defaults = MediaCardConfig.parse(null)
+        assertTrue(MediaCardConfig.followsNativeMaterial(defaults))
+        val content = defaults + mapOf("notification.cover" to 2, "notification.scrollText" to 1,
+            "notification.hideSource" to 1, "notification.hideDevice" to 1)
+        assertTrue(MediaCardConfig.followsNativeMaterial(content))
+        for (key in listOf("background", "flow", "theme"))
+            assertFalse(MediaCardConfig.followsNativeMaterial(content + ("notification.$key" to 1)))
+        assertTrue(MediaCardConfig.followsNativeMaterial(content + ("island.theme" to 2)))
+    }
     @Test fun archivedWaveSettingsAreDroppedWhileNativeIslandDefaultsRemain() {
         val input = """{"island.btSync":1,"island.btOffset":-100,"island.waveColor":3,"island.cover":3,"island.background":5,"island.flow":2,"island.theme":2,"notification.outputWave":1,"notification.visualizer":1,"notification.lockOutputWave":1}"""
         val values = MediaCardConfig.parse(input)

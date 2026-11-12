@@ -75,6 +75,9 @@ internal fun MediaCardPageView(isBlurEnabled: Boolean, refreshKey: Int, onBack: 
                 }
                 if (scope == "notification") item {
                     Card(Modifier.padding(horizontal = 12.dp).padding(bottom = 16.dp)) {
+                        Text(stringResource(R.string.media_native_material_summary),
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary, fontSize = 14.sp)
                         MediaChoice(scope, "background", R.string.media_background_style,
                             listOf(R.string.media_style_native, R.string.media_background_mosaic, R.string.media_background_blur,
                                 R.string.media_background_radial, R.string.media_background_linear, R.string.media_background_soft), values, module.alive, push)
