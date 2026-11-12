@@ -7879,7 +7879,7 @@ private class MiniPlayerController(
 
     fun contentGestureContext(): Context = context
 
-    /** The same full content area opens upward or closes downward, including the clock. */
+    /** Only the clock/empty band above native cards opens upward or closes downward. */
     private fun contentGestureAt(x: Float, y: Float): Boolean {
         if (!config.getBoolean(MiniPlayerConfig.ENABLED) ||
             !MiniPlayerRuntime.detachedRail() || !Main.miniPlayerIslandsCanShow() ||
@@ -7891,7 +7891,10 @@ private class MiniPlayerController(
         val xy = IntArray(2).also(host::getLocationOnScreen)
         if (!content.contains(x - xy[0], y - xy[1]) ||
             fingerprintInHost()?.contains((x - xy[0]).toInt(), (y - xy[1]).toInt()) == true) return false
-        return RailContentRegion.clockSpace(y, content.top + xy[1], content.bottom + xy[1], firstNativeCardTop())
+        val firstCard = firstNativeCardTop()
+        val clockEnd = if (firstCard == null) ClockCollapse.contentBottomDrawn()
+            .takeIf { it.isFinite() }?.plus(32f * context.resources.displayMetrics.density) else null
+        return RailContentRegion.clockSpace(y, content.top + xy[1], content.bottom + xy[1], firstCard, clockEnd)
     }
 
     private fun firstNativeCardTop(): Float? {
