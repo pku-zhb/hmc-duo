@@ -18,6 +18,7 @@ public class RightRailLayoutTest {
         assertEquals(46, p.pill.width(), 0);
         assertEquals(221, p.pill.height(), 0);
         assertEquals(599, p.pill.bottom, 0);
+        assertEquals(24 + 72, p.strip.top, 0);
         assertTrue(p.pill.bottom < 620 - 12);
         assertTrue(p.companion.bottom < p.pill.top);
         assertTrue(p.content.right < p.pill.left);

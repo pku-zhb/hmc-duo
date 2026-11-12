@@ -60,6 +60,14 @@ layout and retains its bitmap for cover rendering. The title/artist receive no
 extra left inset, while their accepted source/output-button avoidance stays active.
 Focused page-cycle, artwork and media-text tests pass on the host.
 
+HyperOS exposes a 2/3/4/5 total visible-item limit, default 3. Four/five visible items
+shorten the capsule and tighten gaps; the strip reserves 72 dp below the top safe
+inset for MiDuo's top control. A moving viewport retains all items in category order.
+Adjacent visible seats keep their fusion; crossing a viewport edge uses a continuous
+finger-driven shift with outgoing/incoming edge fades and no end-to-start wrap.
+The selected item always remains visible. Host tests cover every adjacent transition
+in both directions at all four limits, geometry continuity and the visible count.
+
 ### Preview 4 feedback and preview 5 candidate (2026-11-12)
 
 The owner accepted the content expansion order, the filled gesture gap, notification

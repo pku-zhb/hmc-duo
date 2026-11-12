@@ -65,11 +65,11 @@ class RailIslandStripTest {
     }
     @Test fun everySelectionFitsAboveShortcutsWithoutChangingVisualOrder() {
         for (selected in keys) {
-            val p = RailIslandStrip.layout(keys, selected, 46f, 460f, 1f, false)!!
+            val p = RailIslandStrip.layout(keys, selected, 46f, 460f, 1f, false, 4)!!
             assertEquals(keys, p.slots.map { it.key })
             assertEquals(0, p.hidden)
             assertTrue(p.slots.first().top >= 0f)
-            p.slots.zipWithNext().forEach { (a, b) -> assertTrue(a.top + a.height + 12f <= b.top + .001f) }
+            p.slots.zipWithNext().forEach { (a, b) -> assertTrue(a.top + a.height + 8f <= b.top + .001f) }
             assertEquals(460f, p.slots.last().let { it.top + it.height }, .001f)
             assertEquals(selected, p.slots.single { it.primary }.key)
         }
