@@ -1052,6 +1052,10 @@ object MiniPlayerRuntime {
     private var contentScrollTarget = false
     const val CONTENT_NATIVE_CONTROL = 3
 
+    /** Actual card pixels, not the empty clock/rail gap or native shortcut tolerance. */
+    @JvmStatic fun nativeContentAt(x: Float, y: Float): Boolean = detachedRail() &&
+        live().none { it.nativeShortcutAt(x, y) } && live().any { it.contentStartsOnCard(x, y) }
+
     /** isShown ignores alpha; native views kept in layout can be invisible through any parent. */
     internal fun effectiveViewAlpha(view: View): Float {
         var alpha = 1f
@@ -1140,6 +1144,11 @@ object MiniPlayerRuntime {
             endRoute()
             noteTouch("content swipe claimed dy=${dy.toInt()} target=${contentKey?.takeLast(16)}")
             return 1
+        }
+        if (contentSwipe.nativeControl) {
+            releasePress()
+            endRoute()
+            return CONTENT_NATIVE_CONTROL
         }
         val held = contentSwipe.claimed || contentCancelled
         if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
@@ -7902,6 +7911,7 @@ private class MiniPlayerController(
         var progress = 0f
         var frame = plan.frame(0f, oldArt, newArt)
         var nativeNotifications = false
+        var notificationRecoveryAttempted = false
         var scrollFrom: Int? = null
         var scrollTo: Int? = null
         var observedBusy = false
@@ -8001,6 +8011,7 @@ private class MiniPlayerController(
         if (motion.plan.selected in islandKeys) selectedIsland = motion.plan.selected
         railPositionX = Float.NaN; railPositionY = Float.NaN
         if (!commit) railBubbles.remove(key)?.view?.let(host::removeView)
+        if (key == STACK_ISLAND) LockIslands.refreshPresentation()
         if (refreshNow) { refresh(); position() }
     }
 
@@ -8023,11 +8034,20 @@ private class MiniPlayerController(
             markReturning(STACK_ISLAND)
             railClosing.remove(STACK_ISLAND)
             finishRailReturn(STACK_ISLAND, true)
-        } else if (!busy && !folded && (elapsed >= 1600L ||
-                elapsed >= 240L && motion.observedBusy && progress < .99f)) {
-            NumState.choosePresentation(false)
+        } else if (!NumState.presentationCollapsed()) {
+            // Only an explicit new open action can reverse the user's collapse choice.
             railClosing.remove(STACK_ISLAND)
             finishRailReturn(STACK_ISLAND, false)
+        } else if (!busy && !folded && elapsed >= 1600L && !motion.notificationRecoveryAttempted) {
+            motion.notificationRecoveryAttempted = true
+            NumState.goTo("NUMBER", anim = false, why = "rail return settle")
+            LockIslands.refreshPresentation()
+            host.postInvalidateOnAnimation()
+        } else if (elapsed >= 2600L) {
+            // Retire the visual bridge, not the saved presentation. A late native completion
+            // still publishes its bubble through followStack; later gestures are not blocked.
+            railClosing.remove(STACK_ISLAND)
+            finishRailReturn(STACK_ISLAND, folded)
         } else host.postInvalidateOnAnimation()
     }
 

@@ -4,6 +4,17 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class RailContentGestureTest {
+    @Test fun bottomNotificationDismissalStaysNativeWhileOtherIslandsAreFolded() {
+        val g = RailContentGesture()
+        g.start(true, true, false, startsOnScrollableCard = true)
+        assertFalse(g.move(40f, -12f, 8f, true))
+        assertTrue(g.nativeControl)
+        assertFalse(g.move(65f, -90f, 8f, true))
+        assertEquals(RailContentGesture.Action.NONE, g.commit(65f, -90f, -2000f, 1f, false))
+        g.start(true, true, false, startsOnScrollableCard = true)
+        assertTrue(g.move(3f, -24f, 8f, true))
+        assertFalse(g.nativeControl)
+    }
     @Test fun aProgressDragKeepsNativeOwnershipDespiteVerticalWobbleAndLeavingTheControl() {
         val g = RailContentGesture()
         g.start(canExpand = true, canCollapse = true, onNativeControl = true)
