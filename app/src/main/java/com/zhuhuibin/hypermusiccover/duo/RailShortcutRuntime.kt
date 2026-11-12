@@ -112,10 +112,10 @@ internal object RailShortcutRuntime {
         host = container; root = container.rootView; left = torch; right = camera
         val draw = ViewTreeObserver.OnPreDrawListener {
             runCatching { update() }.onFailure { fail(it); restore() }
-            // Apply the two wrapper changes together, before exposing their new positions.
-            !container.isLayoutRequested && leases.values.none {
-                it.wrapper.isShown && (it.wrapper.isLayoutRequested || it.icon.isLayoutRequested)
-            }
+            // This observer belongs to the whole shade window. A hidden shortcut child
+            // may keep its pending-layout flag after unlock; it must never veto drawing
+            // the notification shade or control center. Geometry settles on normal layout.
+            true
         }
         listener = draw; observer = container.viewTreeObserver
         observer?.addOnPreDrawListener(draw)
@@ -269,5 +269,6 @@ internal object RailShortcutRuntime {
     }
 
     @JvmStatic fun describe() = "active=$active owners=${leases.size} container=${host?.height ?: 0} " +
+        "requestedHeight=${host?.layoutParams?.height ?: 0} pendingLayout=${host?.isLayoutRequested == true} " +
         "animation=${installed.isNotEmpty()} originUpdates=$originUpdates error=$error"
 }
