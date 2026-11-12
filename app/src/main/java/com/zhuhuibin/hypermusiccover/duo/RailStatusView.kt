@@ -117,11 +117,16 @@ internal class RailStatusView(context: Context) : View(context) {
         val scale = resources.displayMetrics.density / RailStatusLayout.REFERENCE_DENSITY
         canvas.scale(scale, scale)
         ink.color = Color.WHITE
-        if (timeAlpha > 0f) {
-            ink.alpha = (255f * timeAlpha).toInt().coerceIn(0, 255)
+        val clockAlpha = (255f * timeAlpha).toInt().coerceIn(0, 255)
+        if (clockAlpha > 0) {
+            // A translucent shadow color owns its alpha independently of Paint.alpha.
+            // Fade the completed time drawing, including its shadow, so the spring's
+            // near-zero tail cannot leave a dark time outline beside the restored clock.
+            val clockLayer = if (clockAlpha < 255) canvas.saveLayerAlpha(
+                0f, 0f, RailStatusLayout.WIDTH, RailStatusLayout.HEIGHT, clockAlpha) else canvas.save()
             // Restore the original three-in-one renderer's exact reference typography.
             drawGlyphs(canvas, time, 29.986198f, 98f, 64.400604f)
-            ink.alpha = 255
+            canvas.restoreToCount(clockLayer)
         }
         drawBattery(canvas)
         drawNetwork(canvas)

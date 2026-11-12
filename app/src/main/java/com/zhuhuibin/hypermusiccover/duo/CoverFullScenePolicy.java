@@ -17,6 +17,11 @@ final class CoverFullScenePolicy {
         return style == CoverCardStyle.FULL && !splitArtworkAndLyrics;
     }
 
+    /** The background artwork follows page intent, not foreground card/clock occlusion. */
+    static boolean sharpBand(boolean sceneVisible, boolean userCompact) {
+        return sceneVisible && !userCompact;
+    }
+
     /** Preserve the source aspect even for panoramas and tall artwork; the viewport clips it. */
     static Band band(int width, int height, int artworkWidth, int artworkHeight, float bias) {
         if (width <= 0 || height <= 0 || artworkWidth <= 0 || artworkHeight <= 0) return null;

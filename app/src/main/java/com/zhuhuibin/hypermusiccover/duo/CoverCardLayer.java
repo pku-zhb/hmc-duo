@@ -698,7 +698,28 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
     }
 
     static boolean fullSceneArtworkVisible() {
-        return fullScene() && Main.coverCardVisible() && !LockLyrics.wantsCompactArtwork();
+        if (!fullScene()) return false;
+        // AOD keeps its existing artwork/clock handoff. On the lit lock screen FULL is a
+        // background, so neither a notification list hiding the native clock root nor its
+        // temporary compact-card flag may erase the clear band and leave only blurred fill.
+        if (!Main.screenOnCached())
+            return Main.coverCardVisible() && !LockLyrics.wantsCompactArtwork();
+        boolean sceneVisible = (Main.coverModeOn() || LockHold.exitingFor(LockHold.Owner.COVER)
+                        && ClockCollapse.phase() == ClockCollapse.Phase.EXIT) && Main.onKeyguardNow()
+                && LockscreenSurfacePolicy.visible(Main.keyguardLocked(),
+                        MiniPlayerScene.INSTANCE.getKeyguardGoingAway());
+        return CoverFullScenePolicy.sharpBand(sceneVisible, LockLyrics.userWantsCompactArtwork());
+    }
+
+    static String fullSceneDescription() {
+        CoverCardLayer v = sView;
+        Prepared p = v == null ? null : v.current;
+        return "ready=" + hasFullSceneArtwork() + " wanted=" + fullSceneArtworkVisible()
+                + " lyricsPage=" + LockLyrics.requestedLyricsPage()
+                + " playerOnly=" + LockLyrics.playerChosen()
+                + " notificationCompact=" + LockLyrics.notificationCompact()
+                + " source=" + (p == null ? "none" : p.art.getWidth() + "x" + p.art.getHeight())
+                + " composedAsCard=" + (p != null && p.cardComposition);
     }
 
     static boolean hasFullSceneArtwork() {
