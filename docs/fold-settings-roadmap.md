@@ -7,10 +7,10 @@ not automatically verified on every device, display or OS version.
 
 | Area | Current implementation |
 | --- | --- |
-| Music and lyrics | Square/full-screen artwork, synchronized/word-timed lyrics, lyric effects, providers and optional translation. The artwork slot cycles between artwork, lyrics and the lock-screen clock; inner landscape adds an explicit combined page. |
+| Music and lyrics | Square/full-screen artwork, synchronized/word-timed lyrics, lyric effects, providers and optional translation. The artwork slot cycles between artwork, lyrics and the lock-screen clock, with current-track loading/unavailable lyric cues; inner landscape adds an explicit combined page. |
 | Background | Native wallpaper, artwork background and animated background are independent of foreground artwork mode. Blur and dimming are configurable. Older inactive backdrop preferences migrate to native wallpaper. |
 | Layout and gestures | Duo-owned card bounds and shortcut geometry, native secure camera/flashlight launch, empty-space expansion/collapse, and native interactions on actual cards. |
-| Capsules | HyperOS spring/fusion/split motion and bounded switching; ColorOS switching; automatic size reduction and top overflow hiding. |
+| Capsules | HyperOS spring/fusion/split motion and bounded switching; ColorOS switching; automatic size reduction and top overflow hiding. Short two/three-seat capsules retain their summary and primary action; single-seat bubbles remain icon-only. |
 | Notifications | Independent lock-screen visibility/retention, per-category collapse defaults and last-state restoration. Native visibility is tracked separately from shared-stack state; capsule animation follows native movement while exposure verification retains retry ownership. |
 | Clock and status | Independent status-bar visibility. Outer-screen artwork/lyrics can shrink the clock, join it to the date row with a side preference, or fade the time into the display-only battery/network cluster. Full-screen AOD retains the selected compact presentation; ordinary AOD uses native presentation. Status and capsule columns share their horizontal AOD/wake anchor. |
 | Inner screen | Portrait/landscape handling, fixed bounded landscape card widths, category defaults and an explicit combined artwork/lyrics page. Preview 12 layout changes await device acceptance. |
@@ -19,16 +19,24 @@ not automatically verified on every device, display or OS version.
 
 ## Current acceptance scope
 
-Preview 13 is an offline follow-up for artwork exit, three outer-screen clock
-destinations, reversible clock motion and status-cluster AOD alignment. The
-candidate passed 876 host tests in 143 suites and both APK builds; the APK also
-passed package, integrity, alignment and preview-signature checks. See the
-[Preview 13 record](releases/preview-13.md) for the focused acceptance list.
-It has not been installed or reloaded on the disconnected phone.
+Preview 14 follows the owner's Preview 13 feedback: status-time shadow residue,
+intermittent full-screen sharp-layer loss, lyric availability cues, short-capsule
+content and repeated notification gestures. See the
+[Preview 14 record](releases/preview-14.md) for validation and the focused acceptance
+list. Its new behavior still awaits device acceptance; this development session
+used only read-only phone state/log probes, without GUI automation or screenshots.
 
-The [Preview 12 record](releases/preview-12.md) retains the previous offline
-iteration's causes and evidence limits. Its revised phone behavior has not been
-accepted; it does not need a repeated checklist in every later preview.
+The owner accepted AOD fade and square-artwork dismissal in Preview 13. During
+this session the owner also confirmed the proportional clear full-screen artwork
+was displaying correctly; a read-only probe observed the ready, fully visible
+sharp layer. The intermittent blur-only report was not reproduced. The
+[Preview 13 record](releases/preview-13.md) retains the prior host-validation results.
+
+The [Preview 12 record](releases/preview-12.md) retains that iteration's causes and
+evidence limits. The owner now reports the multi-step notification interaction
+works in most cases, with rare failures after repeated non-sequential operations.
+Inner-layout and other unreported cases remain pending; they do not need a
+repeated checklist in every later preview.
 
 Before disconnection, the inner-landscape stack measured 2096 px with Duo reflow
 and 1246 px with only that reflow disabled. The new 453 dp cap is an explicit Duo
@@ -37,12 +45,11 @@ native animation geometry. Notification expansion and scrolling were captured,
 but the intermittent missing representative was not reliably reproduced. Its
 changes address source-level state gaps rather than a claimed device pass.
 
-Preview 12's pending scope covers full-screen composition, inner-landscape
-layout/four-state cycling, notification representation during native scrolling
-and adjacent-seat HyperOS splits. Preview 13 adds only the artwork-close,
-clock-destination/motion and status alignment checks linked above. The previous
-AOD shortcut material transition was accepted by the owner and is not requested
-again.
+Outstanding earlier acceptance includes inner-landscape layout/four-state
+cycling, interrupted notification sequences and adjacent-seat HyperOS splits.
+The previous AOD shortcut material transition was accepted by the owner and is
+not requested again. Each iteration's checklist stays limited to its changed
+behavior rather than repeating all pending cases.
 
 Native glass/refraction may still sample the original wallpaper instead of local
 artwork; this known layer-composition limitation remains open. Long-paused
