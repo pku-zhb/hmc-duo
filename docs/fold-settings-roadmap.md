@@ -19,6 +19,15 @@ not automatically verified on every device, display or OS version.
 
 ## Current acceptance scope
 
+### Preview 16 compatibility handoff
+
+The HMC side now separates default music material ownership, committed native
+material following and notification transition handback. See the
+[Preview 16 record](releases/preview-16.md) for source causes, supported music
+configurations and the focused paired checks. Lite has a separate implementation
+owner; its compatible fixed version and paired device acceptance remain pending.
+The owner deferred Preview 15 testing until this compatibility work is ready.
+
 ### Preview 15
 
 This iteration addresses square artwork disappearing in full-screen AOD,
