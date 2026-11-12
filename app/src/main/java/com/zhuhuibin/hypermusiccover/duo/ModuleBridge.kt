@@ -43,14 +43,17 @@ object ModuleBridge {
         val auto: Boolean = false,
         val bias: Float = 0.34f,
         val fullBlur: Int = 50,
-        val coverStyle: Int = 0,
+        val coverStyle: Int = 1,
         val foldMusicLayout: Boolean = false,
         val rightRail: Boolean = false,
         val reflowLockContent: Boolean = false,
         val followNativeMaterial: Boolean = false,
+        val hideLockStatusBar: Boolean = true,
+        val artworkClockRow: Boolean = true,
+        val artworkClockBeforeDate: Boolean = true,
         val hideChargingHint: Boolean = true,
         val forceNotificationFloor: Boolean = true,
-        val hidePlayerBackground: Boolean = false,
+        val hidePlayerBackground: Boolean = true,
         val wallpaperDim: Int = 35,
         /**
          * The square's side as a share of the room between the clock and the media card, and
@@ -120,7 +123,7 @@ object ModuleBridge {
         /** The big cover art turns over on a track change while shrunk. See Main.sCoverFlip. */
         val coverFlip: Boolean = false,
         /** The colour regions over the big cover's backdrop drift. See Main.sGlowDrift. */
-        val glowDrift: Boolean = true,
+        val glowDrift: Boolean = false,
         /** The moving colours are a mesh gradient. See Main.sMeshBackdrop. */
         val meshBackdrop: Boolean = false,
         /**
@@ -437,9 +440,11 @@ object ModuleBridge {
         if (!FoldSettingsPolicy.BACKGROUND_SWITCH_AVAILABLE) return false
         val command = intent("hideplayerbackground").putExtra("on", on)
         if (!deliver(context.applicationContext, command)) return false
-        HyperCanvasBridge.synchronizeBlock(context, on)
         return true
     }
+
+    fun setBackgroundMode(context: Context, mode: Int) =
+        send(context, "backgroundmode") { putExtra("v", mode.coerceIn(0, 2)) }
 
     fun setWallpaperDim(context: Context, value: Int) =
         send(context, "wallpaperdim") { putExtra("v", value) }
@@ -890,14 +895,17 @@ object ModuleBridge {
             auto = b.getBoolean("auto", false),
             bias = b.getFloat("bias", 0.34f),
             fullBlur = b.getInt("fullBlur", 50),
-            coverStyle = b.getInt("coverstyle", 0),
+            coverStyle = b.getInt("coverstyle", 1),
             foldMusicLayout = b.getBoolean("foldmusiclayout", false),
             rightRail = b.getBoolean("rightRail", false),
             reflowLockContent = b.getBoolean("reflowLockContent", false),
             followNativeMaterial = b.getBoolean("followNativeMaterial", false),
+            hideLockStatusBar = b.getBoolean("hideLockStatusBar", true),
+            artworkClockRow = b.getBoolean("artworkClockRow", true),
+            artworkClockBeforeDate = b.getBoolean("artworkClockBeforeDate", true),
             hideChargingHint = b.getBoolean("hideChargingHint", true),
             forceNotificationFloor = b.getBoolean("forceNotificationFloor", true),
-            hidePlayerBackground = b.getBoolean("hideplayerbackground", false),
+            hidePlayerBackground = b.getBoolean("hideplayerbackground", true),
             wallpaperDim = b.getInt("wallpaperdim", 35),
             coverCardFill = b.getFloat("covercardfill", 1f),
             coverCardPos = b.getFloat("covercardpos", 0.5f),
@@ -918,7 +926,7 @@ object ModuleBridge {
             mcArtInLyrics = b.getBoolean("mclyricart", true),
             mcTitleTap = b.getBoolean("mctap", false),
             coverFlip = b.getBoolean("coverflip", false),
-            glowDrift = b.getBoolean("glowdrift", true),
+            glowDrift = b.getBoolean("glowdrift", false),
             meshBackdrop = b.getBoolean("meshbackdrop", false),
             aodSmall = b.getBoolean("aodsmall", true),
             forceColon = b.getBoolean("colon", false),

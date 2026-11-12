@@ -29,30 +29,24 @@ internal object NumState {
     private var exposureUntil = 0L
 
     fun shouldClickToList(): Boolean? = runCatching {
-        value(model() ?: return null, "getShouldNotifClickToList") as? Boolean
+        val owner = model() ?: return null
+        // This build inlines the property getter: the Kotlin Lazy holds the flow directly.
+        val flow = Xp.callMethod(Xp.getObjectField(owner, "shouldNotifClickToList\$delegate"), "getValue")
+        Xp.callMethod(flow, "getValue") as? Boolean
     }.getOrNull()
 
-    fun notificationListVisible(): Boolean = NotificationListExposure.isList(
+    fun notificationListVisible(): Boolean = exposure.listPresented(
         state(), shouldClickToList(), MiniPlayerRuntime.notificationRowsVisible())
 
-    /** The native click strategy finishes STACK -> LIST after the first scroll has landed. */
-    private fun clickList() = runCatching {
-        val owner = model() ?: return@runCatching
-        val unit = Class.forName(listOf("kotlin", "Unit").joinToString("."), false,
-            owner.javaClass.classLoader).getField("INSTANCE").get(null)
-        Xp.callMethod(Xp.getObjectField(owner, "_onClicked"), "tryEmit", unit)
-        trace("rail requested native list click")
-    }.onFailure { trace("rail list click unavailable: $it") }
-
     fun requestList(why: String): Boolean {
-        if (!exposure.opening) exposure.request(SystemClock.uptimeMillis())
+        // Repeated empty-space swipes while opening are consumed without restarting the scroll.
+        if (exposure.opening) return true
         val result = goTo("LIST", why = why)
         if (!result.startsWith("scrollY")) {
-            exposure.cancelOpen()
+            exposure.failedOpen()
+            LockIslands.refreshPresentation()
             return false
         }
-        LockIslands.refreshPresentation()
-        checkExposureSoon()
         return true
     }
 
@@ -84,11 +78,15 @@ internal object NumState {
                     choosePresentation(false)
                     trace("rail list confirmed visible")
                 }
-                NotificationListExposure.Action.CLICK_LIST -> clickList()
+                NotificationListExposure.Action.RETARGET_LIST -> goTo("LIST", why = "rail list layout settled")
                 NotificationListExposure.Action.RETRY_LIST -> goTo("LIST", why = "rail list remeasure")
                 NotificationListExposure.Action.CAPTURE -> {
                     choosePresentation(true)
                     goTo("NUMBER", why = "rail captured hidden native pile")
+                }
+                NotificationListExposure.Action.RETAIN -> {
+                    exposureUntil = now
+                    trace("rail visible list did not settle; kept retryable island")
                 }
                 NotificationListExposure.Action.NONE -> {}
             }
@@ -113,6 +111,11 @@ internal object NumState {
 
     /** The saved lock-screen choice, independent of the rows' transient sleep/wake visibility. */
     fun presentationCollapsed(): Boolean = presentation.collapsed
+
+    fun presentationForProbe(): String = "wanted=${presentation.wakeState()} collapsed=${presentation.collapsed} " +
+        "opening=${exposure.opening} captured=${exposure.captured} completed=${!exposure.holdsIsland && notificationListVisible()} " +
+        "native=${state()} explicitTarget=${scrollTo("LIST")} position=${position()} maxScroll=${maxScroll()} " +
+        "rows=[${MiniPlayerRuntime.notificationExposureForProbe()}]"
 
     fun representedByIsland(): Boolean =
         (MiniPlayerRuntime.detachedRail() && exposure.holdsIsland) || presentation.representedByIsland(
@@ -209,6 +212,7 @@ internal object NumState {
     }
 
     fun describe(): String = "numstate folding=$folding available=$available in=$inNumber wake=${presentation.wakeState()} " +
+        "opening=${exposure.opening} captured=${exposure.captured} clickToList=${shouldClickToList()} " +
         LockIslands.systemHiddenForProbe().let { if (it.isEmpty()) "" else "sysHidden=[$it] " } +
         "default=${runCatching { defaultFlow()?.let { Xp.callMethod(it, "getValue") } }.getOrNull()} " +
         "log=" + synchronized(log) { log.joinToString(" ; ") } +
@@ -429,12 +433,21 @@ internal object NumState {
             .takeIf { it.isFinite() && it > 0f }
     }.getOrNull()
 
-    /** The scroll that puts the stack in [state], as SystemUI works it out. */
+    /**
+     * A rail LIST is an explicit user expansion. OEM SHOW_LIST is only a default pose: with
+     * mixed focus/music rows its listStrategy intentionally hides ordinary notifications and
+     * can return the same target as STACK or NUMBER. The inspected clickToListStrategy reserves
+     * normal-list space even in that case, without emitting another click or haptic event.
+     */
     fun scrollFor(model: Any, state: String): Int {
         val info = value(model, "getOnUpdateChildSampleStackInfo")!!
         val event = Xp.callMethod(model, "notifStackStateToEvent", stateConst(model, state))
         val status = Xp.callMethod(model, "getKeyguardStackStatusInfo", info, event)
-        val top = (Xp.callMethod(model, "switchStackStatus", status) as Number).toFloat()
+        val top = if (state == "LIST" && MiniPlayerRuntime.detachedRail()) {
+            val factory = Xp.getObjectField(Xp.getObjectField(model, "\$\$delegate_0"), "strategyFactory")
+            val strategy = Xp.callMethod(Xp.getObjectField(factory, "clickToListStrategy"), "get")
+            (Xp.callMethod(strategy, "calculateTargetYPosition", status) as Number).toFloat()
+        } else (Xp.callMethod(model, "switchStackStatus", status) as Number).toFloat()
         val focus = (Xp.getObjectField(info, "focusNotifsHeight") as Number).toFloat()
         val bound = (Xp.callMethod(model, "positionWithoutMinScrollRange", focus) as Number).toFloat()
         return (bound - top).toInt()
@@ -539,6 +552,8 @@ internal object NumState {
         val model = model() ?: return "no model"
         val stack = MiniPlayerRuntime.stackForProbe() ?: return "no stack"
         if (state == "NUMBER") exposure.cancelOpen()
+        val railList = state == "LIST" && MiniPlayerRuntime.detachedRail()
+        if (railList && !exposure.opening) exposure.request(SystemClock.uptimeMillis())
         val y = scrollFor(model, state)
         val refactor = Xp.callMethod(Xp.getObjectField(model, "notifContainerRefactor"), "get")
         val scroller = Xp.callMethod(refactor, "getOverScroller")
@@ -558,8 +573,21 @@ internal object NumState {
         }
         trace("$why: to $state, $done")
         if (state == "NUMBER" || state == "LIST") choosePresentation(state == "NUMBER")
+        if (railList) {
+            // A changed wake intent does not mean rows have become visible. Keep the capsule
+            // until exposure confirms the settled list, including initial-state restoration.
+            LockIslands.refreshPresentation()
+            checkExposureSoon()
+        }
         done
-    }.getOrElse { trace("$why: to $state failed: $it"); "failed: $it" }
+    }.getOrElse {
+        if (state == "LIST" && MiniPlayerRuntime.detachedRail()) {
+            exposure.failedOpen()
+            LockIslands.refreshPresentation()
+        }
+        trace("$why: to $state failed: $it")
+        "failed: $it"
+    }
 
     /**
      * The stack put at scroll [y] this frame, no animation (a finger has it): as goTo's unanimated

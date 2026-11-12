@@ -4,7 +4,6 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.database.ContentObserver
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
@@ -40,7 +39,6 @@ internal class RailStatusSource(private val context: Context, private val change
     private var networkRegistered = false
     private var subscriptionsRegistered = false
     private var activeDataRegistered = false
-    private var settingsRegistered = false
     private var battery = -1
     private var charging = false
     private var airplane = false
@@ -90,9 +88,6 @@ internal class RailStatusSource(private val context: Context, private val change
             wifiLevels.remove(network); publish()
         }
     }
-    private val settings = object : ContentObserver(main) {
-        override fun onChange(selfChange: Boolean) { if (running) { readAirplane(); tickNow() } }
-    }
     private val receiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             if (!running) return
@@ -102,19 +97,17 @@ internal class RailStatusSource(private val context: Context, private val change
                 WifiManager.RSSI_CHANGED_ACTION, WifiManager.WIFI_STATE_CHANGED_ACTION,
                 WifiManager.NETWORK_STATE_CHANGED_ACTION -> refreshWifi()
             }
-            tickNow()
+            publish()
         }
     }
-    private val minute = Runnable { if (running) tickNow() }
 
     fun start() {
         if (running) return
         running = true
-        attempt("battery/time") {
+        attempt("battery") {
             val filter = IntentFilter().apply {
                 addAction(Intent.ACTION_BATTERY_CHANGED)
-                addAction(Intent.ACTION_TIME_TICK); addAction(Intent.ACTION_TIME_CHANGED)
-                addAction(Intent.ACTION_TIMEZONE_CHANGED); addAction(Intent.ACTION_AIRPLANE_MODE_CHANGED)
+                addAction(Intent.ACTION_AIRPLANE_MODE_CHANGED)
                 addAction(WifiManager.RSSI_CHANGED_ACTION); addAction(WifiManager.WIFI_STATE_CHANGED_ACTION)
                 addAction(WifiManager.NETWORK_STATE_CHANGED_ACTION)
             }
@@ -123,11 +116,6 @@ internal class RailStatusSource(private val context: Context, private val change
             sticky?.let(::readBattery)
         }
         readAirplane()
-        attempt("clock format") {
-            context.contentResolver.registerContentObserver(Settings.System.getUriFor(Settings.System.TIME_12_24),
-                false, settings)
-            settingsRegistered = true
-        }
         attempt("wifi callback") {
             connectivity?.registerNetworkCallback(NetworkRequest.Builder()
                 .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
@@ -145,22 +133,20 @@ internal class RailStatusSource(private val context: Context, private val change
             activeDataRegistered = telephony != null
         }
         refreshSims()
-        tickNow()
+        publish(force = true)
     }
 
     fun stop() {
         if (!running) return
         running = false
-        main.removeCallbacks(minute)
         if (receiverRegistered) runCatching { context.unregisterReceiver(receiver) }
         if (networkRegistered) runCatching { connectivity?.unregisterNetworkCallback(networkCallback) }
         if (subscriptionsRegistered) runCatching { subscriptions?.removeOnSubscriptionsChangedListener(subscriptionCallback) }
         if (activeDataRegistered) runCatching { telephony?.unregisterTelephonyCallback(activeCallback) }
-        if (settingsRegistered) runCatching { context.contentResolver.unregisterContentObserver(settings) }
         for (sim in sims.values) runCatching { sim.manager.unregisterTelephonyCallback(sim.callback) }
         sims.clear(); wifiLevels.clear(); last = null
         receiverRegistered = false; networkRegistered = false; subscriptionsRegistered = false
-        activeDataRegistered = false; settingsRegistered = false
+        activeDataRegistered = false
     }
 
     private fun readBattery(intent: Intent) {
@@ -215,13 +201,6 @@ internal class RailStatusSource(private val context: Context, private val change
         publish()
     }
 
-    private fun tickNow() {
-        if (!running) return
-        publish(force = true)
-        main.removeCallbacks(minute)
-        // Handler deadlines do not wake a sleeping CPU. Broadcasts/wake redraw catch up.
-        main.postDelayed(minute, 60_000L - System.currentTimeMillis().mod(60_000L) + 20L)
-    }
     private fun publish(force: Boolean = false) {
         if (!running) return
         val rows = sims.values.toList()

@@ -21,8 +21,8 @@ final class LyricsButton {
     private static boolean railCycle;
     private static ValueAnimator animator;
     private static float progress;
-    private static boolean requested, canvasControls;
-    /** Off the title: under the thumbnail on Canvas, otherwise gone, whatever the tap does. */
+    private static boolean requested;
+    /** Off the title: shrink away while the native thumbnail owns the tap. */
     private static boolean besideControls;
     /** The slot it is drawn in: it changes slot at the bottom of a quick shrink-and-fade. */
     private static boolean shownBeside;
@@ -50,11 +50,10 @@ final class LyricsButton {
 
     private LyricsButton() {}
 
-    static float update(View card, boolean show, boolean controls, boolean beside) {
+    static float update(View card, boolean show, boolean beside) {
         if (!(card instanceof ViewGroup)) return 0f;
         if (host != card) release();
-        canvasControls = controls;
-        railCycle = MiniPlayerRuntime.detachedRail() && !controls;
+        railCycle = MiniPlayerRuntime.detachedRail();
         // Artwork is already a native click target. The other two actions replace its pixels
         // in that same slot; they never add a second control beside the title.
         if (railCycle && !ArtworkThumbnailPolicy.replaceWithPageAction(true, Main.nextRailMusicPage())) show = false;
@@ -70,7 +69,7 @@ final class LyricsButton {
         }
         // Leaving (the next track has no lyrics), it stays in its slot: swapping back to the title
         // on the way out pushed the title right for a moment as the button went.
-        if (show) besideControls = LyricsButtonPolicy.beside(MiniPlayerRuntime.detachedRail(), controls, beside);
+        if (show) besideControls = LyricsButtonPolicy.beside(MiniPlayerRuntime.detachedRail(), beside);
         if (button == null || progress <= 0f) {
             // Nothing on screen to swap: it appears where it belongs.
             if (swap != null) swap.cancel();
@@ -98,7 +97,6 @@ final class LyricsButton {
             button.setContentDescription("zh".equals(language) ? "显示歌词" : "Show lyrics");
             button.setOnClickListener(v -> {
                 if (railCycle) Main.cycleRailMusicPage();
-                else if (canvasControls) Main.toggleCanvasLyrics();
                 else Main.openLyricsFromButton();
             });
             button.setAlpha(0f);
@@ -161,7 +159,7 @@ final class LyricsButton {
 
     private static void startSwap() {
         swapPastMiddle = false;
-        swapArriving = shownBeside && !besideControls && !canvasControls;
+        swapArriving = shownBeside && !besideControls;
         // It grows by the title from the start, not from the slot it left at the middle.
         if (swapArriving) {
             shownBeside = false;
@@ -274,7 +272,7 @@ final class LyricsButton {
             left = besideLeft;
             y = centre - size / 2f;
         }
-        // Wherever its spot jumps - the controls row of the Canvas player moving, say - it does
+        // Wherever its spot jumps, it does
         // not ride along: it holds where it was, shrinks away and grows back at the new spot.
         float jump = JUMP_DP * density;
         if (!shownBeside) restAt = null;
@@ -298,9 +296,9 @@ final class LyricsButton {
         }
     }
 
-    /** The slot off the title has no button outside Canvas: it shrinks away where it stands. */
+    /** The slot off the title shrinks away where it stands. */
     private static boolean gone() {
-        return besideControls && !canvasControls;
+        return besideControls;
     }
 
     /** Shown, or on its way in, beside the title rather than under the thumbnail. */
@@ -351,7 +349,6 @@ final class LyricsButton {
         pageDrawable = null;
         railCycle = false;
         requested = false;
-        canvasControls = false;
         besideControls = false;
         if (swap != null) swap.cancel();
         swap = null;

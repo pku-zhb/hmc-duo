@@ -126,7 +126,8 @@ final class LockScreenRailRuntime {
             // glyphs instead of narrowing the canvas and then translating ink out of it.
             boolean stackOwned = RailStackBounds.bind(stack, root, next.content);
             View date = Main.visibleDate();
-            if (date != null && !under(date, stack)) centerContentView(date, next.content);
+            if (date != null && !under(date, stack) && !ClockCollapse.compactRowMoving())
+                centerContentView(date, next.content);
             centerClocks();
             contentActive = stackOwned || !owned.isEmpty();
             if (contentActive && Main.sForceNotificationFloor) NumState.INSTANCE.refreshRailFooter(notificationFloor, revision);
@@ -214,6 +215,7 @@ final class LockScreenRailRuntime {
     }
 
     private static void centerClocks() {
+        if (ClockCollapse.compactRowMoving()) return;
         if (ClockCollapse.active() && !Main.anchoredStyle()) return;
         RectF ink = Main.glyphBox();
         if (ink == null) return;

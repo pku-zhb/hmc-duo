@@ -62,10 +62,6 @@ object MediaCardRuntime {
     @JvmStatic fun configJson(): String = MediaCardConfig.encode(values)
     @JvmStatic fun configure(json: String?) {
         values = MediaCardConfig.parse(json)
-        IslandAudioVisualizer.configure(on("island", "visualizer"), on("island", "hideWaveDevice"))
-        MediaOutputVisualizer.configure(outputWavesOn())
-        AudioWaveSync.configure(on("island", "btSync"), setting("island", "btOffset"))
-        applyWaveStyle()
         revision++
         hasOverrides = overrides()
         refresh()
@@ -74,43 +70,17 @@ object MediaCardRuntime {
     @JvmStatic fun set(key: String?, value: Int) {
         if (key == null || key !in values) return
         values = values + (key to MediaCardConfig.limitKey(key, value))
-        if (waveKey(key)) {
-            applyWaveStyle()
-            IslandAudioVisualizer.configure(on("island", "visualizer"), on("island", "hideWaveDevice"))
-            MediaOutputVisualizer.configure(outputWavesOn())
-            AudioWaveSync.configure(on("island", "btSync"), setting("island", "btOffset"))
-            main.post { states.values.toList().flatten().forEach { safely("output wave") { it.applyElements() } } }
-            return
-        }
         revision++
         hasOverrides = overrides()
         refresh()
     }
 
-    private fun overrides(): Boolean = values.any { (key, value) -> !waveKey(key) && value != MediaCardConfig.defaults[key.substringAfter('.')] }
+    private fun overrides(): Boolean = values.any { (key, value) -> value != MediaCardConfig.defaults[key.substringAfter('.')] }
 
     private fun setting(scope: String, name: String) = values.getValue("$scope.$name")
 
     /** The forced theme as the notification's numbers have it: 0 native, 1 light, 2 dark. */
     private fun forcedTheme(scope: String): Int = setting(scope, "theme")
-
-    /** The visualizer's own settings: none of them is a card appearance override. */
-    private fun waveKey(key: String): Boolean = key.endsWith(".visualizer") || key.endsWith("outputWave") ||
-        key.endsWith("lockOutputWave") || key.endsWith("hideWaveDevice") || key.endsWith(".btSync") ||
-        key.endsWith(".btOffset") || key.endsWith(".waveColor") || key.endsWith(".waveCustom")
-
-    private fun applyWaveStyle() {
-        AudioWaveDrawable.style(setting("island", "waveColor"), setting("island", "waveCustom"))
-        main.post { IslandAudioVisualizer.redraw(); MediaOutputVisualizer.redraw() }
-    }
-    /** Audio visualization as a whole, the switch every live wave hangs off. */
-    @JvmStatic fun visualizerOn(): Boolean = on("island", "visualizer")
-
-    private fun outputWavesOn(): Boolean = on("island", "visualizer") &&
-        (on("notification", "outputWave") || on("notification", "lockOutputWave") || on("island", "outputWave"))
-
-    private fun outputWaveSelected(scope: String): Boolean = on("island", "visualizer") &&
-        values.getValue(MediaCardConfig.outputWaveKey(scope, Main.keyguardLocked())) != 0
 
     private fun on(scope: String, name: String) = setting(scope, name) != 0
 
@@ -125,7 +95,6 @@ object MediaCardRuntime {
                         val owner = chain.thisObject
                         if (owner != null) safely("$scope.$method") {
                             bind(owner, scope, if (method == "bindMediaData") chain.args.firstOrNull() else null)
-                            if (method in listOf("bindMediaData", "setAlbumImage", "setSeamless", "updateForegroundColors")) MediaOutputVisualizer.onMediaChanged()
                         }
                     }
                     result
@@ -272,7 +241,7 @@ object MediaCardRuntime {
             }
         }
         field(owner, "normalAlbumLayout")?.let { hidden(it, "cover_source", on("notification", "hideSource")) }
-        hidden(layout, "media_seamless", on("notification", "hideDevice") && !outputWaveSelected("notification"))
+        hidden(layout, "media_seamless", on("notification", "hideDevice"))
     }
 
     private class CardState(owner: Any, val holder: Any, val scope: String, val album: ImageView) {
@@ -297,7 +266,6 @@ object MediaCardRuntime {
         var disposed = false
         var imageVisibility: Int? = null
         private var roundApplied = false
-        private var outputWaveTracked = false
         private var activeColors: Pair<Int, Int>? = null
         private val hidden = WeakHashMap<View, Int>()
         private val textColors = WeakHashMap<TextView, ColorStateList>()
@@ -369,16 +337,6 @@ object MediaCardRuntime {
         }
 
         fun applyElements() {
-            val outputIcon = field(holder, "seamlessIcon") as? ImageView
-            val outputButton = field(holder, "seamless") as? View
-            if (!outputWaveTracked && outputIcon != null && outputButton != null) {
-                outputWaveTracked = true
-                val weak = WeakReference(this)
-                MediaOutputVisualizer.track(outputIcon, outputButton, album, scope == "notification",
-                    { weak.get()?.let { !it.disposed && outputWaveSelected(it.scope) && !AudioSpectrumCapture.casting() } == true },
-                    { weak.get()?.let { !it.disposed && AudioSpectrumCapture.mediaPlaying(
-                        field(it.media, "packageName") as? String, it.playing()) } == true })
-            }
             val cover = setting(scope, "cover")
             val round = cover == 1 || cover == 2
             if (round) {
@@ -414,7 +372,7 @@ object MediaCardRuntime {
                 albumView.visibility = imageVisibility!!
                 imageVisibility = null
             }
-            for ((fieldName, hide) in listOf("appIcon" to on(scope, "hideSource"), "seamless" to (on(scope, "hideDevice") && !outputWaveSelected(scope)))) {
+            for ((fieldName, hide) in listOf("appIcon" to on(scope, "hideSource"), "seamless" to (on(scope, "hideDevice")))) {
                 val view = field(holder, fieldName) as? View ?: continue
                 if (hide) {
                     hidden.putIfAbsent(view, view.visibility)
@@ -727,7 +685,6 @@ object MediaCardRuntime {
         }
 
         fun restore() {
-            (field(holder, "seamlessIcon") as? ImageView)?.let { MediaOutputVisualizer.detach(it) }
             islandTheme.restore()
             disposed = true
             scrollingText.forEach { it.restore() }

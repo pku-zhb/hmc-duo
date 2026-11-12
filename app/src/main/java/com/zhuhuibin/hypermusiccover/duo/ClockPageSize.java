@@ -11,7 +11,7 @@ import java.util.function.Predicate;
  *
  * Its own runtime, apart from ClockCollapse, which places and springs the clock: this only says
  * how big. The big cover keeps the cover's clock, scaled for its artwork's shape; the pages that
- * leave the cover's artwork small - the player alone, the lyrics, the companion, a Canvas scene -
+ * leave the cover's artwork small - the player alone, the lyrics, the companion -
  * take the face's own native clock, and a wide artwork that leaves it room does too. Between two
  * sizes it moves on its own 420ms animator, from the clock as drawn.
  *
@@ -38,8 +38,7 @@ final class ClockPageSize {
 
     /** Whether the page on screen wants the face's native clock rather than the cover's. */
     private static boolean pageWantsNative() {
-        return (LockLyrics.compactWithoutLyricsOnEntry() || LockLyrics.companionPage()
-                || CanvasHostBridge.nativeClockScene())
+        return (LockLyrics.compactWithoutLyricsOnEntry() || LockLyrics.companionPage())
                 && !ImmersiveHost.holdsClock();
     }
 
@@ -52,6 +51,18 @@ final class ClockPageSize {
      */
     static void update(boolean active, boolean on, float poseUnit, float poseTop, float poseDate,
                        Predicate<Float> landscapeFits, Runnable refresh) {
+        // The outer artwork row shares ClockCollapse's one spring, including cover-to-lyrics
+        // page changes. A second size animator must not restart beneath that same transition.
+        if (ClockCollapse.compactRowRequested() || ClockCollapse.compactRowMoving()) {
+            if (sAnimator != null) sAnimator.cancel();
+            sAnimator = null;
+            sNativeTarget = !ClockCollapse.compactRowRequested() && pageWantsNative();
+            sNative = sNativeTarget ? 1f : 0f;
+            sScale = sScaleTarget = 1f;
+            sFromUnit = sTop = sDate = Float.NaN;
+            sProgress = 1f;
+            return;
+        }
         boolean compact = pageWantsNative();
         Bitmap art = CoverCardLayer.currentArt();
         boolean coverVisible = Main.effectiveCoverStyle().mode == CoverCardStyle.CARD

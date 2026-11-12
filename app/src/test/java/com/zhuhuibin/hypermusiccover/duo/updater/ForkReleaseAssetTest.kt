@@ -56,4 +56,20 @@ class ForkReleaseAssetTest {
         ))
         assertEquals("hypermusiccover-duo-v0.1.0.apk", selected?.name)
     }
+    @Test fun aStableReleaseReplacesItsPreview() {
+        assertEquals(true, isNewerVersion("0.3.0", "0.3.0-preview.1"))
+        assertEquals(false, isNewerVersion("0.3.0-preview.1", "0.3.0"))
+    }
+
+    @Test fun aDifferentVersionAssetIsNeverUsedAsFallback() {
+        assertNull(UpdateApi.releaseApk(release("hypermusiccover-duo-v0.0.9.apk")))
+    }
+    @Test fun signedSuccessorsAreAcceptedButOldKeysAndAdditionalSignersAreRejected() {
+        assertTrue(acceptsSigningLineage(listOf("old"), listOf("old"), emptyList()))
+        assertTrue(acceptsSigningLineage(listOf("old"), listOf("new"), listOf("old", "new")))
+        assertFalse(acceptsSigningLineage(listOf("new"), listOf("old"), listOf("old")))
+        assertFalse(acceptsSigningLineage(listOf("old"), listOf("other"), listOf("old", "new")))
+        assertFalse(acceptsSigningLineage(listOf("old"), listOf("old", "other"), emptyList()))
+        assertFalse(acceptsSigningLineage(emptyList(), emptyList(), emptyList()))
+    }
 }

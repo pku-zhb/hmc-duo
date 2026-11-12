@@ -19,6 +19,8 @@ import org.json.JSONObject
  */
 object SettingsBackup {
 
+    private const val KEY_BACKDROP_SCHEMA = "backdropSchema"
+    private const val KEY_HIDE_PLAYER_BACKGROUND = "hidePlayerBackground"
     private const val KEY_BIAS = "coverBias"
     private const val KEY_FULL_BLUR = "coverFullBlur"
     private const val KEY_COVER_STYLE = "coverStyle"
@@ -70,6 +72,24 @@ object SettingsBackup {
             put(extra, value)
         }
     }
+    /** Older Fold backups stored inactive backdrop switches; importing them must stay native. */
+    internal fun readBackdropSettings(json: JSONObject): Map<String, Boolean> {
+        val keys = listOf(KEY_HIDE_PLAYER_BACKGROUND, KEY_GLOW_DRIFT, KEY_MESH_BACKDROP)
+        if (keys.none(json::has)) return emptyMap()
+        if (json.optInt(KEY_BACKDROP_SCHEMA, 0) < 1) return linkedMapOf(
+            KEY_HIDE_PLAYER_BACKGROUND to true,
+            KEY_GLOW_DRIFT to false,
+            KEY_MESH_BACKDROP to false,
+        )
+        return buildMap {
+            for (key in keys) {
+                if (!json.has(key)) continue
+                val value = runCatching { json.getBoolean(key) }.getOrNull() ?: continue
+                put(key, value)
+            }
+        }
+    }
+
     private const val KEY_LYRICS_ALIGN = "lyricsAlignment"
     private const val KEY_MINI = "lockscreenMiniPlayer"
 
@@ -90,13 +110,17 @@ object SettingsBackup {
             json.put(KEY_BIAS, module.bias.toDouble())
             json.put(KEY_FULL_BLUR, module.fullBlur)
             json.put(KEY_COVER_STYLE, module.coverStyle)
-            json.put("hidePlayerBackground", module.hidePlayerBackground)
+            json.put(KEY_BACKDROP_SCHEMA, 1)
+            json.put(KEY_HIDE_PLAYER_BACKGROUND, module.hidePlayerBackground)
             json.put("foldMusicLayout", module.foldMusicLayout)
             json.put("rightRail", module.rightRail)
             json.put("reflowLockContent", module.reflowLockContent)
             json.put("followNativeMaterial", module.followNativeMaterial)
             json.put("hideChargingHint", module.hideChargingHint)
             json.put("forceNotificationFloor", module.forceNotificationFloor)
+            json.put("hideLockStatusBar", module.hideLockStatusBar)
+            json.put("artworkClockRow", module.artworkClockRow)
+            json.put("artworkClockBeforeDate", module.artworkClockBeforeDate)
             json.put("wallpaperDim", module.wallpaperDim)
             if (module.clockSize > 0f) json.put(KEY_CLOCK_SIZE, module.clockSize.toDouble())
             json.put(KEY_CARD_TITLE_TAP, module.mcTitleTap)
@@ -122,8 +146,8 @@ object SettingsBackup {
             json.put(KEY_LYRICS_SEARCH, module.lyricsSearchMode)
             writeLyricProviders(json, module)
             json.put(KEY_LYRICS_ALIGN, module.lyricsAlign)
-            json.put("mediaCardCustomization", JSONObject(module.mediaCardConfig))
-            json.put(KEY_MINI, JSONObject(module.miniConfig))
+            json.put("mediaCardCustomization", JSONObject(MediaCardConfig.normalized(module.mediaCardConfig)))
+            json.put(KEY_MINI, JSONObject(MiniPlayerConfig.normalizedJson(module.miniConfig)))
         }
         return json.toString(2)
     }
@@ -141,17 +165,20 @@ object SettingsBackup {
             // Only when the file has one: a file without the module's half (exported while the
             // module did not answer, or from before it was included) used to reset it to FULL.
             if (obj.has("wallpaperDim")) ModuleBridge.setWallpaperDim(context, obj.getInt("wallpaperDim"))
-            if (obj.has("hidePlayerBackground")) {
-                ModuleBridge.setHidePlayerBackground(context, obj.getBoolean("hidePlayerBackground"))
-            }
+            val backdrop = readBackdropSettings(obj)
+            backdrop[KEY_HIDE_PLAYER_BACKGROUND]?.let { ModuleBridge.setHidePlayerBackground(context, it) }
+            backdrop[KEY_GLOW_DRIFT]?.let { ModuleBridge.setGlowDrift(context, it) }
+            backdrop[KEY_MESH_BACKDROP]?.let { ModuleBridge.setMeshBackdrop(context, it) }
             if (obj.has("foldMusicLayout")) {
                 ModuleBridge.setFoldMusicLayout(context, obj.getBoolean("foldMusicLayout"))
             }
-            for (key in listOf("rightRail", "reflowLockContent", "followNativeMaterial", "hideChargingHint", "forceNotificationFloor")) {
+            for (key in listOf("rightRail", "reflowLockContent", "followNativeMaterial", "hideChargingHint",
+                "forceNotificationFloor", "hideLockStatusBar", "artworkClockRow", "artworkClockBeforeDate")) {
                 if (obj.has(key)) ModuleBridge.setRailSetting(context, key, obj.getBoolean(key))
             }
             if (obj.has(KEY_COVER_STYLE)) {
-                ModuleBridge.setCoverStyle(context, "mode", obj.getInt(KEY_COVER_STYLE).toFloat())
+                ModuleBridge.setCoverStyle(context, "mode",
+                    if (obj.optInt("backdropSchema", 0) >= 1) obj.getInt(KEY_COVER_STYLE).toFloat() else 1f)
             }
             if (obj.has(KEY_CLOCK_SIZE)) {
                 ModuleBridge.setClockSize(context, obj.getDouble(KEY_CLOCK_SIZE).toFloat())
@@ -161,12 +188,6 @@ object SettingsBackup {
             }
             if (obj.has(KEY_COVER_FLIP)) {
                 ModuleBridge.setCoverFlip(context, obj.getBoolean(KEY_COVER_FLIP))
-            }
-            if (obj.has(KEY_GLOW_DRIFT)) {
-                ModuleBridge.setGlowDrift(context, obj.getBoolean(KEY_GLOW_DRIFT))
-            }
-            if (obj.has(KEY_MESH_BACKDROP)) {
-                ModuleBridge.setMeshBackdrop(context, obj.getBoolean(KEY_MESH_BACKDROP))
             }
             if (obj.has(KEY_FORCE_COLON)) {
                 ModuleBridge.setForceColon(context, obj.getBoolean(KEY_FORCE_COLON))
@@ -238,10 +259,10 @@ object SettingsBackup {
                 ModuleBridge.setLyricsAliveFx(context, obj.getInt(KEY_LYRICS_ALIVE_FX))
             }
             if (obj.has("mediaCardCustomization")) {
-                ModuleBridge.setMediaCardConfig(context, obj.getJSONObject("mediaCardCustomization").toString())
+                ModuleBridge.setMediaCardConfig(context, MediaCardConfig.normalized(obj.getJSONObject("mediaCardCustomization").toString()))
             }
             if (obj.has(KEY_MINI)) {
-                ModuleBridge.setMiniConfig(context, obj.getJSONObject(KEY_MINI).toString())
+                ModuleBridge.setMiniConfig(context, MiniPlayerConfig.normalizedJson(obj.getJSONObject(KEY_MINI).toString()))
             }
         } catch (_: Exception) {
             // The app half is already applied; a malformed module half is not worth losing it over.

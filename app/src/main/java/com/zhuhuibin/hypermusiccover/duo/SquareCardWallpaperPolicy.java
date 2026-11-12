@@ -1,19 +1,19 @@
 package com.zhuhuibin.hypermusiccover.duo;
 
-/** A rail's square artwork is independent of the wallpaper renderer and its saved texture. */
+/** Restore a replaced wallpaper once, independently of foreground artwork geometry. */
 final class SquareCardWallpaperPolicy {
     enum Route { WALLPAPER, RESTORE_NATIVE, CARD_ONLY }
     private boolean restored;
 
-    static boolean nativeBackdrop(boolean rail, boolean square) { return rail && square; }
+    static boolean nativeBackdrop(boolean requested, boolean square) { return requested; }
 
-    synchronized boolean releaseNeeded(boolean rail, boolean square) {
+    synchronized boolean releaseNeeded(boolean nativeBackground, boolean square) {
         // An exit cannot refresh native wallpaper that was never replaced in this session.
-        return route(rail, square) != Route.CARD_ONLY;
+        return route(nativeBackground, square) != Route.CARD_ONLY;
     }
 
-    synchronized Route route(boolean rail, boolean square) {
-        if (!nativeBackdrop(rail, square)) {
+    synchronized Route route(boolean nativeBackground, boolean square) {
+        if (!nativeBackdrop(nativeBackground, square)) {
             restored = false;
             return Route.WALLPAPER;
         }

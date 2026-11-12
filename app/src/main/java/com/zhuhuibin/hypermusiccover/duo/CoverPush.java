@@ -181,11 +181,9 @@ final class CoverPush {
             Context ctx, boolean on, Bitmap art, boolean temporaryThumbnail, int gen, String key) {
         if (!currentPush(gen, key)) return;
         long t0 = android.os.SystemClock.uptimeMillis();
-        // A small private copy for an extension's backdrop (ExtensionSpectrum): the source
-        // itself is recycled with the composition it feeds.
-        if (on && art != null && !temporaryThumbnail) ExtensionSpectrum.noteArtwork(art, key);
         Intent out = wallpaperIntent("art");
-        out.putExtra("cardmode", Main.effectiveCoverStyle().mode == CoverCardStyle.CARD);
+        // Both foreground shapes live in SystemUI. The wallpaper owns only the backdrop.
+        out.putExtra("cardmode", true);
         // The blur travels with the cover. A lyricblur broadcast is one shot - dropped, or
         // overtaken on the other side - and nothing else ever corrected it, so a song could play
         // out sharp under its lyrics. This makes every track change an agreement between the two
@@ -217,21 +215,12 @@ final class CoverPush {
             CoverCardLayer.clear();
             if (Main.sVideoWallpaper) showVideoCover(ctx, false, null, null, 0, gen, key);
             out.putExtra("off", true);
-            if (CanvasHostBridge.keepPaletteBackdrop()) {
-                CanvasHostBridge.backdropRetained();
-                // The window keeps this very cover, so the reload the video cover's fade-out is
-                // held for never comes: it sat out its whole 1.8s timeout on every tap out.
-                if (Main.sVideoWallpaper) Main.main().post(
-                        () -> releaseCoverFadeWait("the cover stays on the wallpaper window"));
-            } else if (squareWallpaper.releaseNeeded(FoldSettingsPolicy.nativeBackdrop(Main.sRightRail),
+            if (squareWallpaper.releaseNeeded(CoverBackdrop.hidden(),
                     Main.effectiveCoverStyle().mode == CoverCardStyle.CARD)) {
                 ProbeGuard.send(ctx, out);
             }
-            if (!CanvasHostBridge.keepPaletteBackdrop()) Main.sTrackKey = "";
-            // Nothing behind the clock any more, so nothing to take a colour from. The repaint
-            // that hands the OEM's own colours back happens with the rest of cover mode.
-            // The wallpaper cover is gone, but Canvas still needs the artwork's clock palette.
-            if (!CanvasHostBridge.ownsVideoBackdrop() && !CanvasHostBridge.nativeClockScene()) Main.sCoverTint = 0;
+            Main.sTrackKey = "";
+            Main.sCoverTint = 0;
             // This branch is the single funnel for leaving cover mode - the tap, the dismissed
             // card, the release path and the cover op all end up here.
             sArtDelivered = false;
@@ -239,11 +228,11 @@ final class CoverPush {
             return;
         }
         if (art == null) { Xp.log(Main.TAG + "pushart: no album art"); return; }
-        if (Main.sCoverMode && Main.effectiveCoverStyle().mode == CoverCardStyle.CARD) {
+        if (Main.sCoverMode) {
             CoverCardLayer.publish(art, temporaryThumbnail, gen, key);
         }
         if (!currentPush(gen, key)) return;
-        SquareCardWallpaperPolicy.Route route = squareWallpaper.route(FoldSettingsPolicy.nativeBackdrop(Main.sRightRail),
+        SquareCardWallpaperPolicy.Route route = squareWallpaper.route(CoverBackdrop.hidden(),
                 Main.effectiveCoverStyle().mode == CoverCardStyle.CARD);
         if (route != SquareCardWallpaperPolicy.Route.WALLPAPER) {
             // Undo any texture left by the old path exactly once. A metadata/track update
@@ -260,7 +249,7 @@ final class CoverPush {
                 CoverCardLayer.releaseHeld();
                 Main.recolorClock();
             });
-            Xp.log(Main.TAG + "square card uses native wallpaper; route=" + route);
+            Xp.log(Main.TAG + "foreground artwork uses native wallpaper; route=" + route);
             return;
         }
         ScreenGeometry geometry = Main.screenGeometry();
@@ -322,7 +311,7 @@ final class CoverPush {
                     sTintKey = tintKey;
                     sTintValue = Main.sCoverTint;
                 }
-                if (Main.sCoverMode || CanvasHostBridge.active()) Main.recolorClock();
+                if (Main.sCoverMode) Main.recolorClock();
                 sArtDelivered = true;
                 Xp.log(Main.TAG + "pushart " + w + "x" + h + " bias=" + Main.sBias + " as a "
                         + src.getWidth() + "x" + src.getHeight() + " source, sent in "
@@ -339,7 +328,7 @@ final class CoverPush {
         if (Main.sVideoWallpaper) {
             final Bitmap srcArt = art;
             final int fw = w, fh = h;
-            final boolean cardMode = Main.effectiveCoverStyle().mode == CoverCardStyle.CARD;
+            final boolean cardMode = true;
             final float fb = cardMode ? 0.5f : Main.sBias;
             frostTask = new java.util.concurrent.FutureTask<>(
                     () -> CoverCompose.frostedFor(srcArt, fw, fh, fb, cardMode));
@@ -358,7 +347,7 @@ final class CoverPush {
             return;
         }
         Main.measureCover(full);
-        if (Main.sCoverMode || CanvasHostBridge.active()) Main.recolorClock();
+        if (Main.sCoverMode) Main.recolorClock();
         if (frostTask != null) {
             // Up before the JPEG: the view is this process's own, and only reads `full`, which
             // the encode below only reads too.
@@ -477,16 +466,24 @@ final class CoverPush {
                         iv = new ImageView(ctx);
                         iv.setScaleType(ImageView.ScaleType.CENTER_CROP);
                         iv.setAlpha(0f);
-                        // Added last, so it draws over the video's TextureView. The layer is
-                        // ordered, and a TextureView draws in the view hierarchy like any other
-                        // view - unlike a SurfaceView, which would punch through whatever we
-                        // put above it.
-                        layer.addView(iv, new ViewGroup.LayoutParams(
+                        // Above native video textures, below Duo's dynamic background, dim
+                        // and foreground. A settings switch may have created those first.
+                        int backdropIndex = layer.getChildCount();
+                        for (int n = 0; n < layer.getChildCount(); n++) {
+                            View child = layer.getChildAt(n);
+                            if (child instanceof CoverCardLayer
+                                    || "HMCWallpaperDim".equals(child.getTag())
+                                    || "HMCVideoBackdropMesh".equals(child.getTag())) {
+                                backdropIndex = n;
+                                break;
+                            }
+                        }
+                        layer.addView(iv, backdropIndex, new ViewGroup.LayoutParams(
                                 ViewGroup.LayoutParams.MATCH_PARENT,
                                 ViewGroup.LayoutParams.MATCH_PARENT));
                         Main.sCover = iv;
                     }
-                    if (Main.effectiveCoverStyle().mode == CoverCardStyle.CARD) {
+                    if (Main.sCoverMode) {
                         CoverCardLayer.attach(layer);
                         CoverCardLayer.style(Main.effectiveCoverStyle());
                         // The backdrop is this view here, not the wallpaper process, so nothing
@@ -1031,19 +1028,9 @@ final class CoverPush {
         return v == null ? -1f : v.getAlpha();
     }
 
-    /**
-     * Whether the video cover stays down on the lock screen even in cover mode.
-     *
-     * Besides wallpaper background mode, that is while Spotify Canvas owns the backdrop. The
-     * Canvas is a SurfaceView, composed BEHIND SystemUI's window and seen through a hole in it.
-     * On a still wallpaper the cover lives in the wallpaper window, below that, so the Canvas
-     * shows; this cover is a view inside SystemUI's window, so it painted over the hole and the
-     * lyrics and the card stood on the frosted album art instead (measured on device: the
-     * SurfaceView at z=-2 under NotificationShade, the cover view shown above it). The Canvas
-     * dims and blurs itself for those scenes, so nothing of ours is needed over it.
-     */
+    /** The video-wallpaper overlay is hidden while the native background owns the scene. */
     static boolean videoCoverSuppressed() {
-        return CoverBackdrop.hidden() || CanvasHostBridge.ownsVideoBackdrop();
+        return CoverBackdrop.hidden();
     }
 
     /** The live wallpaper's video, given back while its own wallpaper is the backdrop. */
@@ -1907,9 +1894,9 @@ final class CoverPush {
 
     @SuppressLint("MissingPermission")
     static boolean ensureLockWallpaper(Context ctx, boolean force) {
-        // A square artwork card is a SystemUI layer. Automatic repair must never replace
-        // the wallpaper selected by the user just to create an engine for that card.
-        if (!force && Main.effectiveCoverStyle().mode == CoverCardStyle.CARD) return false;
+        // Both foreground shapes are SystemUI layers. Automatic repair must never replace
+        // the wallpaper selected by the user just to create an artwork engine.
+        if (!force) return false;
         long now = android.os.SystemClock.uptimeMillis();
         if (!force && sWpCheckedAt != 0L && now - sWpCheckedAt < WP_CHECK_TTL_MS) {
             return sWpCheckedAnswer;
@@ -2050,7 +2037,7 @@ final class CoverPush {
     // READ_WALLPAPER_INTERNAL. This APK neither has nor needs them.
     @SuppressLint("MissingPermission")
     private static void fitLockWallpaperToScreen(android.app.WallpaperManager wm) {
-        if (Main.effectiveCoverStyle().mode == CoverCardStyle.CARD) return;
+        if (CoverBackdrop.hidden()) return;
         // Not while the wallpaper process sizes its texture to the screen (sTexFit, on by
         // default): that solves the same problem - a 2121x4712 wallpaper making every swap upload
         // 38MB and putting the crossfade over its own threshold - without writing anything. The
@@ -2578,13 +2565,11 @@ final class CoverPush {
     }
 
     /**
-     * See CoverCompose.composeWallpaper(); kept here so the call sites read as they did. In card
-     * mode the wallpaper is only the blurred backdrop - the square itself is CoverCardLayer.
+     * The wallpaper owns only the backdrop. Both foreground shapes are drawn in SystemUI,
+     * so native/background choice and shape never change each other's texture ownership.
      */
     private static Bitmap composeWallpaper(Bitmap src, int w, int h, float bias, int fullBlur) {
-        return Main.effectiveCoverStyle().mode == CoverCardStyle.CARD
-                ? CoverCompose.cardBackground(src, w, h, fullBlur)
-                : CoverCompose.composeWallpaper(src, w, h, bias, fullBlur);
+        return CoverCompose.cardBackground(src, w, h, fullBlur);
     }
 
     /** Fills w x h from the source without distorting it, the way CENTER_CROP would. */

@@ -182,11 +182,6 @@ final class CoverCompose {
         return out;
     }
 
-    /** ExtensionSpectrum runs in another process without the blur setting. */
-    static Bitmap cardBackground(Bitmap src, int w, int h) {
-        return cardBackground(src, w, h, 50);
-    }
-
     /** Card mode fills the screen with one cropped cover and artwork-derived color regions. */
     static Bitmap cardBackground(Bitmap src, int w, int h, int fullBlur) {
         Bitmap small = cardBackdrop(src, w, h, fullBlur);
@@ -202,7 +197,9 @@ final class CoverCompose {
     }
 
     private static Bitmap cardBackdrop(Bitmap src, int w, int h, int fullBlur) {
-        int bw = Math.max(1, Math.min(256, w / 4));
+        // Zero is an actual sharp crop, not the least-blurred thumbnail. Keep this bounded
+        // by the requested output; callers prepare it on their artwork worker.
+        int bw = fullBlur <= 0 ? Math.max(1, w) : Math.max(1, Math.min(256, w / 4));
         int bh = Math.max(1, Math.round(bw * h / (float) w));
         Bitmap backdrop = Bitmap.createBitmap(bw, bh, Bitmap.Config.ARGB_8888);
         android.graphics.Paint paint = new android.graphics.Paint(
@@ -212,17 +209,13 @@ final class CoverCompose {
         new android.graphics.Canvas(backdrop).drawBitmap(src, null,
                 new android.graphics.RectF((bw - drawnW) / 2f, (bh - drawnH) / 2f,
                         (bw + drawnW) / 2f, (bh + drawnH) / 2f), paint);
-        Bitmap soft;
+        if (fullBlur <= 0) return backdrop;
         try {
-            soft = blur(backdrop, Math.min(blurWidth(fullBlur), bw), 4, 3);
+            // Brightness is owned by CoverBackdrop's dim setting, never baked into the source.
+            return blur(backdrop, Math.min(blurWidth(fullBlur), bw), 4, 3);
         } finally {
             backdrop.recycle();
         }
-        android.graphics.Canvas canvas = new android.graphics.Canvas(soft);
-        // The artwork's colour regions are drawn live over this: see WallpaperGlow.
-        // The backdrop stays five percentage points lighter than the temporary 20% cover shade.
-        canvas.drawColor(0x26000000);
-        return soft;
     }
 
     /**

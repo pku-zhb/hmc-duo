@@ -40,9 +40,9 @@ public class CoverCardStyleTest {
         assertEquals(old.side, square.side, 0f);
     }
 
-    @Test public void defaultsAreFullCoverFillingItsRoom() {
+    @Test public void defaultsKeepTheAcceptedSquareForeground() {
         CoverCardStyle style = CoverCardStyle.defaults();
-        assertEquals(CoverCardStyle.FULL, style.mode);
+        assertEquals(CoverCardStyle.CARD, style.mode);
         assertEquals(CoverCardStyle.FIXED_FILL, style.fill, 0f);
         assertEquals(CoverCardStyle.FIXED_POS, style.pos, 0f);
         // No override, so the corners come from the media card's own radius.
@@ -142,4 +142,47 @@ public class CoverCardStyleTest {
             CoverCardStyle.noteMediaCardRadius(0f);
         }
     }
+    @Test public void immersiveArtworkUsesContentWidthWithoutCoveringTheDateRow() {
+        CoverCardStyle full = new CoverCardStyle(CoverCardStyle.FULL, 1f, .5f, Float.NaN);
+        for (float aspect : new float[]{.5f, 1f, 2f}) {
+            CoverCardStyle.Rect placed = full.place(360f, 850f, 1f, 120f, 450f, aspect);
+            assertNotNull(placed);
+            CoverMorphMotion.Box box = CoverMorphMotion.cardBox(
+                    placed.x, placed.y, placed.side, 1f, aspect);
+            assertTrue(box.x >= -0.01f);
+            assertTrue(box.x + box.w <= 360.01f);
+            assertTrue(box.y >= 136f - .01f);
+            assertTrue(box.y + box.h <= 834.01f);
+        }
+        assertEquals(0f, full.radius(360f), 0f);
+    }
+
+    @Test public void immersiveArtworkDoesNotDependOnAnUnmeasuredNativePlayer() {
+        CoverCardStyle full = new CoverCardStyle(CoverCardStyle.FULL, 1f, .5f, Float.NaN);
+        CoverCardStyle.Rect missing = full.place(360f, 850f, 1f, 120f, Float.NaN, 1f);
+        CoverCardStyle.Rect shown = full.place(360f, 850f, 1f, 120f, 450f, 1f);
+        assertNotNull(missing);
+        assertEquals(shown.x, missing.x, 0f);
+        assertEquals(shown.y, missing.y, 0f);
+        assertEquals(shown.side, missing.side, 0f);
+    }
+
+    @Test public void immersiveBoundsScaleAcrossOuterAndBothInnerOrientations() {
+        CoverCardStyle full = new CoverCardStyle(CoverCardStyle.FULL, 1f, .5f, Float.NaN);
+        for (float[] window : new float[][]{{360f, 850f}, {700f, 900f}, {950f, 650f}}) {
+            CoverCardStyle.Rect dp = full.place(window[0], window[1], 1f, 120f, Float.NaN, 1f);
+            CoverCardStyle.Rect px = full.place(window[0] * 2.6f, window[1] * 2.6f,
+                    2.6f, 312f, Float.NaN, 1f);
+            assertNotNull(dp);
+            assertNotNull(px);
+            assertEquals(dp.x, px.x / 2.6f, .001f);
+            assertEquals(dp.y, px.y / 2.6f, .001f);
+            assertEquals(dp.side, px.side / 2.6f, .001f);
+            assertTrue(dp.x >= -.001f);
+            assertTrue(dp.x + dp.side <= window[0] + .001f);
+            assertTrue(dp.y >= 136f - .001f);
+            assertTrue(dp.y + dp.side <= window[1] - 16f + .001f);
+        }
+    }
+
 }

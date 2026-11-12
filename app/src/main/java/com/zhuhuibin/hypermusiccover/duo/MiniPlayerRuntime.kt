@@ -50,6 +50,8 @@ object MiniPlayerRuntime {
     private var materialFailed = false
     private val selectionLock = Any()
     private val sessionSelection = MiniPlayerSessionSelection()
+    private var pendingMusicExpansion: Runnable? = null
+    private var lastMusicExpansion = "none"
     internal val entryDefaults = LockscreenEntryState()
     internal var applyingEntryDefaults = false
     private var prefs: SharedPreferences? = null
@@ -65,6 +67,8 @@ object MiniPlayerRuntime {
     @JvmStatic fun configJson(context: Context): String = MiniPlayerConfig.fromPreferences(prefs(context))
 
     fun notificationRowsVisible(): Boolean = live().any { it.notificationRowsVisible() }
+    @JvmStatic fun notificationExposureForProbe(): String =
+        live().joinToString(" | ") { it.notificationExposureForProbe() }.ifEmpty { "no-controller" }
 
 
     /** Only automatic cover entry changes; manual entry and existing scenes stay intact. */
@@ -76,14 +80,8 @@ object MiniPlayerRuntime {
         context != null && MiniPlayerConfig.mediaCollapsedByDefault(
             prefs(context).getString("config", null))
 
-    /** Whether lasting status belongs beside the date instead of beneath the pill. */
-    @JvmStatic fun statusAtDate(context: Context): Boolean = JSONObject(configJson(context)).let {
-        it.optBoolean(MiniPlayerConfig.ENABLED) && it.optBoolean(MiniPlayerConfig.STATUS_AT_DATE)
-    }
-
     @JvmStatic fun applyConfig(context: Context, raw: String?) {
         MiniPlayerConfig.apply(prefs(context), raw)
-        DateStatus.configChanged()
         materialGeneration++
         LockScreenRailRuntime.refresh()
         lastRoot?.get()?.let { root -> root.post { attach(root, lastShortcutController?.get()) } }
@@ -367,20 +365,8 @@ object MiniPlayerRuntime {
      * The pill's material key: the effect, then the generation after a '#'. The pill builds a
      * new layer only when the effect before the '#' changes (MiniPlayerMaterialState).
      */
-    private var materialConfigRaw: String? = null
-    private var materialConfigInitialized = false
-    private var materialConfigBlur = false
-
-    internal val materialStyleKey: String get() {
-        val raw = prefs?.getString("config", null)
-        if (!materialConfigInitialized || raw != materialConfigRaw) {
-            materialConfigInitialized = true
-            materialConfigRaw = raw
-            materialConfigBlur = runCatching { JSONObject(raw.orEmpty())
-                .optBoolean(MiniPlayerConfig.BACKGROUND_BLUR) }.getOrDefault(false)
-        }
-        return MiniPlayerMaterialState.styleKey(cardEffect, materialConfigBlur, materialGeneration)
-    }
+    internal val materialStyleKey: String get() =
+        MiniPlayerMaterialState.styleKey(cardEffect, materialGeneration)
     /** The last recipe's values, for telling a new one from the same one again. */
     private var materialSignature: Any? = null
     private var materialRepeats = 0
@@ -1034,7 +1020,6 @@ object MiniPlayerRuntime {
         restorePlayer = false
     }
 
-    internal fun restoreScenePending(): Boolean = restoreScene
 
     internal fun takeRestoreScene(): Boolean = restoreScene.also {
         if (it && restorePlayer) LockLyrics.setPlayerChosen(true)
@@ -2007,7 +1992,7 @@ object MiniPlayerRuntime {
         try { action() } finally { musicPillTapActive = previous }
     }
 
-    /** A Canvas lyrics toggle changes the page while retaining the expanded native player. */
+    /** Artwork and lyrics page changes retain the expanded native player. */
     @JvmStatic fun keepMusicExpanded() {
         Main.miniPlayerSession()?.sessionToken?.let { chooseNative(it) }
     }
@@ -2132,37 +2117,78 @@ object MiniPlayerRuntime {
         sessionSelection.nativeRequestedFor(token)
     }
 
+    /** Only explicit music-open gestures wait; session refreshes never manufacture a card. */
+    internal fun requestMusicExpansion(token: Any, ready: () -> Unit) {
+        val mediaToken = token as? android.media.session.MediaSession.Token ?: return
+        cancelMusicExpansion()
+        val attempt = MusicExpansionAttempt(mediaToken, Main.miniPlayerMediaCardGeneration(),
+            android.os.SystemClock.uptimeMillis())
+        val displayRevision = Main.screenGeometry().revision
+        val check = object : Runnable {
+            override fun run() {
+                if (pendingMusicExpansion !== this) return
+                val now = android.os.SystemClock.uptimeMillis()
+                val eligible = Main.miniPlayerIslandsCanShow() && !MiniPlayerScene.aodActive &&
+                    !MiniPlayerScene.keyguardGoingAway && !MiniPlayerScene.blocksMiniPlayer &&
+                    Main.screenGeometry().revision == displayRevision
+                val attached = eligible && Main.miniPlayerMediaHeader()?.isAttachedToWindow == true
+                val step = attempt.evaluate(Main.miniPlayerMediaCardToken(), Main.miniPlayerMediaCardGeneration(),
+                    eligible, Main.mediaSessionAlive(mediaToken), Main.miniPlayerMediaCardPresent(), attached, now)
+                lastMusicExpansion = "${step.name.lowercase()} generation=${attempt.generation}"
+                when (step) {
+                    MusicExpansionAttempt.Step.WAIT -> Main.main().postDelayed(this, attempt.retryAfter(now))
+                    MusicExpansionAttempt.Step.OPEN -> {
+                        pendingMusicExpansion = null
+                        ready()
+                    }
+                    MusicExpansionAttempt.Step.EXPIRE -> {
+                        pendingMusicExpansion = null
+                        Main.expireMissingMusicCard(mediaToken, attempt.generation)
+                    }
+                    MusicExpansionAttempt.Step.CANCEL -> pendingMusicExpansion = null
+                }
+            }
+        }
+        pendingMusicExpansion = check
+        check.run()
+    }
+
+    internal fun cancelMusicExpansion() {
+        pendingMusicExpansion?.let { Main.main().removeCallbacks(it); lastMusicExpansion = "cancelled" }
+        pendingMusicExpansion = null
+    }
+
+    internal fun musicExpansionState(): String = "pending=${pendingMusicExpansion != null} $lastMusicExpansion"
+
     /** The choice is made first; the morph then runs toward it, or turns round if one runs. */
     internal fun selectNative(token: Any) {
         val changed = synchronized(selectionLock) { sessionSelection.requestNative(token) }
         if (changed) Xp.log("MCMini: dynamic choice -> native")
         live().forEach { it.beginTransition(toNative = true, scene = false) }
         refresh()
-        CanvasHostBridge.sceneChanged()
     }
 
     internal fun selectMini(token: Any) {
+        cancelMusicExpansion()
         val changed = synchronized(selectionLock) { sessionSelection.requestMini(token) }
         if (changed) Xp.log("MCMini: dynamic choice -> mini")
         live().forEach { it.beginTransition(toNative = false, scene = false) }
         refresh()
-        CanvasHostBridge.sceneChanged()
     }
 
     internal fun chooseNative(token: Any) {
         val changed = synchronized(selectionLock) { sessionSelection.requestNative(token) }
         if (changed) Xp.log("MCMini: dynamic choice -> native (pulled)")
-        if (changed) Main.main().post { CanvasHostBridge.sceneChanged() }
     }
 
     internal fun chooseMini(token: Any) {
         val changed = synchronized(selectionLock) { sessionSelection.requestMini(token) }
         if (changed) Xp.log("MCMini: dynamic choice -> mini (out of the scene)")
-        if (changed) Main.main().post { CanvasHostBridge.sceneChanged() }
     }
 
     /** The media card dismissed, its session still alive (Main.sCardRemoved). */
     @JvmStatic fun mediaCardRemoved() {
+        cancelMusicExpansion()
         resetDynamicChoice("media card dismissed")
         live().forEach { it.onMediaCardRemoved() }
     }
@@ -7853,11 +7879,9 @@ private class MiniPlayerController(
         trace("switch tap ${key.takeLast(6)} small=$small")
         val wasOut = x.movers[key]?.morph != null
         MiniPlayerRuntime.withMusicPillTap(key == MUSIC_ISLAND && !small) {
-            val restorePlayer = key == MUSIC_ISLAND && CanvasHostBridge.hasBackgroundScene() &&
-                !MiniPlayerRuntime.restoreScenePending()
-            requestUp(x, key, fromPill = !small, cover = key == MUSIC_ISLAND && !restorePlayer)
+            requestUp(x, key, fromPill = !small, cover = key == MUSIC_ISLAND)
             // The music opens the cover from any place, as from the pill (tapIsland).
-            if (key == MUSIC_ISLAND && !wasOut && !restorePlayer) {
+            if (key == MUSIC_ISLAND && !wasOut) {
                 MiniPlayerRuntime.forgetRestoreScene()
                 Main.miniPlayerEnterCover()
             }
@@ -7866,7 +7890,10 @@ private class MiniPlayerController(
 
     /** What a tap on an island does: the music opens the cover, a notification its row. */
     private fun tapIsland(key: String) {
-        if (key == MUSIC_ISLAND) openCover() else expandNote(key)
+        if (key == MUSIC_ISLAND) openCover() else {
+            MiniPlayerRuntime.cancelMusicExpansion()
+            expandNote(key)
+        }
     }
 
     /**
@@ -7920,7 +7947,7 @@ private class MiniPlayerController(
     /** Test clipped, transformed card bounds, not the full scroller or a stale hidden row. */
     private fun visibleNativeCardBounds(view: View): android.graphics.RectF? {
         val rect = android.graphics.Rect()
-        if (!view.isShown || MiniPlayerRuntime.effectiveViewAlpha(view) <= .01f ||
+        if (!view.isShown || nativeRowAlpha(view) <= .01f ||
             !view.getGlobalVisibleRect(rect) || rect.isEmpty) return null
         val rootXY = IntArray(2).also(view.rootView::getLocationOnScreen)
         val result = android.graphics.RectF(rect).apply { offset(rootXY[0].toFloat(), rootXY[1].toFloat()) }
@@ -7936,6 +7963,17 @@ private class MiniPlayerController(
         val top = xy[1] + clip("getClipTopAmount") * scale
         val bottom = xy[1] + (actual - clip("getClipBottomAmount")) * scale
         return result.takeIf { bottom > top && it.intersect(it.left, top, it.right, bottom) }
+    }
+
+    /** NUMBER fades the injector while View.alpha and the allocated bounds can stay unchanged. */
+    private fun nativeRowAlpha(view: View): Float {
+        val ordinary = MiniPlayerRuntime.effectiveViewAlpha(view)
+        if (!view.javaClass.name.endsWith("ExpandableNotificationRow")) return ordinary
+        val ext = runCatching { (Xp.callMethod(view, "getExtAlpha") as Number).toFloat() }.getOrDefault(1f)
+        val number = runCatching {
+            (Xp.getObjectField(Xp.callMethod(view, "getInjector"), "numStateAlpha") as Number).toFloat()
+        }.getOrDefault(1f)
+        return minOf(ordinary, ext, number)
     }
 
     fun nativeCardAt(x: Float, y: Float): Boolean {
@@ -8263,9 +8301,51 @@ private class MiniPlayerController(
         return NumState.notificationListVisible()
     }
 
-    fun notificationRowsVisible(): Boolean = LockIslands.membersOf(STACK_ISLAND).any { member ->
-        val row = findRow(member)?.first
-        row != null && visibleNativeCardBounds(row)?.height()?.let { it >= dp(20f) } == true
+    private var notificationExposureSample = "no-sample"
+
+    fun notificationExposureForProbe(): String = notificationExposureSample
+
+    fun notificationRowsVisible(): Boolean {
+        val viewport = android.graphics.RectF()
+        if (!LockScreenRailRuntime.content(host, viewport)) {
+            notificationExposureSample = "no-viewport"
+            return false
+        }
+        val hostPosition = IntArray(2).also(host::getLocationOnScreen)
+        viewport.offset(hostPosition[0].toFloat(), hostPosition[1].toFloat())
+        val blockers = buildList<android.graphics.RectF> {
+            Main.miniPlayerMediaHeader()?.let { visibleNativeCardBounds(it)?.let(::add) }
+            for (key in LockIslands.focusKeys()) {
+                findRow(key)?.first?.let { visibleNativeCardBounds(it)?.let(::add) }
+            }
+        }
+        var first: String? = null
+        var exposed = false
+        var count = 0
+        for (member in LockIslands.membersOf(STACK_ISLAND)) {
+            val row = findRow(member)?.first ?: continue
+            val bounds = visibleNativeCardBounds(row)
+            val actualHeight = rowHeight(row)
+            // PropertiesFrameLayout's public scale can describe the requested pose while
+            // its injector's super-scale still compresses the row into the native pile.
+            val scale = runCatching { (Xp.callMethod(row, "getSuperScaleY") as Number).toFloat() }
+                .getOrDefault(row.scaleY)
+            val nativeAlpha = nativeRowAlpha(row)
+            val visible = if (bounds != null && bounds.intersect(viewport)) {
+                val covers = blockers.filter { blocker ->
+                    minOf(bounds.right, blocker.right) - maxOf(bounds.left, blocker.left) >= bounds.width() * .5f
+                }.map { it.top to it.bottom }
+                NotificationRowExposure.uncoveredHeight(bounds.top, bounds.bottom, covers)
+            } else 0f
+            val usable = NotificationRowExposure.usable(actualHeight, visible, viewport.height(), scale, nativeAlpha)
+            if (first == null) first = "visible=${visible.toInt()} required=" +
+                "${NotificationRowExposure.requiredHeight(actualHeight, viewport.height()).toInt()} " +
+                "actual=${actualHeight.toInt()} scale=$scale nativeAlpha=$nativeAlpha usable=$usable"
+            count++
+            exposed = exposed || usable
+        }
+        notificationExposureSample = "rows=$count usable=$exposed first=[${first ?: "none"}]"
+        return exposed
     }
 
     fun collapseRailOne(): Boolean {
@@ -8473,7 +8553,22 @@ private class MiniPlayerController(
         }
     }
 
-    private fun openDetachedIsland(key: String, cover: Boolean = false) {
+    private fun openDetachedIsland(key: String, cover: Boolean = false, musicVerified: Boolean = false) {
+        if (key != MUSIC_ISLAND) MiniPlayerRuntime.cancelMusicExpansion()
+        if (key == MUSIC_ISLAND && !musicVerified) {
+            val token = controller?.sessionToken ?: return
+            val fromPill = MiniPlayerRuntime.musicPillTapActive
+            MiniPlayerRuntime.requestMusicExpansion(token) {
+                if (!destroyed && host.isAttachedToWindow && controller?.sessionToken == token) {
+                    MiniPlayerRuntime.withMusicPillTap(fromPill) {
+                        openDetachedIsland(key, cover, musicVerified = true)
+                    }
+                }
+            }
+            // The caller still consumes the user's gesture. Selection and rail-opening state
+            // stay unchanged while the real header is being rebound, so no swipe reaches unlock.
+            return
+        }
         if (key != STACK_ISLAND) railOpening[key] = android.os.SystemClock.uptimeMillis()
         if (key == MUSIC_ISLAND) finishRailMediaExit(commit = false)
         railClosing.remove(key)
@@ -8492,16 +8587,20 @@ private class MiniPlayerController(
         schedulePosition()
     }
 
-    private fun openCoverFromTap() {
-        if (MiniPlayerRuntime.detachedRail()) {
-            MiniPlayerRuntime.forgetRestoreScene()
-            openDetachedIsland(MUSIC_ISLAND, cover = true)
+    private fun openCoverFromTap(musicVerified: Boolean = false) {
+        if (!musicVerified) {
+            val token = controller?.sessionToken ?: return
+            val fromPill = MiniPlayerRuntime.musicPillTapActive
+            MiniPlayerRuntime.requestMusicExpansion(token) {
+                if (!destroyed && host.isAttachedToWindow && controller?.sessionToken == token) {
+                    MiniPlayerRuntime.withMusicPillTap(fromPill) { openCoverFromTap(musicVerified = true) }
+                }
+            }
             return
         }
-        if (CanvasHostBridge.hasBackgroundScene() && !MiniPlayerRuntime.restoreScenePending()) {
-            // Use the island flight so notifications reseat while music leaves the pill.
-            if (othersBesideMusic()) expandNote(MUSIC_ISLAND)
-            else controller?.sessionToken?.let(MiniPlayerRuntime::selectNative)
+        if (MiniPlayerRuntime.detachedRail()) {
+            MiniPlayerRuntime.forgetRestoreScene()
+            openDetachedIsland(MUSIC_ISLAND, cover = true, musicVerified = true)
             return
         }
         MiniPlayerRuntime.forgetRestoreScene()
@@ -11347,8 +11446,8 @@ private class MiniPlayerController(
         // from, or else the player alone over the cover's blurred artwork - as the bare card it
         // stood over the plain wallpaper (the user, 2026-10-22). Decided at the let-go, as the
         // super island's releaseDrag does: entered as the pull began, the card jumped up with
-        // the finger still on it (2026-10-24). Canvas keeps its own player.
-        if (toRow && drag.opening && drag.key == MUSIC_ISLAND && !CanvasHostBridge.hasBackgroundScene() &&
+        // the finger still on it (2026-10-24).
+        if (toRow && drag.opening && drag.key == MUSIC_ISLAND &&
             Main.miniPlayerCanShow()) {
             if (!MiniPlayerRuntime.takeRestoreScene()) LockLyrics.setPlayerChosen(true)
             handler.post { Main.miniPlayerEnterCover() }
@@ -11816,7 +11915,8 @@ private class MiniPlayerController(
 
     /** The stack's own answer to whether a tap on its pile opens the list; null unread. */
     private fun stackWantsList(model: Any): Boolean? = runCatching {
-        Xp.callMethod(Xp.callMethod(model, "getShouldNotifClickToList"), "getValue") as? Boolean
+        val flow = Xp.callMethod(Xp.getObjectField(model, "shouldNotifClickToList\$delegate"), "getValue")
+        Xp.callMethod(flow, "getValue") as? Boolean
     }.getOrNull()
 
     private val listAsk = object : Runnable {
@@ -12299,12 +12399,14 @@ private class MiniPlayerController(
     private var exitSurfacesHidden = false
 
     fun surfaceState(): String = "exitHidden=$exitSurfacesHidden hold=$holdButtons rowHold=$rowHeldOff " +
+        "musicOpen=[${MiniPlayerRuntime.musicExpansionState()}] " +
         "mediaExit=${railMediaExit != null} lastExit=$lastRailExit frames=$lastRailExitFrames " +
         "musicSelected=${selectedIsland == MUSIC_ISLAND} discs=${discs.count { it?.visibility == View.VISIBLE }} " +
         "discMaterials=${discs.joinToString(";") { it?.materialStatus() ?: "absent" }} " +
         "exitPillHeld=$railExitPillWasVisible exitHiddenBeforeRestore=$lastRailExitHiddenBeforeRestore returnOwned=${railCollapsedToken != null}"
 
     fun onKeyguardExit() {
+        MiniPlayerRuntime.cancelMusicExpansion()
         exitSurfacesHidden = true
         railDragHeld = false
         finishRailFusion(refreshNow = false)
@@ -13333,8 +13435,12 @@ private class MiniPlayerController(
             { skip(next = true) },
             {
                 // Up undoes down: out of the cover or lyrics by a swipe, back into it by one.
-                if (MiniPlayerRuntime.takeRestoreScene()) Main.miniPlayerEnterCover()
-                else MiniPlayerRuntime.selectNative(current.sessionToken)
+                MiniPlayerRuntime.requestMusicExpansion(current.sessionToken) {
+                    if (!destroyed && host.isAttachedToWindow && controller?.sessionToken == current.sessionToken) {
+                        if (MiniPlayerRuntime.takeRestoreScene()) Main.miniPlayerEnterCover()
+                        else MiniPlayerRuntime.selectNative(current.sessionToken)
+                    }
+                }
             },
             { openCover() },
         )
@@ -13354,7 +13460,7 @@ private class MiniPlayerController(
         // square, bigger, on a grey plate.
         view.setArtworkBare(true)
         view.skippable = false
-        view.setTextScrolls(config.optBoolean(MiniPlayerConfig.NOTE_TEXT_SCROLL, true))
+        view.setTextScrolls(false)
         // Its buttons as its row has them: the last - its main one - in the play button's place,
         // the one before it beside it while the pill is the big island (setSecondShown).
         val buttons = if (template) note.buttons else emptyList()

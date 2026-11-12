@@ -4,7 +4,6 @@ package com.zhuhuibin.hypermusiccover.duo
 
 import android.content.SharedPreferences
 import org.json.JSONObject
-import kotlin.math.roundToInt
 
 /** Portable settings for the HyperChanger lockscreen mini player. */
 object MiniPlayerConfig {
@@ -60,32 +59,8 @@ object MiniPlayerConfig {
     const val WIDTH = "widthDp"
     const val HEIGHT_RADIUS = "heightRadiusDp"
     const val ART_RADIUS = "artRadiusDp"
-    const val BACKGROUND_BLUR = "backgroundBlur"
-    const val BACKGROUND_BLUR_RADIUS = "backgroundBlurRadiusDp"
-    const val BACKGROUND_BLUR_BRIGHTNESS = "backgroundBlurBrightness"
-
-    @JvmStatic fun blurBrightness(value: Double): Float =
-        if (value.isFinite()) value.toFloat().coerceIn(0f, 100f) else 80f
-
-    /** Fade the dark tint into a light tint at high brightness without hiding the sampled blur. */
-    @JvmStatic fun blurTint(value: Double): Int {
-        val brightness = blurBrightness(value)
-        val alpha = ((60f - brightness.coerceAtMost(80f) * 0.5f) * 2.55f).roundToInt()
-        val light = ((brightness - 70f) / 30f).coerceIn(0f, 1f)
-        val red = (31f + 217f * light).roundToInt()
-        val green = (35f + 215f * light).roundToInt()
-        val blue = (36f + 216f * light).roundToInt()
-        return (alpha shl 24) or (red shl 16) or (green shl 8) or blue
-    }
-
-    @JvmStatic fun blurRadius(value: Double): Float =
-        if (value.isFinite()) value.toFloat().coerceIn(0f, 80f) else 30f
-
     /** The row takes the room a switched-off torch or camera leaves (MiniPlayerRuntime.pillRest). */
     const val ADAPTIVE_WIDTH = "adaptiveWidth"
-
-    /** Move lasting lock screen status beside the date while islands are enabled. */
-    const val STATUS_AT_DATE = "statusAtDate"
 
     /**
      * The row's look: [STYLE_COLOROS], ColorOS 16/17's capsule - one island at a time, swiped
@@ -100,9 +75,6 @@ object MiniPlayerConfig {
 
     /** A notification island pulled up opens the list without the media player in it. */
     const val LIST_WITHOUT_PLAYER = "listWithoutPlayer"
-
-    /** A notification island's long title and line scroll in the pill; off, they end in "…". */
-    const val NOTE_TEXT_SCROLL = "noteTextScroll"
 
     /** ColorOS's torch, camera and capsule at their full size; the capsule gets shorter to fit. */
     const val COLOROS_FULL_SIZE = "colorOsFullSize"
@@ -133,17 +105,12 @@ object MiniPlayerConfig {
         HEIGHT_RADIUS to 27f,
         ART_RADIUS to 12f,
         ADAPTIVE_WIDTH to false,
-        STATUS_AT_DATE to false,
         PILL_STYLE to STYLE_COLOROS,
         LIST_WITHOUT_PLAYER to false,
-        NOTE_TEXT_SCROLL to false,
         COLOROS_FULL_SIZE to false,
         COMPACT_NOTIFICATIONS to false,
         NOTIFICATION_SIZE to 80f,
         NOTIFICATION_DROP to 16f,
-        BACKGROUND_BLUR to false,
-        BACKGROUND_BLUR_RADIUS to 30f,
-        BACKGROUND_BLUR_BRIGHTNESS to 80f,
     )
 
     /** Automatic entry requires an island to return to; explicit scene restoration bypasses it. */
@@ -156,7 +123,7 @@ object MiniPlayerConfig {
 
     // Keep retired keys readable by legacy internals, but never restore their active state.
     private val retiredSwitches = setOf(ADAPTIVE_WIDTH, LIST_WITHOUT_PLAYER,
-        COMPACT_NOTIFICATIONS, BACKGROUND_BLUR, NOTE_TEXT_SCROLL, COLOROS_FULL_SIZE, STATUS_AT_DATE)
+        COMPACT_NOTIFICATIONS, COLOROS_FULL_SIZE)
 
     /** Normalize current settings and make old imports safe for the dedicated Fold layout. */
     @JvmStatic fun normalizedJson(raw: String?): String {
@@ -191,10 +158,6 @@ object MiniPlayerConfig {
                 notificationSize(input.optDouble(key, 80.0))
             } else if (key == NOTIFICATION_DROP) {
                 notificationDrop(input.optDouble(key, 16.0))
-            } else if (key == BACKGROUND_BLUR_RADIUS) {
-                blurRadius(input.optDouble(key, 30.0))
-            } else if (key == BACKGROUND_BLUR_BRIGHTNESS) {
-                blurBrightness(input.optDouble(key, 80.0))
             } else {
                 fallback
             })

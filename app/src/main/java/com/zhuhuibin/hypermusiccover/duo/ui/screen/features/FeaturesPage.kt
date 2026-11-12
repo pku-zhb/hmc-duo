@@ -195,6 +195,15 @@ internal fun TweaksPageView(
                 SmallTitle(text = stringResource(R.string.tweaks_lock_screen))
                 Card(Modifier.padding(horizontal = 12.dp).padding(bottom = 12.dp)) {
                     SwitchPreference(
+                        title = stringResource(R.string.lock_hide_status_bar),
+                        summary = stringResource(R.string.lock_hide_status_bar_summary),
+                        checked = module.hideLockStatusBar, enabled = module.alive,
+                        onCheckedChange = {
+                            module = module.copy(hideLockStatusBar = it)
+                            ModuleBridge.setRailSetting(context, "hideLockStatusBar", it)
+                        },
+                    )
+                    SwitchPreference(
                         title = stringResource(R.string.depth_open),
                         summary = stringResource(R.string.depth_open_summary),
                         checked = module.depthOpen,
@@ -253,21 +262,7 @@ internal fun TweaksPageView(
     }
 }
 
-/**
- * Everything the module can be told about the lock screen, with what cover mode is played above.
- *
- * These are not app preferences: each one is a command to the hook inside SystemUI, and the
- * values shown are the ones it reports back. The picture above them is CoverDemo, the 趣味拟物
- * style animation that replaced the live composite on 2026-09-30 (user): it plays what cover mode
- * does, and still follows the three settings here that change the look - the style, where a
- * full-screen cover sits, and how small the clock goes.
- *
- * Cover, clock and media card settings share one list, each in its own section.
- *
- * Deliberately absent are the things that should never need a button. Hiding the wallpaper's
- * subject cut-out and giving the lock screen its own wallpaper are not choices - without them
- * cover mode renders wrong - so the module does both on its own.
- */
+/** Cover geometry, backdrop, clock and native media controls share the live module state. */
 @Composable
 internal fun CoverPageView(
     isBlurEnabled: Boolean,
@@ -419,10 +414,13 @@ private fun CoverGroup(
             title = stringResource(R.string.cover_style),
             items = listOf(stringResource(R.string.cover_style_full),
                 stringResource(R.string.cover_style_card)),
-            summary = stringResource(R.string.fold_full_cover_pending),
-            selectedIndex = 1,
-            enabled = false,
-            onSelectedIndexChange = {},
+            summary = stringResource(R.string.cover_style_content_area),
+            selectedIndex = module.coverStyle.coerceIn(0, 1),
+            enabled = enabled,
+            onSelectedIndexChange = {
+                onChange(module.copy(coverStyle = it))
+                ModuleBridge.setCoverStyle(context, "mode", it.toFloat())
+            },
         )
         SwitchPreference(
             title = stringResource(R.string.cover_fold_columns),
@@ -461,12 +459,36 @@ private fun CoverGroup(
                 ModuleBridge.setRailSetting(context, "hideChargingHint", it)
             },
         )
-        SwitchPreference(
-            title = stringResource(R.string.cover_hide_player_background),
-            summary = stringResource(R.string.fold_background_pending),
-            checked = true,
-            enabled = false,
-            onCheckedChange = {},
+        val backgroundMode = if (module.hidePlayerBackground) 0 else if (module.meshBackdrop) 2 else 1
+        WindowDropdownPreference(
+            title = stringResource(R.string.cover_background_mode),
+            summary = stringResource(R.string.cover_background_mode_summary),
+            items = listOf(stringResource(R.string.cover_background_native),
+                stringResource(R.string.cover_background_artwork), stringResource(R.string.cover_background_dynamic)),
+            selectedIndex = backgroundMode, enabled = enabled,
+            onSelectedIndexChange = {
+                onChange(module.copy(hidePlayerBackground = it == 0, meshBackdrop = it == 2, glowDrift = it == 2))
+                ModuleBridge.setBackgroundMode(context, it)
+            },
+        )
+        if (backgroundMode == 1) ValueSlider(
+            title = stringResource(R.string.cover_background_blur),
+            value = module.fullBlur.toFloat(), valueRange = 0f..100f, detent = 50f,
+            enabled = enabled, label = { "${it.roundToInt()}%" },
+            onValueChange = {
+                onChange(module.copy(fullBlur = it.roundToInt()))
+                ModuleBridge.setFullBlur(context, it.roundToInt())
+            },
+        )
+        ValueSlider(
+            title = stringResource(R.string.cover_wallpaper_dim),
+            summary = stringResource(R.string.cover_wallpaper_dim_summary),
+            value = module.wallpaperDim.toFloat(), valueRange = 0f..100f, detent = 0f,
+            enabled = enabled, label = { "${it.roundToInt()}%" },
+            onValueChange = {
+                onChange(module.copy(wallpaperDim = it.roundToInt()))
+                ModuleBridge.setWallpaperDim(context, it.roundToInt())
+            },
         )
         SwitchPreference(
             title = stringResource(R.string.cover_flip),
@@ -524,6 +546,24 @@ private fun ClockGroup(
 ) {
     val context = LocalContext.current
     Column {
+        SwitchPreference(
+            title = stringResource(R.string.clock_artwork_row),
+            summary = stringResource(R.string.clock_artwork_row_summary),
+            checked = module.artworkClockRow, enabled = enabled,
+            onCheckedChange = {
+                onChange(module.copy(artworkClockRow = it))
+                ModuleBridge.setRailSetting(context, "artworkClockRow", it)
+            },
+        )
+        if (module.artworkClockRow) WindowDropdownPreference(
+            title = stringResource(R.string.clock_artwork_row_side),
+            items = listOf(stringResource(R.string.clock_artwork_row_left), stringResource(R.string.clock_artwork_row_right)),
+            selectedIndex = if (module.artworkClockBeforeDate) 0 else 1, enabled = enabled,
+            onSelectedIndexChange = {
+                onChange(module.copy(artworkClockBeforeDate = it == 0))
+                ModuleBridge.setRailSetting(context, "artworkClockBeforeDate", it == 0)
+            },
+        )
         // Cap the collapsed clock at 55% to leave enough space for the big artwork.
         ValueSlider(
             title = stringResource(R.string.clock_size),

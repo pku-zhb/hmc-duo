@@ -435,11 +435,14 @@ public class Main extends XposedModule {
      */
     static final float DEFAULT_CLOCK_SIZE = 0.09f;
     static volatile float sClockSize = DEFAULT_CLOCK_SIZE;
-    static volatile boolean sHidePlayerBackground;
+    static volatile boolean sHidePlayerBackground = true;
     /** Preview stays opt-in until the native media container is checked on a device. */
     static volatile boolean sFoldMusicLayout;
     static volatile boolean sRightRail, sReflowLockContent, sFollowNativeMaterial;
     static volatile boolean sHideChargingHint = true;
+    static volatile boolean sHideLockStatusBar = true;
+    static volatile boolean sArtworkClockRow = true;
+    static volatile boolean sArtworkClockBeforeDate = true;
     static volatile boolean sForceNotificationFloor = true;
     static volatile boolean sCoverOnTap;
 
@@ -449,17 +452,8 @@ public class Main extends XposedModule {
     }
     static volatile int sWallpaperDim = 35;
 
-    private static CoverCardStyle sWallpaperStyleOf, sWallpaperCoverStyle;
     static CoverCardStyle effectiveCoverStyle() {
-        CoverCardStyle saved = sCoverCardStyle;
-        if ((FoldSettingsPolicy.FULL_COVER_AVAILABLE
-                && !sHidePlayerBackground && !FoldMusicRuntime.sideBySide())
-                || saved.mode == CoverCardStyle.CARD) return saved;
-        if (sWallpaperStyleOf != saved) {
-            sWallpaperCoverStyle = new CoverCardStyle(CoverCardStyle.CARD, saved.fill, saved.pos, saved.corner);
-            sWallpaperStyleOf = saved;
-        }
-        return sWallpaperCoverStyle;
+        return FoldSettingsPolicy.coverStyle(sCoverCardStyle);
     }
     /** The smallest size the clock can be set to. */
     static final float CLOCK_SIZE_MIN = 0.05f;
@@ -523,6 +517,9 @@ public class Main extends XposedModule {
     private static volatile boolean sCardKnown;
     /** The session the card itself is bound to - exact, where pickController() only guesses. */
     private static volatile android.media.session.MediaSession.Token sCardToken;
+    /** Every data binding invalidates deferred user expansion of an older card. */
+    private static final java.util.concurrent.atomic.AtomicLong sCardGeneration =
+            new java.util.concurrent.atomic.AtomicLong();
     /** Track identity straight off the card's MediaData. */
     private static volatile String sCardKey = "";
     /**
@@ -610,7 +607,7 @@ public class Main extends XposedModule {
     /** The big cover art turns over on a track change while it is shrunk (CoverCardLayer). */
     static volatile boolean sCoverFlip;
     /** The colour regions over the big cover's backdrop drift (CoverGlow); off, they stand still. */
-    static volatile boolean sGlowDrift = true;
+    static volatile boolean sGlowDrift;
     /** The colours move as a true mesh gradient rather than the regions, with sGlowDrift (CoverGlow). */
     static volatile boolean sMeshBackdrop;
     /** The OEM's MiuiGxzwManager, caught on its first updateGxzwState. */
@@ -1064,6 +1061,7 @@ public class Main extends XposedModule {
         // not cost them too.
         HyperTweaks.systemUi(cl);
         LockScreenChargingHint.INSTANCE.install(cl);
+        LockscreenStatusBar.install(cl);
         StatusBarArtwork.install(cl);
         // The home screen magnified behind the shade, after the lock screen (PassBlurScaleFix).
         PassBlurScaleFix.install();
@@ -1072,10 +1070,7 @@ public class Main extends XposedModule {
         RailShortcutRuntime.install(cl);
         MediaCardRuntime.install(cl);
         RailStackBounds.install(cl);
-        IslandAudioVisualizer.install(cl);
         PaletteThrottle.INSTANCE.install(cl);
-        // Draw lasting lock screen status beside the date, clear of the pill.
-        DateStatus.INSTANCE.install(cl);
         // "Has notifications" as the clock faces are told it, less the rows nobody can see.
         NotifPresence.install(cl);
 
@@ -1148,7 +1143,7 @@ public class Main extends XposedModule {
                     if (sVideoWallpaper) sCover = null;
                     CoverPush.pushArtAsync(true, false);
                 }
-                if (sCoverMode && effectiveCoverStyle().mode == CoverCardStyle.CARD) {
+                if (sCoverMode) {
                     CoverCardLayer.attach(CoverPush.coverLayer());
                     CoverCardLayer.style(effectiveCoverStyle());
                     CoverCardLayer.playback(sCoverCardPlaying);
@@ -2129,11 +2124,15 @@ public class Main extends XposedModule {
                     // the glass end and the spring are all fixed now, and loadState does not read
                     // any of them - writing them down would be a value nothing could ever have
                     // set. See loadState.
+                    + "\nbackdropSchema=1"
                     + "\ncoverstyle=" + sCoverCardStyle.mode
                     + "\nfoldmusiclayout=" + (sFoldMusicLayout ? 1 : 0)
                     + "\nrightRail=" + (sRightRail ? 1 : 0)
                     + "\nreflowLockContent=" + (sReflowLockContent ? 1 : 0)
                     + "\nfollowNativeMaterial=" + (sFollowNativeMaterial ? 1 : 0)
+                    + "\nhideLockStatusBar=" + (sHideLockStatusBar ? 1 : 0)
+                    + "\nartworkClockRow=" + (sArtworkClockRow ? 1 : 0)
+                    + "\nartworkClockBeforeDate=" + (sArtworkClockBeforeDate ? 1 : 0)
                     + "\nhideChargingHint=" + (sHideChargingHint ? 1 : 0)
                     + "\nforceNotificationFloor=" + (sForceNotificationFloor ? 1 : 0)
                     // A pending pre-dp value is written as itself: it cannot be converted until
@@ -2259,6 +2258,7 @@ public class Main extends XposedModule {
                 new java.io.File(sAppCtx.getFilesDir(), STATE_FILE));
         if (!stateExists(f)) return;
         boolean cover = false;
+        boolean backdropConfigured = false;
         sLoading = true;
         try {
             String body = new String(f.readFully()).trim();
@@ -2277,6 +2277,7 @@ public class Main extends XposedModule {
                     // key. One bad number should cost its own setting and nothing else.
                     try {
                         if ("cover".equals(k)) cover = "1".equals(v);
+                        else if ("backdropSchema".equals(k)) backdropConfigured = "1".equals(v);
                         // "auto" was a stored setting; following the card is unconditional now.
                         else if ("bias".equals(k)) sBias = Float.parseFloat(v);
                         else if ("fullBlur".equals(k)) sFullBlur = Math.max(0, Math.min(100, Integer.parseInt(v)));
@@ -2301,13 +2302,16 @@ public class Main extends XposedModule {
                         else if ("vcfade".equals(k)) sVideoFade = "1".equals(v);
                         else if ("fsmode2".equals(k)) sFadeMode = Integer.parseInt(v);
                         else if ("covergap".equals(k)) CoverPush.sCoverFadeGapMs = Long.parseLong(v);
-                        else if ("wallpaperdim".equals(k)) sWallpaperDim = Math.max(0, Math.min(80, Integer.parseInt(v)));
+                        else if ("wallpaperdim".equals(k)) sWallpaperDim = Math.max(0, Math.min(100, Integer.parseInt(v)));
                         else if ("hideplayerbackground".equals(k)) sHidePlayerBackground =
                                 FoldSettingsPolicy.wallpaperBackground("1".equals(v));
                         else if ("foldmusiclayout".equals(k)) sFoldMusicLayout = "1".equals(v);
                         else if ("rightRail".equals(k)) sRightRail = "1".equals(v);
                         else if ("reflowLockContent".equals(k)) sReflowLockContent = "1".equals(v);
                         else if ("followNativeMaterial".equals(k)) sFollowNativeMaterial = "1".equals(v);
+                        else if ("hideLockStatusBar".equals(k)) sHideLockStatusBar = "1".equals(v);
+                        else if ("artworkClockRow".equals(k)) sArtworkClockRow = "1".equals(v);
+                        else if ("artworkClockBeforeDate".equals(k)) sArtworkClockBeforeDate = "1".equals(v);
                         else if ("hideChargingHint".equals(k)) sHideChargingHint = "1".equals(v);
                         else if ("forceNotificationFloor".equals(k)) sForceNotificationFloor = "1".equals(v);
                         else if ("coverontap".equals(k)) sCoverOnTap = false;
@@ -2394,6 +2398,14 @@ public class Main extends XposedModule {
             return;
         } finally {
             sLoading = false;
+        }
+        // Earlier previews forced native wallpaper and CARD regardless of their dormant values.
+        // Preserve that visible state until a new settings UI explicitly selects a backdrop.
+        if (!backdropConfigured) {
+            sHidePlayerBackground = true;
+            sGlowDrift = false;
+            sMeshBackdrop = false;
+            sCoverCardStyle = sCoverCardStyle.with("mode", CoverCardStyle.CARD);
         }
         Xp.log(TAG + "state restored: cover=" + cover + " bias=" + sBias);
         if (cover) {
@@ -2567,10 +2579,8 @@ public class Main extends XposedModule {
                         CoverCardLayer.refresh();
                         saveStateSoon();
                         if (sCoverMode && modeChanged) {
-                            if (effectiveCoverStyle().mode == CoverCardStyle.CARD) {
-                                CoverCardLayer.attach(CoverPush.coverLayer());
-                                CoverCardLayer.playback(sCoverCardPlaying);
-                            }
+                            CoverCardLayer.attach(CoverPush.coverLayer());
+                            CoverCardLayer.playback(sCoverCardPlaying);
                             CoverPush.pushArtAsync(true, false);
                         }
                     } else if ("foldlayout".equals(op)) {
@@ -2586,7 +2596,10 @@ public class Main extends XposedModule {
                         String key = i.getStringExtra("key");
                         if (i.hasExtra("on")) {
                             boolean on = i.getBooleanExtra("on", false);
-                            if ("rightRail".equals(key)) sRightRail = on;
+                            if ("hideLockStatusBar".equals(key)) { sHideLockStatusBar = on; LockscreenStatusBar.refresh(); }
+                            else if ("artworkClockRow".equals(key)) sArtworkClockRow = on;
+                            else if ("artworkClockBeforeDate".equals(key)) sArtworkClockBeforeDate = on;
+                            else if ("rightRail".equals(key)) sRightRail = on;
                             else if ("reflowLockContent".equals(key)) sReflowLockContent = on;
                             else if ("followNativeMaterial".equals(key)) sFollowNativeMaterial = on;
                             else if ("forceNotificationFloor".equals(key)) sForceNotificationFloor = on;
@@ -3078,14 +3091,22 @@ public class Main extends XposedModule {
                                 + " - " + r);
                         setResultData((HyperTweaks.sBarGlow ? "on " : "off ") + r);
                     } else if ("wallpaperdim".equals(op)) {
-                        sWallpaperDim = Math.max(0, Math.min(80, i.getIntExtra("v", 35)));
+                        sWallpaperDim = Math.max(0, Math.min(100, i.getIntExtra("v", 35)));
                         saveState();
                         CoverBackdrop.sync(true);
+                    } else if ("backgroundmode".equals(op)) {
+                        int mode = Math.max(0, Math.min(2, i.getIntExtra("v", 0)));
+                        sHidePlayerBackground = mode == 0;
+                        sGlowDrift = sMeshBackdrop = mode == 2;
+                        saveState();
+                        CoverBackdrop.sync(true);
+                        if (sCoverMode) CoverPush.pushArtAsync(true, false);
+                        CoverCardLayer.refresh();
+                        LockLyrics.refresh();
                     } else if ("hideplayerbackground".equals(op)) {
                         if (FoldSettingsPolicy.BACKGROUND_SWITCH_AVAILABLE) {
                             sHidePlayerBackground = i.getBooleanExtra("on", false);
                             saveState();
-                            CanvasHostBridge.suspendForBackdrop();
                             CoverCardLayer.style(effectiveCoverStyle());
                             CoverBackdrop.sync(true);
                             if (sCoverMode) CoverPush.pushArtAsync(true, false);
@@ -3276,14 +3297,6 @@ public class Main extends XposedModule {
                         if (i.hasExtra("json")) MediaCardRuntime.configure(i.getStringExtra("json"));
                         else MediaCardRuntime.set(i.getStringExtra("key"), i.getIntExtra("v", 0));
                         saveState();
-                    } else if ("extspectrum".equals(op)) {
-                        ExtensionSpectrum.handle(c, i);
-                    } else if ("canvasframe".equals(op)) {
-                        setResultExtras(CanvasHostBridge.frame(c, i));
-                    } else if ("islandwavestate".equals(op)) {
-                        setResultData(IslandAudioVisualizer.describe() + "\n" + MediaOutputVisualizer.describe()
-                                + "\n" + AudioSpectrumCapture.describe()
-                                + "\n" + ExtensionSpectrum.describe());
                     } else if ("mediastate".equals(op)) {
                         setResultData(MediaCardRuntime.describe());
                     } else if ("minicfg".equals(op)) {
@@ -3309,6 +3322,9 @@ public class Main extends XposedModule {
                         out.putBoolean("rightRail", sRightRail);
                         out.putBoolean("reflowLockContent", sReflowLockContent);
                         out.putBoolean("followNativeMaterial", sFollowNativeMaterial);
+                        out.putBoolean("hideLockStatusBar", sHideLockStatusBar);
+                        out.putBoolean("artworkClockRow", sArtworkClockRow);
+                        out.putBoolean("artworkClockBeforeDate", sArtworkClockBeforeDate);
                         out.putBoolean("hideChargingHint", sHideChargingHint);
                         out.putBoolean("forceNotificationFloor", sForceNotificationFloor);
                         out.putBoolean("hideplayerbackground", sHidePlayerBackground);
@@ -3472,8 +3488,6 @@ public class Main extends XposedModule {
                             setResultData("mini not written: " + t + "\n"
                                     + all.substring(0, Math.min(all.length(), 1500)));
                         }
-                    } else if ("datestatus".equals(op)) {
-                        setResultData(DateStatus.INSTANCE.describe());
                     } else if ("palette".equals(op)) {
                         setResultData(PaletteThrottle.INSTANCE.describe());
                     } else if ("rowtree".equals(op)) {
@@ -3552,13 +3566,11 @@ public class Main extends XposedModule {
             }
         }
         // The app, the wallpaper process (its hello and first-frame signals) and 高德 (its map).
-        // Existing optional extensions still publish this protocol action. Sender validation
-        // remains in ProbeGuard; this is not an alias for the old app identity.
+        // Sender validation remains in ProbeGuard for the host and wallpaper clients.
         IntentFilter probeActions = new IntentFilter(ACTION);
         probeActions.addAction("com.os4.musiccover.PROBE");
         ProbeGuard.register(ctx, probeActions, TAG, Probe::new,
-                BuildConfig.APPLICATION_ID, "com.miui.miwallpaper", AmapNavScene.PKG,
-                ExtensionSpectrum.PKG);
+                BuildConfig.APPLICATION_ID, "com.miui.miwallpaper", AmapNavScene.PKG);
         registerSecretCode(ctx);
         Xp.log(TAG + "receiver registered for " + ACTION);
         // A SystemUI that starts mid-navigation missed 高德's init; there is a receiver now.
@@ -4615,7 +4627,7 @@ public class Main extends XposedModule {
     static boolean drawnUnder(View v, View root) {
         for (View p = v; p != null; ) {
             if (p == root) return true;
-            if (p.getVisibility() != View.VISIBLE || p.getAlpha() <= 0.01f) return false;
+            if (p.getVisibility() != View.VISIBLE || CompactClockRowRuntime.measurementAlpha(p) <= 0.01f) return false;
             p = p.getParent() instanceof View ? (View) p.getParent() : null;
         }
         return false;
@@ -7141,7 +7153,7 @@ public class Main extends XposedModule {
         CoverMorphLayer.cancel();
         CoverCardStyle style = effectiveCoverStyle();
         CoverCardLayer.style(style);
-        if (sCoverMode && style.mode == CoverCardStyle.CARD) {
+        if (sCoverMode) {
             CoverCardLayer.attach(CoverPush.coverLayer());
             CoverCardLayer.playback(sCoverCardPlaying);
         }
@@ -7228,7 +7240,6 @@ public class Main extends XposedModule {
         sCoverMode = true;
         if (sCoverOnTap) {
             LockLyrics.setPlayerChosen(true);
-            CanvasHostBridge.suspendForBackdrop();
             CoverBackdrop.sync(true);
         }
         StatusBarArtwork.refresh();
@@ -7245,11 +7256,9 @@ public class Main extends XposedModule {
         // the clock's own frames instead of blinking away before the clock has begun to move.
         // Without an animation there is nothing to fade, and the settled look goes on directly.
         sCardP = animate ? 0f : 1f;
-        if (effectiveCoverStyle().mode == CoverCardStyle.CARD) {
-            CoverCardLayer.attach(CoverPush.coverLayer());
-            CoverCardLayer.style(effectiveCoverStyle());
-            CoverCardLayer.playback(sCoverCardPlaying);
-        }
+        CoverCardLayer.attach(CoverPush.coverLayer());
+        CoverCardLayer.style(effectiveCoverStyle());
+        CoverCardLayer.playback(sCoverCardPlaying);
         // The lyrics exception is decided here, before anything has moved. With the lyrics up
         // the thumbnail the setting hides never leaves, so the morph has nothing to fade it back
         // from; sprung from wherever it was, it would dip out and return over the entry, which is
@@ -7267,7 +7276,6 @@ public class Main extends XposedModule {
         // goes with it; both are LockHold's, shared with the immersive pages.
         if (!coverOnTapResting())
             LockHold.take(LockHold.Owner.COVER, animate, "cover");
-        CanvasHostBridge.sceneChanged();
         // An immersive page closing in the same tap fades out onto this cover, not ahead of it.
         ImmersiveHost.coverEntering();
         // The reading may predate this cover - the card can come up on art that was pushed
@@ -7293,8 +7301,6 @@ public class Main extends XposedModule {
         sCoverMode = false;
         sArtVeil.clear();
         LockLyrics.setPlayerChosen(false);
-        // Hand the clock to Canvas before releasing the cover, avoiding an OEM exit and re-entry.
-        CanvasHostBridge.sceneChanged();
         StatusBarArtwork.refresh();
         sAodArtworkPolicy.clear();
         sAodClockArtworkCompact = false;
@@ -7308,7 +7314,7 @@ public class Main extends XposedModule {
         // wallpaper coming back even less than it described the old one. Dropped at the start:
         // the clock is at its smallest now, so the colour going back to the OEM's is at its
         // least visible.
-        if (sCoverTint != 0 && !CanvasHostBridge.ownsVideoBackdrop() && !CanvasHostBridge.nativeClockScene()) {
+        if (sCoverTint != 0) {
             sCoverTint = 0;
             recolorClock();
         }
@@ -7362,16 +7368,6 @@ public class Main extends XposedModule {
                 && !LockLyrics.compactWithoutLyricsOnEntry();
     }
 
-    static String canvasBackdropKey() { return trackKey(sWatched); }
-
-    /** Restore artwork identity without changing the user's selected cover or lyrics scene. */
-    static boolean prepareCanvasBackdrop() {
-        String key = trackKey(sWatched);
-        if (key.isEmpty()) return false;
-        sTrackKey = key;
-        return true;
-    }
-
     static MediaController miniPlayerSession() {
         MediaController current = sWatched;
         return current != null && mediaSessionAlive(current.getSessionToken()) ? current : null;
@@ -7393,6 +7389,7 @@ public class Main extends XposedModule {
         Runnable reconcile = () -> {
             boolean retainedCard = token.equals(sCardToken);
             if (retainedCard) {
+                sCardGeneration.incrementAndGet();
                 sCardToken = null;
                 sCardPresent = false;
                 sCardShowing = false;
@@ -7460,6 +7457,28 @@ public class Main extends XposedModule {
      * never come and took the notifications' islands down with it.
      */
     static boolean miniPlayerMediaCardPresent() { return sCardPresent; }
+
+    static long miniPlayerMediaCardGeneration() { return sCardGeneration.get(); }
+    static android.media.session.MediaSession.Token miniPlayerMediaCardToken() { return sCardToken; }
+
+    /** An attempted expansion found no native header for a full second; release only that card. */
+    static void expireMissingMusicCard(android.media.session.MediaSession.Token token, long generation) {
+        if (token == null || generation != sCardGeneration.get() || !token.equals(sCardToken)
+                || !sCardPresent || !keyguardShowing() || !onKeyguardNow() || !screenOnCached()
+                || MiniPlayerScene.INSTANCE.getKeyguardGoingAway() || bouncerUp()) return;
+        View header = miniPlayerMediaHeader();
+        if (header != null && header.isAttachedToWindow()) return;
+        sCardGeneration.incrementAndGet();
+        sCardPresent = sCardShowing = false;
+        sCardToken = null;
+        sCardKey = "";
+        main().removeCallbacks(sCardGone);
+        main().removeCallbacks(sCardRemoved);
+        noteCard("user expansion expired: native header missing");
+        MiniPlayerRuntime.mediaCardRemoved();
+        applyMediaCard();
+        applyCardState();
+    }
 
     /**
      * The same for a row with no music in it, only notifications: there is no media card to be
@@ -7624,7 +7643,6 @@ public class Main extends XposedModule {
 
     /** The wake reached the clock before the SCREEN_ON broadcast did. */
     static void noteAwake() {
-        CanvasHostBridge.waking();
         CoverBackdrop.refreshVisibility();
         if (sScreenOn) return;
         sScreenOn = true;
@@ -7707,7 +7725,7 @@ public class Main extends XposedModule {
         sArtVeil.clear();
         // Asleep straight from an app there are no lock-screen rows; the live reading is the doze transition's.
         if (sAodArtworkExpanded || !AodArtworkPolicy.shouldExpand(sCoverMode,
-                effectiveCoverStyle().mode == CoverCardStyle.CARD, heldAod,
+                true, heldAod,
                 sAodArtworkPolicy.notificationsExpanded(
                         !CoverCardLayer.hiddenUnlocked() && LockIslands.INSTANCE.notificationArtworkExpanded()),
                 LockLyrics.userWantsCompactArtwork())) return;
@@ -7755,8 +7773,8 @@ public class Main extends XposedModule {
     /** The full-screen AOD may show a faint static colour wash even with the square hidden. */
     static boolean coverCardBackdropInAod() {
         View c = sContainer;
-        return sCoverMode && !CanvasHostBridge.ownsVideoBackdrop()
-                && effectiveCoverStyle().mode == CoverCardStyle.CARD && !sScreenOn
+        return sCoverMode
+                && !sScreenOn
                 && ClockCollapse.phase() == ClockCollapse.Phase.AOD
                 && ClockCollapse.aodFullScreen() && keyguardShowing()
                 && c != null && c.isShown();
@@ -7868,7 +7886,7 @@ public class Main extends XposedModule {
     }
 
     static boolean coverMorphCardMode() {
-        return effectiveCoverStyle().mode == CoverCardStyle.CARD;
+        return true; // Both foreground styles use the local generation-aware layer.
     }
 
     /** A manual entry must keep its moving artwork until the asynchronous backdrop can take it. */
@@ -7879,7 +7897,7 @@ public class Main extends XposedModule {
         return android.os.SystemClock.uptimeMillis() - artAt >= afterArt;
     }
 
-    /** The full-screen destination is the sharp band in CoverCompose.composeWallpaper(). */
+    /** Both cover shapes land on the same local foreground geometry used for rendering. */
     static CoverMorphMotion.Box coverMorphTarget(Bitmap art) {
         return coverMorphTarget(art, false);
     }
@@ -7887,12 +7905,6 @@ public class Main extends XposedModule {
     /** [entering]: the cover is flying in; its card goes under the clock as it will end up. */
     static CoverMorphMotion.Box coverMorphTarget(Bitmap art, boolean entering) {
         if (art == null || art.isRecycled()) return null;
-        if (effectiveCoverStyle().mode == CoverCardStyle.FULL) {
-            if (sScreenW <= 0 || sScreenH <= 0 || art.getWidth() <= 0) return null;
-            float height = art.getHeight() * (sScreenW / (float) art.getWidth());
-            float top = (sScreenH - height) * Math.max(0f, Math.min(1f, sBias));
-            return new CoverMorphMotion.Box(0f, top, sScreenW, height);
-        }
         ViewGroup layer = CoverPush.coverLayer();
         if (layer == null || layer.getWidth() <= 0 || layer.getHeight() <= 0) return null;
         if (FoldMusicRuntime.sideBySide()) {
@@ -7922,7 +7934,7 @@ public class Main extends XposedModule {
         // Flying in, the card's place is under the clock as it will be, not as it is: placed under
         // the collapsing clock, a tall face held the flying cover small under it and let it grow
         // only as fast as the clock shrank - a second, slower animation after the flight.
-        CoverCardStyle.Rect r = entering ? null : LockScreenRailRuntime.artwork(layer, effectiveCoverStyle(),
+        CoverCardStyle.Rect r = entering ? null : CoverCardLayer.place(layer, effectiveCoverStyle(),
                 ClockCollapse.contentBottomFor(layer) - xy[1],
                 ClockCollapse.unzoomY(layer, mediaTop) - xy[1], aspect);
         // Start the morph even when the old native clock has not made room for the cover yet:
@@ -7930,7 +7942,7 @@ public class Main extends XposedModule {
         // so the cover's own clock pose is what the card is placed under. Asked only for
         // native-size (non-square) art, a square cover had no target and no morph at all.
         if (r == null && sScreenOn) {
-            r = LockScreenRailRuntime.artwork(layer, effectiveCoverStyle(),
+            r = CoverCardLayer.place(layer, effectiveCoverStyle(),
                     ClockCollapse.compactContentBottomFor(layer, aspect) - xy[1],
                     ClockCollapse.unzoomY(layer, mediaTop) - xy[1], aspect);
         }
@@ -8471,11 +8483,6 @@ public class Main extends XposedModule {
     static void setDepthHidden(final boolean hide, final int attempt) {
         // Whoever asks, the cut-out stays hidden while something has the lock screen: the video
         // cover's late hand-back (CoverPush.dropVideoCover) cannot know an immersive page is up.
-        // Nor while the Canvas is the backdrop: the subject would stand over the video.
-        if (!hide && CanvasHostBridge.ownsVideoBackdrop()) {
-            if (attempt == 0) Xp.log(TAG + "deducted_image_view kept hidden: Canvas backdrop");
-            return;
-        }
         if (!hide && !LockHold.depthFree()) {
             if (attempt == 0) Xp.log(TAG + "deducted_image_view kept hidden: " + LockHold.describe());
             return;
@@ -8774,7 +8781,6 @@ public class Main extends XposedModule {
         main().post(new Runnable() {
             @Override
             public void run() {
-                CanvasHostBridge.sceneChanged();
                 View card = findLockScreenView("mi_media_controls");
                 if (card == null) {
                     // Only worth waiting for while something still wants something from the
@@ -8806,7 +8812,7 @@ public class Main extends XposedModule {
                         .getIdentifier("header_title", "id", "com.android.systemui"));
                 sCardArtist = card.findViewById(card.getResources()
                         .getIdentifier("header_artist", "id", "com.android.systemui"));
-                if (MiniPlayerRuntime.detachedRail() || (sCoverMode && (sMcHideArt || sMcTitleTap || LockLyrics.sEnabled)) || CanvasHostBridge.active()) guardCard(card);
+                if (MiniPlayerRuntime.detachedRail() || (sCoverMode && (sMcHideArt || sMcTitleTap || LockLyrics.sEnabled))) guardCard(card);
                 else releaseCardGuard();
                 assertMediaCard(card);
             }
@@ -8828,7 +8834,7 @@ public class Main extends XposedModule {
         View c = sContainer;
         boolean onKeyguard = sCardForced || (LockscreenSurfacePolicy.visible(keyguardShowing(),
                 MiniPlayerScene.INSTANCE.getKeyguardGoingAway()) && c != null && c.isShown());
-        boolean railLyrics = MiniPlayerRuntime.detachedRail();
+        boolean railLyrics = MiniPlayerRuntime.detachedRail() && sCardPresent;
         boolean fixedControls = ArtworkThumbnailPolicy.fixedControls(railLyrics, onKeyguard, sCardForced);
         // A capture for the app's preview wants the settled look, not whichever frame an
         // animation happens to be on. Everywhere else the fade IS the state.
@@ -8859,7 +8865,7 @@ public class Main extends XposedModule {
         }
         // The player pulled up alone has no cover behind it, so it keeps its thumbnail.
         boolean fullScreenLyrics = onKeyguard && !sCardForced && sCoverMode
-                && !coverMorphCardMode() && !CanvasHostBridge.active()
+                && !coverMorphCardMode()
                 && LockLyrics.sEnabled && LockLyrics.hasLyrics() && !LockLyrics.playerChosen();
         float exc = stepLyricArt(!fullScreenLyrics
                 && (sMcArtInLyrics || LockLyrics.compactWithoutLyrics()) && sLyricUp);
@@ -8919,12 +8925,8 @@ public class Main extends XposedModule {
                     LockLyrics.hasDisplayContent(), fullScreenLyrics || !LockLyrics.wantsCompactArtwork()
                         || LockLyrics.playerChosen() || LockLyrics.wantsAttached()))
                 && coverMorphEligible() && sCardShowing && card.isShown();
-        boolean canvasLyrics = CanvasHostBridge.active() && onKeyguard && !sCardForced
-                && LockLyrics.sEnabled && LockLyrics.hasLyrics() && sCardShowing && card.isShown();
-        // It leads the title over the big cover, and leaves as it always changed spot once the
-        // cover folds away: a long press on the thumbnail switches the lyrics there. Canvas has it
-        // beside the controls.
-        float lyricsInset = LyricsButton.update(card, lyricsButton || canvasLyrics, canvasLyrics,
+        // It leads the title over the big cover; a long press on the thumbnail toggles lyrics.
+        float lyricsInset = LyricsButton.update(card, lyricsButton,
                 !railLyrics && lyricsButton && !fullScreenLyrics && LockLyrics.wantsCompactArtwork());
         // Apply the user's source/output visibility before reserving this frame's text width.
         MediaCardRuntime.afterCardPass(card);
@@ -9415,17 +9417,13 @@ public class Main extends XposedModule {
                     LockLyrics.refresh();
                 } else if (sCoverMode && LockLyrics.wantsAttached()) {
                     beginCompactArtworkMorph(true);
-                    if (CanvasHostBridge.active()) {
-                        LockLyrics.setCanvasLyricsVisible(false, trackKey(sWatched), sWatched);
-                    } else LockLyrics.toggleByTap(sTrackKey, sWatched);
+                    LockLyrics.toggleByTap(sTrackKey, sWatched);
                     sArtHidLyrics = true;
                 } else if (sCoverMode && undoLyricsTap) {
                     // A second tap while the cover is still growing out of the lyrics takes it
                     // back to them; exiting here dropped the blur for the wallpaper.
                     beginCompactArtworkMorph(false);
-                    if (CanvasHostBridge.active()) {
-                        LockLyrics.setCanvasLyricsVisible(true, trackKey(sWatched), sWatched);
-                    } else LockLyrics.toggleByTap(sTrackKey, sWatched);
+                    LockLyrics.toggleByTap(sTrackKey, sWatched);
                 } else if (sCoverMode && LyricsButton.byTitle()) {
                     // The lyrics button by the title rests where the thumbnail was, and is still
                     // sliding there as the cover grows: the whole spot is its switch.
@@ -9442,7 +9440,7 @@ public class Main extends XposedModule {
 
     /** Held on the player's thumbnail, the lyrics switch on and off with no cover in between. */
     private static void artLongPress(long downAt) {
-        if (!sArtSwallow || sArtDownAt != downAt || !sCoverMode || CanvasHostBridge.active()
+        if (!sArtSwallow || sArtDownAt != downAt || !sCoverMode
                 || !LockLyrics.hasLyrics() || !LockLyrics.playerChosen() && !LockLyrics.wantsAttached()) return;
         sArtDownAt = 0L;
         View art = sCardArt;
@@ -10355,6 +10353,7 @@ public class Main extends XposedModule {
           .append(" known=").append(sCardKnown).append(" showing=").append(sCardShowing)
           .append(" forced=").append(sCardForced)
           .append(" token=").append(sCardToken != null)
+          .append(" generation=").append(sCardGeneration.get())
           .append(" key=").append(sCardKey == null || sCardKey.isEmpty() ? "-" : sCardKey);
         View c = sCardGuarded;
         if (c == null) {
@@ -10412,8 +10411,10 @@ public class Main extends XposedModule {
      * would tear the wallpaper down and put it straight back.
      */
     private static void onCardChanged(Object mediaData) {
+        sCardGeneration.incrementAndGet();
         sCardKnown = true;
         boolean showing = mediaData != null;
+        boolean nativeOnly = false;
         if (showing) {
             try {
                 sCardToken = (android.media.session.MediaSession.Token)
@@ -10421,7 +10422,12 @@ public class Main extends XposedModule {
             } catch (Throwable t) {
                 sCardToken = null;
             }
-            if (sCardToken != null && !mediaSessionAlive(sCardToken)) {
+            boolean resumption = false;
+            try { resumption = Boolean.TRUE.equals(Xp.getObjectField(mediaData, "resumption")); }
+            catch (Throwable ignored) { }
+            nativeOnly = MusicExpansionAttempt.nativeOnly(resumption, sCardToken != null,
+                    sCardToken != null && mediaSessionAlive(sCardToken));
+            if (nativeOnly) {
                 // The pipeline can rebind an old resumption card after the session died.
                 // It remains native content, not a new interactive Duo music island.
                 showing = false;
@@ -10441,14 +10447,28 @@ public class Main extends XposedModule {
             CoverMorphLayer.cancel();
         }
         Xp.log(TAG + "media card " + (showing ? "-> " + sCardKey : "gone"));
-        noteCard(showing ? "OEM says up" : "OEM says gone (waiting " + CARD_GONE_MS + "ms)");
+        noteCard(nativeOnly ? "OEM native-only resume or destroyed session"
+                : showing ? "OEM says up" : "OEM says gone (waiting " + CARD_GONE_MS + "ms)");
         main().removeCallbacks(sCardGone);
         main().removeCallbacks(sCardRemoved);
+        if (nativeOnly) {
+            // Positive native-resume evidence needs no removal grace: its resumeAction belongs
+            // to SystemUI, and a different live paused session must not adopt this card.
+            sCardPresent = sCardShowing = false;
+            if (sCoverMode) setCoverEnabled(false, screenOnCached(), false);
+            MiniPlayerRuntime.mediaCardRemoved();
+            applyMediaCard();
+            applyCardState();
+            rebindSession();
+            return;
+        }
         if (showing) sCardPresent = true;
         else if (sCardPresent) main().postDelayed(sCardRemoved, CARD_GONE_MS);
         if (!sAuto) {
             sCardShowing = showing;
-            MiniPlayerRuntime.refresh();
+            // A native card may switch between already-active sessions without changing the
+            // active-session list. Its new token still owns transport even with auto cover off.
+            rebindSession();
             return;
         }
         if (showing) {
@@ -10474,6 +10494,7 @@ public class Main extends XposedModule {
     private static final Runnable sCardRemoved = new Runnable() {
         @Override
         public void run() {
+            sCardGeneration.incrementAndGet();
             sCardPresent = false;
             MiniPlayerRuntime.mediaCardRemoved();
         }
@@ -11415,33 +11436,6 @@ public class Main extends XposedModule {
         });
     }
 
-    static void refreshCanvasControls() { applyMediaCard(); }
-
-    static void toggleCanvasLyrics() {
-        if (!CanvasHostBridge.active() || !LockLyrics.sEnabled || !LockLyrics.hasLyrics()
-                || !keyguardShowing() || bouncerUp()) return;
-        MiniPlayerRuntime.keepMusicExpanded();
-        String key = trackKey(sWatched);
-        if (key.isEmpty()) key = sTrackKey;
-        if (LockLyrics.wantsWindow()) {
-            // Hide the page without starting the scene-to-pill transition.
-            MiniPlayerRuntime.forgetRestoreScene();
-            sTapSuppressed = true;
-            CoverMorphLayer.cancel();
-            LockLyrics.setCanvasLyricsVisible(false, key, sWatched);
-            setCoverEnabled(false, true, false);
-        } else if (sCoverMode) {
-            beginCompactArtworkMorph(false);
-            LockLyrics.setCanvasLyricsVisible(true, key, sWatched);
-        }
-        else {
-            sTapSuppressed = false;
-            LockLyrics.setCanvasLyricsVisible(true, key, sWatched);
-            setCoverEnabled(true, true, false);
-        }
-        applyMediaCard();
-    }
-
     static void openLyricsFromButton() {
         if (MiniPlayerRuntime.detachedRail()) {
             cycleRailMusicPage();
@@ -11456,7 +11450,7 @@ public class Main extends XposedModule {
         boolean showing = LockLyrics.wantsAttached();
         if (!sCoverMode || coverMorphCardMode() && LockLyrics.wantsCompactArtwork() && !fromPlayer && !showing
                 || !LockLyrics.sEnabled || !LockLyrics.hasDisplayContent()) return;
-        // A switch both ways, as with Canvas: the player alone gives way to the lyrics, and the
+        // A switch both ways: the player alone gives way to the lyrics, and the
         // lyrics go back to the player alone - held on its thumbnail, they show again.
         // Only the big cover itself has to fold into the thumbnail; between the player and the
         // lyrics the thumbnail is already on the card, so there is nothing to morph.
@@ -11558,9 +11552,7 @@ public class Main extends XposedModule {
                 beginCompactArtworkMorph(to == CoverMorphRoute.COVER);
             }
         }
-        if (CanvasHostBridge.active()) {
-            LockLyrics.setCanvasLyricsVisible(LockLyrics.sTapHidden, trackKey(sWatched), sWatched);
-        } else LockLyrics.toggleByTap(sTrackKey, sWatched);
+        LockLyrics.toggleByTap(sTrackKey, sWatched);
         sTwoFired++;
         // How long the swap took. Nothing is written down, so this is its whole cost.
         sTwoWhy = "lyrics " + (LockLyrics.sTapHidden ? "hidden" : "shown") + " in "
@@ -11630,8 +11622,6 @@ public class Main extends XposedModule {
      */
     private static void onLockTap(float x, float y) {
         if (!singleCoverTapEnabled()) return;
-        // Background-only Canvas opens solely from the player artwork.
-        if (!sCoverMode && CanvasHostBridge.backgroundOnly()) return;
         if (!screenOn() || !keyguardShowing()) return;
         // Only the keyguard shows the clock container, so this is also what rules out the shade
         // being pulled down over an unlocked phone - the same test the card restyle uses.
@@ -11678,8 +11668,7 @@ public class Main extends XposedModule {
         // maintainer, 2026-10-24). The pill, the card and its thumbnail have their own taps.
         // A full-screen cover is itself the thing, all of it.
         if (!sCoverMode) return;
-        boolean fullScreen = effectiveCoverStyle().mode != CoverCardStyle.CARD;
-        if (!fullScreen && (LockLyrics.wantsCompactArtwork() || !CoverCardLayer.artworkAt(x, y))) return;
+        if (LockLyrics.wantsCompactArtwork() || !CoverCardLayer.artworkAt(x, y)) return;
         if (!sCloseLyriclessCover && LockLyrics.sEnabled && !LockLyrics.hasLyrics()) {
             // Default behaviour: without a lyric page, retain the cover scene and compact
             // its artwork rather than treating a tap as a scene exit.
@@ -11785,9 +11774,7 @@ public class Main extends XposedModule {
         // picture the AOD is not drawn on, and repainting those glyphs in it is the one way this
         // could make things worse than it found them. `isInteractive` is false in AOD, so the
         // OEM's own colouring stands there.
-        // ownsVideoBackdrop, not active(): a Canvas still showing with the player in the pill is
-        // behind the clock all the same, and active() dropped it to the wallpaper's colour.
-        if ((!sCoverMode && !CanvasHostBridge.ownsVideoBackdrop() && !CanvasHostBridge.nativeClockScene()) || !sScreenOn) return 0;
+        if (!sCoverMode || !sScreenOn) return 0;
         int forced = sCoverTintOverride;
         return forced != 0 ? forced : sCoverTint != 0 ? sCoverTint : sLastArtworkTint;
     }
@@ -12152,37 +12139,6 @@ public class Main extends XposedModule {
             }
         }
         return n == 0 ? 0 : 0xff000000 | ((int) (sr / n) << 16) | ((int) (sg / n) << 8) | (int) (sb / n);
-    }
-
-    /**
-     * The clock's colour for a Canvas track, from its artwork. With no artwork composed into the
-     * wallpaper behind the video, measureCover() never ran for it, and the clock kept the last
-     * cover's colour or the wallpaper's.
-     */
-    static void tintFromArtwork() { tintFromArtwork(0); }
-
-    /** The artwork last measured: the same picture again means the new one has not loaded yet. */
-    private static Bitmap sTintArt;
-
-    private static void tintFromArtwork(final int tries) {
-        worker().postDelayed(() -> {
-            try {
-                Bitmap art = albumArt(sAppCtx);
-                if (art == null || art.isRecycled() || art.getHeight() < 8 || art == sTintArt) {
-                    // The Canvas can be ready before the session's artwork is: look again.
-                    if (tries < 4) tintFromArtwork(tries + 1);
-                    return;
-                }
-                sTintArt = art;
-                int tint = averageColour(art, 0, art.getHeight());
-                if (tint == 0) return;
-                sCoverTint = sLastArtworkTint = tint;
-                Xp.log(TAG + "canvas tint #" + Integer.toHexString(tint) + " from the artwork");
-                recolorClock();
-            } catch (Throwable t) {
-                Xp.w(TAG + "canvas tint failed: " + t);
-            }
-        }, tries == 0 ? 0L : 400L);
     }
 
     static void measureCover(Bitmap full) {

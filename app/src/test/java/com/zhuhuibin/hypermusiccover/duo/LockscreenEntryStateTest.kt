@@ -103,7 +103,7 @@ class LockscreenEntryStateTest {
     }
     @Test fun retiredDateStatusCannotBeReactivatedByAnImportedBackup() {
         val cfg = JSONObject(MiniPlayerConfig.normalizedJson("""{"statusAtDate":true}"""))
-        assertFalse(cfg.getBoolean(MiniPlayerConfig.STATUS_AT_DATE))
+        assertFalse(cfg.has("statusAtDate"))
     }
 
     @Test fun notificationVisibilityOptionsAreIndependentAndSurviveSettingsRoundTrips() {

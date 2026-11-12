@@ -13,5 +13,3 @@ dependencyResolutionManagement {
 }
 rootProject.name = "hypermusiccover-duo"
 include(":app")
-
-include(":hyper-canvas")

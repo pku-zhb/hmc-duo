@@ -16,15 +16,15 @@ class NotificationPillConfigTest {
         assertFalse(NotificationPillPolicy.active(true, true, collapsed, true, false))
     }
 
-    @Test fun legacyBlurIsDisabledWhileKeepingPendingParameters() {
+    @Test fun archivedBlurSettingsAreDroppedFromImportedState() {
         val old = JSONObject().put("fodLift", true)
-            .put(MiniPlayerConfig.BACKGROUND_BLUR, true)
-            .put(MiniPlayerConfig.BACKGROUND_BLUR_RADIUS, 42)
+            .put("backgroundBlur", true)
+            .put("backgroundBlurRadiusDp", 42)
         val result = JSONObject(MiniPlayerConfig.normalizedJson(old.toString()))
         assertFalse(result.has("fodLift"))
         assertFalse(result.getBoolean(MiniPlayerConfig.COMPACT_NOTIFICATIONS))
-        assertFalse(result.getBoolean(MiniPlayerConfig.BACKGROUND_BLUR))
-        assertEquals(42.0, result.getDouble(MiniPlayerConfig.BACKGROUND_BLUR_RADIUS), 0.0)
+        assertFalse(result.has("backgroundBlur"))
+        assertFalse(result.has("backgroundBlurRadiusDp"))
     }
     @Test fun retiredCompactingIsDisabledWhileLegacyNumbersRemainBounded() {
         val input = JSONObject().put(MiniPlayerConfig.COMPACT_NOTIFICATIONS, true)
