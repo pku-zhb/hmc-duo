@@ -23,9 +23,59 @@ package was 20003 while the SystemUI probe still reported 20002, with its proces
 unchanged; the owner subsequently supplied preview-3 feedback. Preview 4 was then
 installed after fresh explicit confirmation, temporarily replaced with preview 3
 for a compatibility comparison, and restored to preview 4 at the owner's request.
-The owner subsequently supplied preview-5 and preview-6 device feedback. Preview 7
-is the current host-built candidate; installation still requires fresh confirmation.
-No phone interaction, transfer, debugging or restart is part of this iteration.
+The owner subsequently supplied preview-5 and preview-6 device feedback, then
+installed preview 7 independently. Read-only USB diagnostics confirmed runtime
+20007. The current width repair has not been installed; installation still requires
+fresh confirmation. The owner continues to perform all UI interactions and restarts.
+
+### Preview 7 width oscillation and fixed geometry (2026-11-12)
+
+The owner reported the player and notifications rapidly changing width. Read-only
+USB ADB through MBA confirmed runtime version 20007, a stable 1168 x 1712 root,
+and a stable rail plan. Across 18 samples, the shared notification stack and player
+alternated between 900 and 875 pixels. The stack kept a screen X of 31 while its
+translation drifted from -198233 to -201885, in multiples of 44 pixels. The common
+parent, rather than independent player content, owns the visible failure.
+
+Static inspection used the same installed versions: MiDuo 1.0.469 (469) and
+MiDuoNotification 1.7.14 (47). These are distinct layout writers:
+
+- MiDuo `dev.duo.panels.d$c.b` requests width 875 and left inset 44 through
+  `dev.duo.panels.c.a(View,int,int,boolean,boolean)` in its outer keyguard path.
+- MiDuoNotification `HookController.applyRoot` requests a WIDTH spec for the same
+  stack with a 44-pixel gap. `DuoInsets.applyWidth` computes 963 - 2 * 44 = 875.
+  `DuoInsets.apply` treats a changed LayoutParams width as a new external baseline,
+  including the current left margin; the next width application adds 44 again.
+- Duo's old pre-draw reflow repeatedly wrote width 900 and compensated the resulting
+  left position with translationX. This supplies the external-width change that
+  lets the notification plugin repeatedly rebase and accumulate margins.
+
+The installed APKs establish these code paths, not which MiDuo option was enabled
+at every sample. The measured 44-pixel increments match the notification plugin's
+feedback path. No phone settings, GUI, installation or process restart were changed.
+
+Duo now defines its own dp geometry: 16 right-edge margin, 75 content reservation,
+11.25 card inset on each side, 46/48 capsule thickness, 221 maximum capsule length,
+133.25 bottom shortcut reservation and 72 top-control reservation. On the observed
+outer screen, the card's absolute slot is X=31 through 931, width 900; the capsule
+keeps essentially the previously accepted position. Native shortcut placement and
+hit testing remain native. The capsule follows the keyguard root's animation using
+its fixed anchor, without deriving rest geometry from the shortcut pair.
+
+`RailStackBounds` supplies the exact horizontal measurement and frame only for the
+owned notification stack. It does not rewrite its LayoutParams. Width and left
+position therefore cannot feed back through MiDuoNotification's external-baseline
+capture. Vertical measurement/layout, child gestures and scroll behavior pass
+through unchanged. Unlock, bouncer, disable, detach or geometry replacement release
+the ownership and request a native layout. Diagnostics now expose raw layout origin,
+measured size, margins and requested versus fixed stack geometry.
+
+Host validation: all 762 JVM tests in 131 suites pass, with zero failures, errors
+or skips, and the Debug APK builds. Tests for the retired proportional-width and
+shortcut-derived geometry were replaced by fixed-slot, insets and display-change
+cases. Host tests and a candidate build cannot establish phone behavior. Targeted manual
+acceptance is limited to stable widths through notification/music updates and
+AOD/wake, normal scrolling after unlock, and the fixed rail's placement/animation.
 
 ### Preview 6 feedback and preview 7 candidate (2026-11-12)
 

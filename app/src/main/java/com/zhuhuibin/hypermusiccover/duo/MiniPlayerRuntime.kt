@@ -1775,8 +1775,6 @@ object MiniPlayerRuntime {
         controllers.values.firstOrNull()?.left
     }
 
-    @JvmStatic fun railVisualDiscDiameter(): Float = live().firstOrNull()?.railVisibleDiscDiameter()
-        ?: 38.4f * Main.density()
     @JvmStatic fun railIndicatorExtent(): Float = if (colorOsStyle())
         ColorOsPill.BRACKET_OUT_DP * Main.density() else 0f
 
@@ -1784,9 +1782,6 @@ object MiniPlayerRuntime {
         controllers.values.firstOrNull { it.left.isAttachedToWindow && it.right.isAttachedToWindow }
             ?.let { arrayOf(it.left, it.right) }
     }
-
-    @JvmStatic @JvmName("railShortcutLayoutBoxes") internal fun railShortcutLayoutBoxes(): Array<FoldMusicLayout.Box>? =
-        live().firstNotNullOfOrNull { it.railShortcutLayoutBoxes() }
 
     @JvmStatic fun pillForDiagnostics(): View? = synchronized(controllers) {
         controllers.values.firstNotNullOfOrNull { it.controller.pill()?.takeIf { p -> p.isAttachedToWindow } }
@@ -2461,19 +2456,22 @@ private class MiniPlayerController(
         val lUp = followable(left)
         val rUp = followable(right)
         val single = if (lUp != rUp) (if (lUp) left else right) else null
-        val railPair = LockScreenRailRuntime.active() &&
-            listOf(left, right).all { it.isAttachedToWindow && !switchedOff(it) && it.width > 0 && it.height > 0 }
-        if (railPair) {
-            followBranch = "vertical pair"
+        if (LockScreenRailRuntime.active()) {
+            followBranch = "fixed rail/root"
             if (!rowHeldOff) fade *= rowFade
-            if (!railCentre(0, drawnL) || !railCentre(1, drawnR)) return
-            if (!LockScreenRailRuntime.controlReference(host, railReference)) return
-            val motion = RailColumnMotion.follow(railReference[0], railReference[1], railReference[2],
-                (drawnL[0] + drawnR[0]) / 2f, (drawnL[1] + drawnR[1]) / 2f,
-                kotlin.math.hypot(drawnR[0] - drawnL[0], drawnR[1] - drawnL[1])) ?: return
             matrix.reset()
-            matrix.setScale(motion.scale, motion.scale)
-            matrix.postTranslate(motion.x, motion.y)
+            if (keyguardRoot != null) {
+                keyguardRoot.transformMatrixToGlobal(matrix)
+                matrix.postConcat(hostInverse)
+                restOrigin(keyguardRoot, restL)
+                matrix.preTranslate(-restL[0], -restL[1])
+            }
+            if (railButtonsDozing && LockScreenRailRuntime.controlReference(host, railReference)) {
+                // Match the AOD edge reservation using our fixed anchor, not button geometry.
+                drawnL[0] = railReference[0]; drawnL[1] = railReference[1]
+                matrix.mapPoints(drawnL)
+                matrix.postTranslate(railReference[0] - drawnL[0], 0f)
+            }
         } else if (!rowHeldOff && lUp && rUp) {
             followBranch = "pair"
             fade *= rowFade
@@ -2660,41 +2658,12 @@ private class MiniPlayerController(
         return true
     }
 
-    /** Follow the shared column/AOD transform, excluding each icon's native press and shake. */
-    private fun railCentre(side: Int, out: FloatArray): Boolean {
-        val icon = button(side)
-        val parent = icon.parent as? View ?: return false
-        if (!icon.isAttachedToWindow || icon.width <= 0) return false
-        scratch.reset(); parent.transformMatrixToGlobal(scratch); scratch.postConcat(hostInverse)
-        out[0] = icon.left + icon.width / 2f + (railButtonOffsets[side]?.writtenX ?: 0f)
-        out[1] = icon.top + icon.height / 2f
-        scratch.mapPoints(out)
-        return true
-    }
-
     /** The same centre with no transform anywhere: layout positions only. */
     private fun restCentre(v: View, out: FloatArray = FloatArray(2)): FloatArray {
         restOrigin(v, out)
         out[0] += v.width / 2f
         out[1] += v.height / 2f
         return out
-    }
-
-    fun railShortcutLayoutBoxes(): Array<FoldMusicLayout.Box>? {
-        if (!left.isAttachedToWindow || !right.isAttachedToWindow ||
-            left.width <= 0 || right.width <= 0) return null
-        return arrayOf(left, right).map { v ->
-            val at = FloatArray(2); restOrigin(v, at)
-            // Preserve MiDuo's relocation, but do not bake the root's AOD transform into
-            // the reference used to follow that same transform later.
-            var p: View? = v
-            while (p != null && p !== host) {
-                val name = runCatching { p!!.resources.getResourceEntryName(p!!.id) }.getOrNull()
-                if (name != "keyguard_root_view") { at[0] += p.translationX; at[1] += p.translationY }
-                p = p.parent as? View
-            }
-            FoldMusicLayout.Box(at[0], at[1], at[0] + v.width, at[1] + v.height)
-        }.toTypedArray()
     }
 
     private fun restOrigin(v: View, out: FloatArray) {
@@ -5867,8 +5836,6 @@ private class MiniPlayerController(
      * them smaller than the capsule, which balances the row (the user's request, 2026-10-18).
      * At full size they take that room back from the capsule's width (see pillRest).
      */
-    fun railVisibleDiscDiameter(): Float = (dp(48f) * shortcutScale()).roundToInt().toFloat()
-
     private fun shortcutScale(): Float =
         if (colorOs() && !config.optBoolean(MiniPlayerConfig.COLOROS_FULL_SIZE)) COLOROS_SHORTCUT else 1f
 

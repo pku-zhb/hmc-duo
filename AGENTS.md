@@ -37,8 +37,10 @@ not the destination for project links, updates or bug reports.
   Use ordinary replacement for authorized preview updates. Do not choose a staged,
   reboot-dependent install unless the owner asks for one. Leave explicit scope
   restarts to the owner; module code must not restart scopes on package replacement.
-- MiDuo owns native shortcuts. Keep visual bounds, touch hit testing, gesture
-  direction and animation origins in the same coordinate space.
+- Duo owns its content and capsule geometry through explicit dp parameters and
+  the window size; do not derive it from MiDuo widths or animated shortcut bounds.
+  MiDuo still owns native shortcuts. Keep their visual bounds, touch hit testing,
+  gesture direction and animation origins in the same coordinate space.
 - The vertical capsule is a summary. Full text stays in the expanded native card.
   Preserve grapheme clusters and script shaping.
 

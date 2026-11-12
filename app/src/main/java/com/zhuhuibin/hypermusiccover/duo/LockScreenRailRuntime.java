@@ -9,7 +9,7 @@ import android.view.ViewTreeObserver;
 import android.view.WindowInsets;
 import java.util.IdentityHashMap;
 
-/** Preview adapter for an observed MiDuo shortcut column and native content remeasurement. */
+/** Duo-owned lock-screen geometry, with native vertical content behavior. */
 final class LockScreenRailRuntime {
     private LockScreenRailRuntime() {}
     private static View root;
@@ -42,7 +42,6 @@ final class LockScreenRailRuntime {
     private static final java.util.ArrayDeque<String> events = new java.util.ArrayDeque<>();
     private static final class Owned {
         final GeometryLease lease;
-        RailContentWidth contentWidth;
         Owned(View v) {
             lease = new GeometryLease(v.getLayoutParams().width, v.getTranslationX());
         }
@@ -107,31 +106,10 @@ final class LockScreenRailRuntime {
             revision = Main.screenGeometry().revision;
             planWidth = root.getWidth(); planHeight = root.getHeight();
         }
-        // Our button offsets and the OEM's AOD transform must not become tomorrow's baseline.
         boolean aodFrozen = holdGeometry();
-        boolean frozen = aodFrozen || plan != null && planRevision == revision;
-        View[] shortcuts = frozen ? null : MiniPlayerRuntime.railShortcutViews();
-        RightRailLayout.Plan next = null;
-        if (plan == null && (MiniPlayerScene.INSTANCE.getAodActive() || !Main.screenOnCached()
-                || keyguardCanvas != null && keyguardCanvas.getScaleX() < .999f)) {
-            FoldMusicLayout.Box[] layout = MiniPlayerRuntime.railShortcutLayoutBoxes();
-            if (layout != null && layout.length == 2) next = planFor(layout[0], layout[1]);
-        }
-        if (next == null && shortcuts != null && shortcuts.length == 2
-                && shortcut(shortcuts[0], box)) {
-            FoldMusicLayout.Box a = rect(box);
-            if (shortcut(shortcuts[1], box)) {
-                Insets insets = safeInsets();
-                next = RightRailLayout.plan(root.getWidth(), root.getHeight(),
-                        root.getResources().getDisplayMetrics().density,
-                        insets.left, insets.top, insets.right, insets.bottom, a, rect(box),
-                        MiniPlayerRuntime.railVisualDiscDiameter(), MiniPlayerRuntime.railIndicatorExtent());
-            }
-        }
-        boolean retained = next == null && RailLifecycle.retain(sessionEligible, plan != null,
-                planRevision, revision);
-        if (retained) next = plan;
-        else if (next != null) planRevision = revision;
+        boolean retained = RailLifecycle.retain(sessionEligible, plan != null, planRevision, revision);
+        RightRailLayout.Plan next = retained ? plan : planForWindow();
+        if (next != null) planRevision = revision;
         plan = next;
         if (next != null && Main.sReflowLockContent) {
             cacheNotificationFloor();
@@ -140,18 +118,18 @@ final class LockScreenRailRuntime {
             // Keep the OEM clock's drawing canvas at its native width. Its glass renderer
             // hard-clips to that canvas even with clipChildren disabled. Move the measured
             // glyphs instead of narrowing the canvas and then translating ink out of it.
-            if (stack != null) reflow(stack, next.content);
+            boolean stackOwned = RailStackBounds.bind(stack, root, next.content);
             View date = Main.visibleDate();
-            if (date != null && !under(date, stack)) reflow(date, next.content);
+            if (date != null && !under(date, stack)) centerContentView(date, next.content);
             centerClocks();
-            contentActive = !owned.isEmpty();
+            contentActive = stackOwned || !owned.isEmpty();
             if (contentActive && Main.sForceNotificationFloor) NumState.INSTANCE.refreshRailFooter(notificationFloor, revision);
             else NumState.INSTANCE.restoreRailFooter();
         } else restoreContent();
         liftNativeClock();
-        note(next == null ? "waiting for right-hand vertical shortcut pair"
-                : retained ? aodFrozen ? "held through AOD/wake" : "stable measured column"
-                : "observed shortcut column");
+        note(next == null ? "insufficient room for fixed rail"
+                : retained ? aodFrozen ? "fixed through AOD/wake" : "fixed Duo geometry"
+                : "fixed Duo geometry initialized");
         if (wasActive != active() || wasContent != reflowing()) {
             MiniPlayerRuntime.refresh();
             Main.refreshCoverGeometry();
@@ -165,12 +143,11 @@ final class LockScreenRailRuntime {
         while (events.size() > 24) events.removeFirst();
     }
 
-    private static RightRailLayout.Plan planFor(FoldMusicLayout.Box a, FoldMusicLayout.Box b) {
+    private static RightRailLayout.Plan planForWindow() {
         Insets safe = safeInsets();
         return RightRailLayout.plan(root.getWidth(), root.getHeight(),
                 root.getResources().getDisplayMetrics().density,
-                safe.left, safe.top, safe.right, safe.bottom, a, b,
-                MiniPlayerRuntime.railVisualDiscDiameter(), MiniPlayerRuntime.railIndicatorExtent());
+                safe.left, safe.top, safe.right, safe.bottom, MiniPlayerRuntime.railIndicatorExtent());
     }
 
     private static Insets safeInsets() {
@@ -304,11 +281,6 @@ final class LockScreenRailRuntime {
         return new FoldMusicLayout.Box(b.left, b.top, b.right, b.bottom);
     }
 
-    private static boolean shortcut(View v, RectF out) {
-        if (v == null || !v.isAttachedToWindow() || !v.isShown() || v.getWidth() <= 0 || v.getHeight() <= 0) return false;
-        return map(v, root, new FoldMusicLayout.Box(0, 0, v.getWidth(), v.getHeight()), out);
-    }
-
     private static boolean under(View child, View parent) {
         if (parent == null) return false;
         for (View v = child; v != null; v = v.getParent() instanceof View ? (View) v.getParent() : null) {
@@ -317,43 +289,16 @@ final class LockScreenRailRuntime {
         return false;
     }
 
-    private static void reflow(View v, FoldMusicLayout.Box content) {
-        if (v == null || v == root || !v.isAttachedToWindow() || v.getWidth() <= 0
-                || v.getLayoutParams() == null || !(v.getParent() instanceof View)) return;
+    private static void centerContentView(View v, FoldMusicLayout.Box content) {
+        if (!v.isAttachedToWindow() || v.getWidth() <= 0 || v.getLayoutParams() == null
+                || !(v.getParent() instanceof View)) return;
+        if (!map(root, (View) v.getParent(), content, box)) return;
         Owned state = owned.get(v);
         if (state == null) { state = new Owned(v); owned.put(v, state); }
-        ViewGroup.LayoutParams lp = v.getLayoutParams();
-        if (state.contentWidth == null) state.contentWidth = new RailContentWidth(lp.width, nativeWidth(v));
-        state.contentWidth.observe(lp.width);
-        state.lease.observe(lp.width, v.getTranslationX());
-        float ratio = content.width() / root.getWidth();
-        int width = state.contentWidth.target(parentAvailableWidth(v), ratio);
-        if (!map(root, (View) v.getParent(), content, box)) return;
-        float actualWidth = width > 0 ? width : v.getWidth();
-        float x = box.centerX() - actualWidth / 2f - v.getLeft();
-        if (lp.width != width) { lp.width = width; v.setLayoutParams(lp); }
+        state.lease.observe(v.getLayoutParams().width, v.getTranslationX());
+        float x = box.centerX() - v.getWidth() / 2f - v.getLeft();
         if (Math.abs(v.getTranslationX() - x) >= .25f) v.setTranslationX(x);
-        state.contentWidth.wrote(width);
-        state.lease.wrote(width, v.getTranslationX());
-    }
-
-    private static int nativeWidth(View v) {
-        ViewGroup.LayoutParams lp = v.getLayoutParams();
-        if (lp.width > 0) return lp.width;
-        int available = parentAvailableWidth(v);
-        if (lp.width == ViewGroup.LayoutParams.MATCH_PARENT && available > 0) return available;
-        return v.getWidth();
-    }
-
-    private static int parentAvailableWidth(View v) {
-        if (!(v.getParent() instanceof View)) return 0;
-        View parent = (View) v.getParent();
-        int width = parent.getWidth() - parent.getPaddingLeft() - parent.getPaddingRight();
-        if (v.getLayoutParams() instanceof ViewGroup.MarginLayoutParams) {
-            ViewGroup.MarginLayoutParams margins = (ViewGroup.MarginLayoutParams) v.getLayoutParams();
-            width -= margins.leftMargin + margins.rightMargin;
-        }
-        return Math.max(0, width);
+        state.lease.wrote(v.getLayoutParams().width, v.getTranslationX());
     }
 
     private static void restoreClockOffsets() {
@@ -398,12 +343,12 @@ final class LockScreenRailRuntime {
     }
 
     private static void restoreContent() {
+        RailStackBounds.release();
         for (java.util.Map.Entry<View, Owned> e : owned.entrySet()) {
             View v = e.getKey(); GeometryLease lease = e.getValue().lease;
             ViewGroup.LayoutParams lp = v.getLayoutParams();
             if (lp != null) {
-                RailContentWidth contentWidth = e.getValue().contentWidth;
-                int restored = contentWidth == null ? lease.restoreWidth(lp.width) : contentWidth.restore(lp.width);
+                int restored = lease.restoreWidth(lp.width);
                 if (restored != lp.width) { lp.width = restored; v.setLayoutParams(lp); }
             }
             float x = lease.restoreX(v.getTranslationX());
@@ -477,7 +422,8 @@ final class LockScreenRailRuntime {
         return "rail=" + active() + " reflow=" + reflowing() + " reason=" + reason
                 + (p == null ? "" : " content=" + p.content.left + ".." + p.content.right
                     + " pill=" + p.pill.left + "," + p.pill.top + "," + p.pill.width() + "x" + p.pill.height()
-                    + " controlsSpan=" + p.controlsSpan + " offsets=" + p.firstOffsetY + "," + p.secondOffsetY);
+                    + " controlsSpan=" + p.controlsSpan + " offsets=" + p.firstOffsetY + "," + p.secondOffsetY)
+                + " stackBounds=[" + RailStackBounds.describe() + "]";
     }
 
     static String events() { return String.join(" ; ", events); }
