@@ -23,11 +23,10 @@ public class RailContentFrameTest {
         }
     }
 
-    @Test public void newWindowUsesItsOwnInsetsAndDoesNotReuseAnOuterWidth() {
+    @Test public void innerLandscapeDoesNotReceiveAnOuterWidthOrAnOldPinnedWidth() {
         RightRailLayout.Plan inner = RightRailLayout.plan(2364, 1672, 2.75f, 0, 164, 0, 0, 0);
         RailContentFrame frame = RailContentFrame.inWindow(inner.content, 2.75f, 0, 2364, 1672, false);
-        assertEquals(1246, frame.width);
-        assertEquals(456, frame.left);
+        assertNull(frame);
         RailContentFrame inset = RailContentFrame.in(new FoldMusicLayout.Box(30, 0, 500, 850), 1, 0);
         assertEquals(41, inset.left);
         assertEquals(489, inset.right());
@@ -38,35 +37,41 @@ public class RailContentFrameTest {
         assertNull(RailContentFrame.in(new FoldMusicLayout.Box(0, 0, 20, 800), 1, 0));
         assertNull(RailContentFrame.in(new FoldMusicLayout.Box(0, 0, 900, 800), Float.NaN, 0));
     }
-    @Test public void combinedSceneMovesTheWholeNativeStackToTheLeftWithoutStretchingIt() {
+    @Test public void combinedArtworkDoesNotMoveOrResizeTheNativeInnerStack() {
         RightRailLayout.Plan inner = RightRailLayout.plan(2364, 1672, 2.75f, 0, 164, 0, 0, 0);
         for (int parent : new int[]{0, 559, -44, 10000}) {
             RailContentFrame frame = RailContentFrame.inWindow(inner.content, 2.75f, parent, 2364, 1672, true);
-            assertEquals(1246, frame.width);
-            assertEquals(31, frame.left + parent);
-            assertTrue(inner.content.right - (frame.right() + parent) >= (16 + 260) * 2.75f);
+            assertNull(frame);
         }
     }
 
-    @Test public void smallerInnerWindowsReserveAUsefulLyricColumnWithAFixedBound() {
+    @Test public void smallerInnerWindowsKeepNativeWidthEvenWhenOurArtworkUsesColumns() {
         RightRailLayout.Plan inner = RightRailLayout.plan(750, 650, 1, 0, 24, 0, 24, 0);
         RailContentFrame frame = RailContentFrame.inWindow(inner.content, 1, 0, 750, 650, true);
-        assertTrue(frame.width >= 240);
-        assertTrue(frame.width <= 453);
-        assertTrue(inner.content.right - 16 - frame.right() - 16 >= 260);
-        assertEquals(frame.width, RailContentFrame.inWindow(inner.content, 1, 0, 750, 650, true).width);
+        assertNull(frame);
     }
 
-    @Test public void outerAndInnerPortraitDoNotAcquireTheLandscapeWidthLimit() {
+    @Test public void outerKeepsItsRailSlotButInnerPortraitRetainsTheSystemColumn() {
         for (int[] size : new int[][]{{1168,1712}, {1672,2364}}) {
             RightRailLayout.Plan plan = RightRailLayout.plan(size[0], size[1], 2.75f, 0, 126, 0, 0, 0);
             RailContentFrame old = RailContentFrame.in(plan.content, 2.75f, 0);
             for (boolean combined : new boolean[]{false, true}) {
                 RailContentFrame frame = RailContentFrame.inWindow(plan.content, 2.75f, 0, size[0], size[1], combined);
-                assertEquals(old.width, frame.width);
-                assertEquals(old.left, frame.left);
+                if (size[0] == 1168) {
+                    assertEquals(old.width, frame.width);
+                    assertEquals(old.left, frame.left);
+                } else assertNull(frame);
             }
         }
+    }
+
+    @Test public void innerClassificationDoesNotDependOnOrientationOrAnArtworkChoice() {
+        assertTrue(RailContentFrame.ownsNativeBounds(1168, 1712, 2.75f));
+        assertFalse(RailContentFrame.ownsNativeBounds(1672, 2364, 2.75f));
+        assertFalse(RailContentFrame.ownsNativeBounds(2364, 1672, 2.75f));
+        assertFalse(RailContentFrame.ownsNativeBounds(600, 800, 1f));
+        assertFalse(RailContentFrame.ownsNativeBounds(0, 800, 1f));
+        assertFalse(RailContentFrame.ownsNativeBounds(500, 800, Float.NaN));
     }
 
 }

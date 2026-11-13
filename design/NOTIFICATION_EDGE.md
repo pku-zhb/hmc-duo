@@ -31,8 +31,9 @@ Exact native card constructors establish a
 fresh null baseline only when no native effect write was already observed.
 On ROMs exposing getRenderEffect, an already-existing card can also be captured
 at first use. An unknown late card without that getter stays native. An observed
-external setter becomes the new baseline; active swipes reapply their mask before
-the next draw. Cleanup restores only the adapter's current output.
+external setter becomes the new baseline. During an active swipe its mask is
+composed over that fresh baseline in the same native commit; it does not wait
+for the next draw. Cleanup restores only the adapter's current output.
 
 The retained current-ROM framework sources were checked directly: View only
 exposes `setRenderEffect` (View.java:11789), and its RenderNode setter directly
@@ -83,6 +84,25 @@ to 384 entries. Effect/baseline records use weak View keys, without value-to-key
 references. Scene release removes the masks but keeps weak early-baseline records
 for cards reused by the next lockscreen. Hook installation is transactional and
 passive until complete; unsupported contracts retain native behavior.
+
+## 0.2.6 timing and native inner-screen bounds
+
+The previous external-material branch committed an unmasked value even when a
+card was already moving. A later dispatchDraw repaired it, leaving a possible
+one-frame gap when material updates landed after the translation callback. Native
+and owned-mask commits now share the moving-card policy; restore commits always
+remain unmasked. The incoming native effect is the new chain baseline, and the
+existing post-native lease commit remains authoritative. Shelf clipping, per-card
+isolation and the original native drawing path are unchanged.
+
+Both inner-screen orientations now retain the OEM stack's measurement, frame and
+translation. The old 453 dp landscape cap and the inner portrait forced column
+are removed from the native stack owner. Only the outer screen retains its fixed
+Duo content slot. Edge observation is independent of this width policy and maps
+the actual native stack viewport on the inner screen. Owned artwork/lyric rooms
+can still have their own layout bounds without resizing notifications or live
+cards. Folding between policies restores the last owned X and asks for a fresh
+native layout; native-only X values are never restored from a stale outer lease.
 
 ## Verification boundary
 

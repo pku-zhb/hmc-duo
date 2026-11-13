@@ -17,7 +17,8 @@ import java.util.WeakHashMap;
 /** Each native card keeps its own RenderNode, clipping and Z; only its effect gains a mask. */
 final class RailNotificationEdgeRenderer {
     interface NativeEffect { Object set(RenderEffect effect) throws Throwable; }
-    private static final int NATIVE = 0, MASK = 1, RESTORE = 2;
+    private static final int NATIVE = RailEdgeCommitPolicy.NATIVE, MASK = RailEdgeCommitPolicy.MASK,
+            RESTORE = RailEdgeCommitPolicy.RESTORE;
     private static final String SHADER = "uniform shader content;\n"
             + "uniform float edge; uniform float width; uniform float direction;\n"
             + "half4 main(float2 p) {\n"
@@ -124,9 +125,9 @@ final class RailNotificationEdgeRenderer {
         RenderEffect output = baseline;
         boolean masked = false;
         try {
-            if (role == MASK && !unavailable && belongs(view) && card.translation != 0f) {
+            if (RailEdgeCommitPolicy.maskNow(role, card != null && belongs(view) && card.translation != 0f, !unavailable)) {
                 RenderEffect mask = mask(view, card);
-                if (mask != null) { output = compose(card, mask); masked = true; }
+                if (mask != null) { output = compose(card, mask, baseline); masked = true; }
             }
         } catch (Throwable error) { failed(error); }
         // Do not mutate the lease at View entry, or on a bridge that throws. The actual
@@ -208,10 +209,14 @@ final class RailNotificationEdgeRenderer {
     }
 
     private RenderEffect compose(Card card, RenderEffect mask) {
-        if (card.composed != null && card.composedBase == card.lease.base && card.composedMask == mask) return card.composed;
-        card.composedBase = card.lease.base;
+        return compose(card, mask, card.lease.base);
+    }
+
+    private RenderEffect compose(Card card, RenderEffect mask, RenderEffect baseline) {
+        if (card.composed != null && card.composedBase == baseline && card.composedMask == mask) return card.composed;
+        card.composedBase = baseline;
         card.composedMask = mask;
-        card.composed = card.lease.base == null ? mask : RenderEffect.createChainEffect(mask, card.lease.base);
+        card.composed = baseline == null ? mask : RenderEffect.createChainEffect(mask, baseline);
         return card.composed;
     }
 

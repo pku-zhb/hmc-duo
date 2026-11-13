@@ -119,14 +119,14 @@ final class RailStackBounds {
                 Method translation = card.getDeclaredMethod("setTranslation", float.class);
                 hooks.add(edgeHook(translation, chain -> {
                     Object result = chain.proceed();
-                    if (active.get() && owns(stack)) renderer.translated((View) chain.getThisObject(), (Float) chain.getArg(0));
+                    if (active.get() && ownsStack(stack)) renderer.translated((View) chain.getThisObject(), (Float) chain.getArg(0));
                     return result;
                 }));
             }
             hooks.add(edgeHook(draw, chain -> {
-                if (active.get() && owns(chain.getThisObject())) {
+                if (active.get() && ownsStack(chain.getThisObject())) {
                     View view = (View) chain.getThisObject();
-                    if (view.getWidth() == frame.width && view.getHeight() > 0) {
+                    if (view.getWidth() > 0 && (frame == null || view.getWidth() == frame.width) && view.getHeight() > 0) {
                         renderer.configure(view, view.getWidth(), view.getHeight(),
                                 view.getResources().getDisplayMetrics().density);
                         renderer.beforeDraw((Canvas) chain.getArg(0));
@@ -154,7 +154,11 @@ final class RailStackBounds {
     }
 
     private static boolean owns(Object candidate) {
-        return installed && candidate == stack && frame != null && Main.sRightRail
+        return frame != null && ownsStack(candidate);
+    }
+
+    private static boolean ownsStack(Object candidate) {
+        return installed && candidate != null && candidate == stack && Main.sRightRail
                 && Main.sReflowLockContent && Main.keyguardLocked() && !Main.bouncerShown();
     }
 
@@ -168,31 +172,36 @@ final class RailStackBounds {
             parent = parent.getParent() instanceof View ? (View) parent.getParent() : null;
         }
         if (parent != root) { release(); return false; }
-        RailContentFrame target = RailContentFrame.inWindow(content,
-                root.getResources().getDisplayMetrics().density, parentLeft,
+        float density = root.getResources().getDisplayMetrics().density;
+        boolean fixedBounds = RailContentFrame.ownsNativeBounds(root.getWidth(), root.getHeight(), density);
+        RailContentFrame target = RailContentFrame.inWindow(content, density, parentLeft,
                 root.getWidth(), root.getHeight(), FoldMusicRuntime.combinedRequested() && Main.coverModeOn());
-        if (target == null) { release(); return false; }
+        if (fixedBounds && target == null) { release(); return false; }
         if (stack != next) {
             release();
             originalX = next.getTranslationX();
             stack = next;
 
         }
-        boolean changed = frame == null || !frame.matches(target.left, target.width);
+        boolean wasFixed = frame != null;
+        boolean changed = wasFixed != (target != null) || target != null && !target.matches(frame.left, frame.width);
+        if (!wasFixed && target != null) originalX = next.getTranslationX();
         frame = target;
-        if (edgeInstalled && edge != null) edge.configure(next, target.width, next.getHeight(),
+        if (edgeInstalled && edge != null) edge.configure(next, target == null ? next.getWidth() : target.width, next.getHeight(),
                 next.getResources().getDisplayMetrics().density);
-        if (next.getTranslationX() != 0f) next.setTranslationX(0f);
+        if (target != null && next.getTranslationX() != 0f) next.setTranslationX(0f);
+        else if (wasFixed && target == null && next.getTranslationX() == 0f) next.setTranslationX(originalX);
         if (changed) next.requestLayout();
-        return true;
+        return target != null;
     }
 
     static void release() {
         View previous = stack;
+        boolean wasFixed = frame != null;
         stack = null; frame = null;
         if (edge != null) edge.release();
         if (previous == null) return;
-        if (previous.getTranslationX() == 0f) previous.setTranslationX(originalX);
+        if (wasFixed && previous.getTranslationX() == 0f) previous.setTranslationX(originalX);
         // Native LayoutParams were never touched, so a fresh native pass restores the full shade.
         previous.requestLayout();
     }
