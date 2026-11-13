@@ -1,11 +1,15 @@
 package com.zhuhuibin.hypermusiccover.duo.ui.screen.settings
 
 import android.app.Activity
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
@@ -31,6 +35,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.zhuhuibin.hypermusiccover.duo.ui.util.PageScaffold
 import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.preference.SwitchPreference
@@ -124,6 +129,15 @@ fun SettingsPageView(
                             iconHidden = it
                         }
                     )
+                    TextButton(text = stringResource(R.string.settings_copy_launcher_code),
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 8.dp),
+                        minHeight = 44.dp,
+                        onClick = {
+                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                            val code = "*#*#${LauncherIcon.SECRET_CODE}#*#*"
+                            clipboard.setPrimaryClip(ClipData.newPlainText(context.getString(R.string.hide_launcher_icon), code))
+                            Toast.makeText(context, R.string.settings_launcher_code_copied, Toast.LENGTH_SHORT).show()
+                        })
                 }
 
                 SmallTitle(text = stringResource(R.string.settings_language))
