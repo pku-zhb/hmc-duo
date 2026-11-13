@@ -1,6 +1,6 @@
 <p align="center"><strong>English</strong> · <a href="README.zh-CN.md">简体中文</a></p>
 
-# hypermusiccover-duo
+# hmc-duo
 
 Lock-screen music, lyrics and an independent vertical notification rail for Xiaomi
 foldable phones on HyperOS. Maintained by [pku-zhb](https://github.com/pku-zhb).
@@ -43,7 +43,7 @@ other devices is not established.
 - Settings export/import, notification media-card customization and a Duo-only
   release/update channel. Translation credentials remain outside exported backups.
 
-This is a preview. Newly implemented behavior, inner-screen layouts and AOD
+Newly implemented behavior, inner-screen layouts and AOD
 transitions require device acceptance; a successful build is not phone verification.
 See [current status and acceptance scope](docs/fold-settings-roadmap.md).
 
@@ -53,7 +53,7 @@ Requires rooted HyperOS 4, Android 15+ and LSPosed with modern Xposed API 102.
 Duo's package and namespace are `com.zhuhuibin.hypermusiccover.duo`.
 
 1. Export settings from the previous app before removing it.
-2. Install a Duo APK from [Releases](https://github.com/pku-zhb/hypermusiccover-duo/releases)
+2. Install a Duo APK from [Releases](https://github.com/pku-zhb/hmc-duo/releases)
    when available, or build locally.
 3. Enable Duo and its recommended scopes in LSPosed. Disable the previous music
    module and the MiDuo/MiDuo Notification SystemUI hooks for this independent layout.
@@ -71,11 +71,15 @@ See [release procedure](docs/releasing.md).
 
 ## Build and check
 
+Release versions use `X.Y.Z` with version code
+`(major * 10000 + minor * 100 + patch) * 1000`; `0.2.1` uses `201000`.
+Published APKs are named `hmc-duo-X.Y.Z.apk`.
+
 Requires JDK 21+, Android SDK 37 and build tools 37.0.0.
 
 ```sh
-git clone https://github.com/pku-zhb/hypermusiccover-duo.git
-cd hypermusiccover-duo
+git clone https://github.com/pku-zhb/hmc-duo.git
+cd hmc-duo
 ```
 
 For the maintainer's configured Mac environment, use:
@@ -99,11 +103,13 @@ procedure for explicit official-build requirements.
 
 ## Feedback and attribution
 
-Report bugs in [Duo Issues](https://github.com/pku-zhb/hypermusiccover-duo/issues)
+Report bugs in [Duo Issues](https://github.com/pku-zhb/hmc-duo/issues)
 with the device, OS/module versions, display orientation and reproduction steps.
-Each preview lists only its changed behavior to verify.
+Each release lists only its changed behavior to verify.
 
 Thanks to Lewewe, zyl6932, puhboo, juren233, btm_m / HyperChanger and the contributors
 listed in the app's Credits. [AGPL-3.0](LICENSE), [NOTICE](NOTICE) and bundled
 licences preserve the upstream notices. Donation controls await this project's
 own payment assets; upstream payment destinations are not used.
+
+Current ordinary APKs are verified and retained with `python3 tools/archive-apk.py` after committing and pushing. The tool retains `hmc-duo-<version>.apk` and imports the same bytes into the existing personal archive. Source identity is embedded and recorded in a local receipt.

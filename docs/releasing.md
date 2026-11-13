@@ -1,7 +1,7 @@
 # Release identity and verification
 
 The application ID is `com.zhuhuibin.hypermusiccover.duo`. Official release assets
-are named `hypermusiccover-duo-vX.Y.Z.apk` and belong to this repository. The
+are named `hmc-duo-X.Y.Z.apk` and belong to this repository. The
 in-app updater only selects the asset matching the release tag, and checks the
 package and certificate against the installed application before handing the APK
 to Android's installer. Prereleases are not offered by the stable updater.

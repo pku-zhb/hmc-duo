@@ -17,7 +17,7 @@ version_code=$(((major * 10000 + minor * 100 + patch) * 1000))
 cd "$project_root"
 tools/build.sh :app:testDebugUnitTest :app:assembleRelease -PmcOfficialRelease=true \
     "-PmcVersionName=$version" "-PmcVersionCode=$version_code"
-apk=/Volumes/Harbor/DevCache/hypermusiccover-duo/build/app/outputs/apk/release/app-release.apk
+apk=/Volumes/Harbor/DevCache/hmc-duo/build/app/outputs/apk/release/app-release.apk
 # Optional proof of rotation from an existing preview key. The lineage contains only public
 # certificates and attestations. Its setup must be verified separately on a device.
 if [[ -n "${SIGNING_LINEAGE_FILE:-}" ]]; then
@@ -29,7 +29,7 @@ fi
 python3 tools/verify-release.py "$apk" --version "$version" --code "$version_code" \
     --certificate "$SIGNING_CERT_SHA256"
 mkdir -p releases/local
-destination="releases/local/hypermusiccover-duo-v$version.apk"
+destination="releases/local/hmc-duo-$version.apk"
 [[ ! -e "$destination" ]] || { echo 'Release already exists; use a new version.' >&2; exit 1; }
 cp "$apk" "$destination"
 shasum -a 256 "$destination" > "$destination.sha256"

@@ -7,7 +7,7 @@ if ! mount | /usr/bin/grep -Fq " on $volume (" || [[ ! -w "$volume/DevCache" ]];
     echo 'Harbor must be mounted with a writable DevCache directory.' >&2
     exit 1
 fi
-cache="$volume/DevCache/hypermusiccover-duo"
+cache="$volume/DevCache/hmc-duo"
 # Reuse installed tools, without retaining another source tree.
 existing_tools="$volume/DevCache/hypermusiccover-enhanced"
 export ANDROID_HOME="${ANDROID_HOME:-$existing_tools/android-sdk}"

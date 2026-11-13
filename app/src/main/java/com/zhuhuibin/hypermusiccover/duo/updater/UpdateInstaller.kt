@@ -108,7 +108,7 @@ object UpdateInstaller {
 
     /** [apkUrl] is the release asset's own URL; the hosts to try it through are worked out here. */
     fun start(context: Context, apkUrl: String, fileName: String) {
-        require(fileName.matches(Regex("hypermusiccover-duo-v[0-9A-Za-z.-]+\\.apk"))) { "Invalid release filename" }
+        require(fileName.matches(Regex("hmc-duo-[0-9]{1,3}\\.[0-9]{1,2}\\.[0-9]{1,2}(?:-(?:rev)?[0-9]{1,3})?\\.apk"))) { "Invalid release filename" }
         if (inFlight) return
         inFlight = true
         lastOutcome = null

@@ -1,6 +1,6 @@
 <p align="center"><a href="README.md">English</a> · <strong>简体中文</strong></p>
 
-# hypermusiccover-duo
+# hmc-duo
 
 面向小米折叠屏的 HyperOS 锁屏音乐、歌词和独立竖排通知胶囊，由
 [pku-zhb](https://github.com/pku-zhb) 维护。
@@ -29,7 +29,7 @@
 - 原生玻璃材质、独立的锁屏通知显示与保留选项；使用 Duo 的通知选项时关闭 HyperLight 对应功能。
 - 设置导出／导入、通知播放器定制，以及 Duo 自己的发布／更新渠道；翻译凭据不会写入设置备份。
 
-当前为预览版。新增行为、内屏布局和 AOD 切换仍需真机验收，编译成功不等于设备验证通过。
+新增行为、内屏布局和 AOD 切换仍需真机验收，编译成功不等于设备验证通过。
 已确认结果及本轮验收范围见[当前进度](docs/fold-settings-roadmap.md)。
 
 ## 安装与迁移
@@ -38,7 +38,7 @@
 应用包名与代码命名空间均为 `com.zhuhuibin.hypermusiccover.duo`。
 
 1. 在旧应用中导出设置，再处理旧应用。
-2. 从 [Duo Releases](https://github.com/pku-zhb/hypermusiccover-duo/releases) 获取已发布的安装包，或自行构建。
+2. 从 [Duo Releases](https://github.com/pku-zhb/hmc-duo/releases) 获取已发布的安装包，或自行构建。
 3. 在 LSPosed 启用 Duo 并勾选推荐作用域；停用旧音乐模块，以及 MiDuo／MiDuo Notification 的 SystemUI 挂载。
 4. 准备好后自行重启相关作用域，再导入设置。
 
@@ -52,11 +52,15 @@ Duo 与 Enhanced、旧 Fold 包分别安装，Android 不会自动转移应用�
 
 ## 构建
 
+版本号采用 `X.Y.Z`，版本码为
+`(major * 10000 + minor * 100 + patch) * 1000`；`0.2.1` 对应 `201000`。
+发布安装包使用 `hmc-duo-X.Y.Z.apk`。
+
 需要 JDK 21+、Android SDK 37 和 build-tools 37.0.0。
 
 ```sh
-git clone https://github.com/pku-zhb/hypermusiccover-duo.git
-cd hypermusiccover-duo
+git clone https://github.com/pku-zhb/hmc-duo.git
+cd hmc-duo
 ```
 
 维护者已配置的 Mac 环境使用：
@@ -77,8 +81,8 @@ export HMC_BUILD_ROOT=/absolute/path/to/duo-build
 
 ## 反馈与许可
 
-问题请提交到 [Duo Issues](https://github.com/pku-zhb/hypermusiccover-duo/issues)，
-附设备、系统／模块版本、内外屏方向和复现步骤。每轮预览只列本轮变更的验收项目。
+问题请提交到 [Duo Issues](https://github.com/pku-zhb/hmc-duo/issues)，
+附设备、系统／模块版本、内外屏方向和复现步骤。每个版本只列本轮变更的验收项目。
 
 感谢 Lewewe、zyl6932、puhboo、juren233、btm_m / HyperChanger 和应用致谢页列出的贡献者。
 遵循 [AGPL-3.0](LICENSE)，保留 [NOTICE](NOTICE) 与依赖许可。
