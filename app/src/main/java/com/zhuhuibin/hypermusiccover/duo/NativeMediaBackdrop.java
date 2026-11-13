@@ -20,11 +20,14 @@ final class NativeMediaBackdrop {
 
     private static final View.OnAttachStateChangeListener attachment = new View.OnAttachStateChangeListener() {
         @Override public void onViewAttachedToWindow(View owner) {
-            View source = binding.source();
-            if (source != null && owner == binding.owner()) bind(source, owner);
+            if (owner == binding.owner() || binding.isSource(owner)) refresh();
         }
         @Override public void onViewDetachedFromWindow(View owner) {
-            if (owner == binding.owner()) clear();
+            if (owner == binding.owner() || binding.isSource(owner)) {
+                // The framework can already have lost its ViewRoot here. A pass-window
+                // write would only queue, so preserve restoration until the next attach.
+                lease.attachmentChanged(false);
+            }
         }
     };
 
@@ -92,6 +95,7 @@ final class NativeMediaBackdrop {
             nativeContainer = new WeakReference<>(container);
             consumesBlur = consumer;
             owner.addOnAttachStateChangeListener(attachment);
+            if (source != owner) source.addOnAttachStateChangeListener(attachment);
             refresh();
         } catch (Throwable error) { fail(error); }
     }
@@ -99,6 +103,7 @@ final class NativeMediaBackdrop {
     static void clear() {
         View owner = binding.owner(), source = binding.source();
         if (owner != null) owner.removeOnAttachStateChangeListener(attachment);
+        if (source != null && source != owner) source.removeOnAttachStateChangeListener(attachment);
         if (source != null && lease.local()) {
             try { write(source, false); ++restores; }
             catch (Throwable error) { Xp.d(Main.TAG + "native media sampler restore skipped: " + error); }
@@ -108,6 +113,17 @@ final class NativeMediaBackdrop {
         nativeContainer.clear();
         consumesBlur = false;
         lease.clear();
+    }
+
+    /** A reused native holder remains known while its lock-screen scene or window is absent. */
+    static void suspend() {
+        View source = binding.source();
+        if (source == null || !lease.local() || !source.isAttachedToWindow()) return;
+        try {
+            write(source, false);
+            lease.committed(false);
+            ++restores;
+        } catch (Throwable error) { fail(error); }
     }
 
     private static boolean validBinding() {
@@ -120,14 +136,20 @@ final class NativeMediaBackdrop {
     /** The backdrop's existing pre-draw guard only updates an already accepted source. */
     static void refresh() {
         if (!available || Boolean.TRUE.equals(replay.get())) return;
+        View source = binding.source(), owner = binding.owner();
+        if (source == null || owner == null) return;
+        boolean attached = source.isAttachedToWindow() && owner.isAttachedToWindow();
+        lease.attachmentChanged(attached);
+        if (!attached) return;
         if (!validBinding()) {
-            // An early native effect can run before attach. Keep its native state untouched;
-            // the next accepted effect binds the attached holder normally.
-            if (lease.local()) clear();
+            // A known holder can return in another keyguard root without another effect.apply.
+            // Revalidate it at this rare topology boundary; ordinary frames never discover views.
+            if (Main.keyguardLocked() && Main.onKeyguardNow())
+                NativeGlassRelay.bindNativePlayerBackground(source, owner);
+            else suspend();
             return;
         }
         try {
-            View source = binding.source();
             boolean local = consumesBlur && VideoBackdropMesh.samplingBackdropIn(source);
             if (lease.needsApply(local)) {
                 write(source, local);
