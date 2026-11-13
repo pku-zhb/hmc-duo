@@ -15,9 +15,18 @@ not automatically verified on every device, display or OS version.
 | Clock and status | Independent status-bar visibility. Artwork/lyrics on outer and inner screens can shrink the clock, join it to the date row with a side preference, or fade the time into the display-only battery/network cluster. Full-screen AOD retains the selected compact presentation; ordinary AOD uses native presentation. Status and capsule columns share their horizontal AOD/wake anchor. |
 | Inner screen | Portrait/landscape handling, fixed bounded landscape card widths, category defaults and an explicit combined artwork/lyrics page. Preview 12 layout changes await device acceptance. |
 | Delivery | Duo release identity, preview-compatible signing path, guarded official signing and the project's own update feed. Production key configuration remains a separate owner setup step. |
-| Settings | Export/import with legacy normalization; credentials stay on-device. Donation controls await owner-provided payment assets. |
+| Settings | Export/import with legacy normalization; credentials stay on-device. About → Support Duo shows the owner-provided WeChat code and exports the original image to the gallery. |
 
 ## Current acceptance scope
+
+### 0.2.5 final candidate with owner-provided support image
+
+0.2.5 contains the complete 0.2.4 fixes, including last-lockscreen state recovery
+when AMap retains an obsolete readiness signal. It also enables the existing
+support entry with the owner-provided WeChat image and an original-byte gallery
+save. No Alipay placeholder or third-party payment code is exposed. The archived
+0.2.4 is retained unchanged; this iteration's final acceptance is recorded in the
+[0.2.5 release record](releases/0.2.5.md).
 
 ### 0.2.4 card edges, backdrop sampling and settings
 

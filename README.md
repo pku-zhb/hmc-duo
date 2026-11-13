@@ -10,11 +10,15 @@ and [HyperMusicCover](https://github.com/zyl6932/HyperMusicCover).
 Device coverage is focused on the maintainer's foldable phone; compatibility with
 other devices is not established.
 
-Version 0.2.4 reorganizes settings by purpose, makes prerequisites visible and
-keeps existing configuration keys. Native swipe feathering now applies per card,
-including media/live cards and shelf-covered notifications. Clock destinations
+Version 0.2.5 is the final candidate for this iteration. It includes all 0.2.4
+fixes, including last-lockscreen state recovery after AMap, and adds the
+maintainer-provided WeChat support image with an original-image gallery export.
+The existing 0.2.4 archive remains unchanged. Settings are grouped by purpose,
+make prerequisites visible and retain existing configuration keys. Native swipe
+feathering now applies per card, including media/live cards and shelf-covered
+notifications. Clock destinations
 include inner portrait, and music glass can sample the local artwork backdrop
-while another module owns its recipe. See the [release record](docs/releases/0.2.4.md)
+while another module owns its recipe. See the [release record](docs/releases/0.2.5.md)
 for confirmed causes, host checks and the remaining owner-operated visual checks.
 
 ## Features
@@ -117,7 +121,8 @@ Each release lists only its changed behavior to verify.
 
 Thanks to Lewewe, zyl6932, puhboo, juren233, btm_m / HyperChanger and the contributors
 listed in the app's Credits. [AGPL-3.0](LICENSE), [NOTICE](NOTICE) and bundled
-licences preserve the upstream notices. Donation controls await this project's
-own payment assets; upstream payment destinations are not used.
+licences preserve the upstream notices. About → Support Duo displays the
+maintainer-provided WeChat support code and can save the original image to the
+gallery. No other payment channel is shown.
 
 Current ordinary APKs are verified and retained with `python3 tools/archive-apk.py` after committing and pushing. The tool retains `hmc-duo-<version>.apk` and imports the same bytes into the existing personal archive. Source identity is embedded and recorded in a local receipt.

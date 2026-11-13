@@ -35,13 +35,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.painterResource
@@ -215,7 +215,7 @@ private fun AboutContent(
     val density = LocalDensity.current
     var logoHeightDp by remember { mutableStateOf(300.dp) }
     val appName = stringResource(R.string.app_name)
-    val ctx = LocalContext.current
+    var showSupport by rememberSaveable { mutableStateOf(false) }
     // BuildConfig rather than the installed package's metadata: it is the same string for this
     // build, and it is not a call into the package manager on a composition that the pager can
     // trigger at any time.
@@ -312,9 +312,8 @@ private fun AboutContent(
                         )
                         ArrowPreference(
                             title = stringResource(R.string.about_support_duo),
-                            summary = stringResource(R.string.about_support_duo_pending),
-                            enabled = false,
-                            onClick = {},
+                            summary = stringResource(R.string.about_support_duo_summary),
+                            onClick = { showSupport = true },
                         )
                         ArrowPreference(
                             title = stringResource(R.string.license_agpl),
@@ -434,4 +433,5 @@ private fun AboutContent(
             }
         }
     }
+    if (showSupport) WeChatSupportDialog(onDismiss = { showSupport = false })
 }
