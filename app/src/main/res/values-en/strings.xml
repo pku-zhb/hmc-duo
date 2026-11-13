@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="rail_status_offset_y">Status cluster vertical offset</string>
-    <string name="rail_status_offset_y_summary">Move only time, battery and network status on the lock screen and AOD. Positive values move down. Slider: ±24 dp; tap the value for ±80 dp.</string>
+    <string name="rail_status_offset_y">Status area vertical offset</string>
+    <string name="rail_status_offset_y_summary">Moves only the time, battery and signal icons on the lock screen and AOD. Positive values move down. Slider: ±24 dp; tap the value for ±80 dp.</string>
     <string name="rail_status_offset_y_reset">Reset to default</string>
     <string name="rail_status_offset_y_range">−80 … 80 dp</string>
     <string name="rail_status_offset_y_input">Offset (dp)</string>
     <string name="rail_status_offset_y_invalid">Enter a number from −80 to 80.</string>
     <string name="amap_navigation_map">Lock-screen navigation map (Amap)</string>
-    <string name="amap_navigation_map_summary">Show the map during walking or cycling navigation. Turning it off keeps navigation notifications, live activity cards and the player.</string>
+    <string name="amap_navigation_map_summary">Show a navigation map on the lock screen while walking or cycling.</string>
     <string name="app_name">hmc-duo</string>
     <string name="about_source_code_summary">https://github.com/pku-zhb/hmc-duo</string>
     <string name="about_feedback">Feedback</string>
@@ -55,7 +55,7 @@
     <string name="blur_enabled">Background Blur</string>
     <string name="blur_enabled_summary">Blur behind the navigation bar and bottom bar</string>
     <string name="hide_launcher_icon">Hide Launcher Icon</string>
-    <string name="hide_launcher_icon_summary">Once hidden, dial *#*#95993926#*#* or open it from the LSPosed module list</string>
+    <string name="hide_launcher_icon_summary">Open again by entering *#*#95993926#*#* in the system dialer or from the LSPosed module list. Copy the code below.</string>
     <string name="language_default">Default</string>
     <string name="language_zh_cn">简体中文</string>
     <string name="language_en">English</string>
@@ -149,23 +149,26 @@
     <string name="lyrics_provider_got_it_wait">Got it (%1$d)</string>
     <string name="lyrics_trans">Show translations</string>
     <string name="lyrics_roma">Show romanization</string>
-    <string name="lyrics_groups">Gentle lyric flow</string>
-    <string name="lyrics_groups_summary">Keep up to four fast-moving lines together, giving every phrase a little more room to breathe.</string>
+    <string name="lyrics_groups">Group fast-moving lyrics</string>
+    <string name="lyrics_groups_summary">Keep fast-moving lyrics together in groups of up to four lines to reduce frequent movement.</string>
     <string name="lyrics_align">Lyric alignment</string>
     <string name="lyrics_align_left">Left</string>
     <string name="lyrics_align_center">Center</string>
     <string name="lyrics_align_right">Right</string>
     <string name="lyrics_hdr">HDR highlight (experimental)</string>
-    <string name="lyrics_hdr_summary">May drop frames</string>
+    <string name="lyrics_hdr_summary">Add a bright glow to the current lyric. This may reduce frame rate on some devices.</string>
     <string name="lyrics_keep_on">Keep the screen on for lyrics</string>
     <string name="lyrics_offline_cache">Keep lyrics for offline playback</string>
     <string name="lyrics_offline_cache_summary">Stores lyrics and online translations on this device. Useful on poor or unreliable internet connections. The cache will be updated if better lyrics are found. Turning this off will clear the cache.</string>
     <string name="lyrics_close_without_lyrics">Close cover when lyrics are unavailable</string>
     <string name="lyrics_close_without_lyrics_summary">When enabled, tapping the cover exits cover mode for tracks without lyrics.</string>
+    <!-- Retired UI text retained as a resource; not exposed by current settings. -->
     <string name="hide_fingerprint">Hide lock screen fingerprint icon</string>
+    <!-- Retired UI text retained as a resource; not exposed by current settings. -->
     <string name="fod_after_face">Remove fingerprint after face unlock</string>
     <string name="fod_after_face_summary">When the face is recognised and the lock screen stays, the fingerprint area disappears and can be touched like the rest of the screen, and notifications sink down. Swipe up to unlock. Needs face unlock set to stay on the lock screen</string>
     <!-- See the default strings for how the items map onto the module's fpavoid values. -->
+    <!-- Retired UI text retained as a resource; not exposed by current settings. -->
     <string name="fp_sink">Notification sink</string>
     <string name="fp_sink_system">Follow system</string>
     <string name="fp_sink_always">Always sink</string>
@@ -192,9 +195,9 @@
 
     <!-- The features page is a list of cards, each opening a page of its own. -->
     <string name="features_cover_title">Lock screen music cover</string>
-    <string name="features_cover_summary">Cover, clock, media card</string>
+    <string name="features_cover_summary">Artwork, clock and right rail layout</string>
     <string name="features_mini_title">Lock screen super island</string>
-    <string name="features_mini_summary">Music, notifications and capsule layout</string>
+    <string name="features_mini_summary">Capsules, lock screen notifications and startup state</string>
 
 
 
@@ -204,11 +207,12 @@
     <string name="mini_list_without_player">Open notifications without the player</string>
     <string name="mini_list_without_player_summary">Pulling up a notification island opens the list without the media player</string>
     <string name="mini_style">Island style</string>
-    <string name="mini_style_summary">How multiple islands share the row</string>
+    <string name="mini_style_summary">Choose the capsule style and swipe behavior.</string>
     <string name="mini_coloros_full_size">Full-size buttons</string>
     <string name="mini_coloros_full_size_summary">Torch and camera at 100% instead of 80%, with the pill as tall as they are and shorter to fit</string>
     <string name="mini_style_coloros">ColorOS · one at a time, swipe to switch</string>
-    <string name="mini_style_hyperos">HyperOS · big island with a small one beside it</string>
+    <string name="mini_style_hyperos">HyperOS · one capsule and multiple bubbles</string>
+    <!-- Retired UI text retained as a resource; not exposed by current settings. -->
     <string name="mini_widen">Widen when a shortcut is off</string>
     <string name="mini_widen_summary">Fills the space left by a disabled flashlight or camera shortcut</string>
     <string name="extras_lyric_effects">Lyric Effects</string>
@@ -264,12 +268,12 @@
     <string name="lyrics_online_source_hint">Source language (default: auto)</string>
     <string name="lyrics_online_target_hint">Target language (default: en)</string>
     <string name="extras_section">Lyrics settings</string>
-    <string name="extras_summary">Lyrics, translations, effects and lyric sources</string>
+    <string name="extras_summary">Lyric sources, pronunciation, translation and effects</string>
     <string name="features_tweaks_title">Extras</string>
-    <string name="features_tweaks_summary">System tweaks beyond the music lock screen</string>
+    <string name="features_tweaks_summary">Status bar, charging text and wallpaper depth</string>
     <string name="tweaks_lock_screen">Lock screen</string>
     <string name="depth_open">Remove depth effect limit</string>
-    <string name="depth_open_summary">Let any lock screen wallpaper use the depth effect, including third-party ones, and keep it when the clock covers the subject</string>
+    <string name="depth_open_summary">Allow depth effects on any lock screen wallpaper. Restart System UI and the lock screen editor after changing this.</string>
     <string name="depth_open_restart_hint">Restart System UI and the lock screen editor to apply this change.</string>
     <string name="lyrics_search_section">Lyric search</string>
     <string name="lyrics_search_mode">Search mode</string>
@@ -284,14 +288,14 @@
     <string name="mini_notification_compact_unavailable">Requires a low under-display fingerprint sensor. High or side-mounted sensors are not supported.</string>
     <string name="mini_notification_size">Notification pill size</string>
     <string name="mini_notification_drop">Notification pill vertical offset</string>
-    <string name="lyrics_on_device_transliteration">On-device transliteration</string>
-    <string name="lyrics_on_device_transliteration_summary">Download dictionaries to generate romanization on this device.</string>
+    <string name="lyrics_on_device_transliteration">Offline pronunciation</string>
+    <string name="lyrics_on_device_transliteration_summary">Generate lyric pronunciation offline using downloaded dictionaries.</string>
     <string name="lyrics_on_device_transliteration_downloading">Downloading Japanese dictionary…</string>
     <string name="lyrics_on_device_transliteration_downloading_progress">Downloading Japanese dictionary: %1$d%%</string>
     <string name="lyrics_on_device_transliteration_ready">Japanese dictionary downloaded.</string>
     <string name="lyrics_on_device_transliteration_failed">%1$s. Turn it on again to retry.</string>
-    <string name="lyrics_dictionaries">Dictionaries</string>
-    <string name="lyrics_dictionaries_summary">Manage downloaded dictionaries for local pronunciation.</string>
+    <string name="lyrics_dictionaries">Manage offline pronunciation dictionaries</string>
+    <string name="lyrics_dictionaries_summary">Download Japanese, Pinyin and other dictionaries to add pronunciation offline.</string>
     <string name="lyrics_dictionaries_empty">No dictionaries downloaded. Use the plus button to add one.</string>
     <string name="lyrics_dictionary_add">Add dictionary</string>
     <string name="lyrics_dictionary_japanese">Japanese</string>
@@ -314,16 +318,16 @@
     <string name="fp_sink_restart_hint">Restart System UI to apply this change.</string>
     <string name="fp_sink_restart_failed">Could not restart System UI. Check root access and try again.</string>
     <string name="credits_original_author">Original author of HyperMusicCover, who built the lock screen music interface and the module foundation this Enhanced version is based on.</string>
-    <string name="clock_size_summary">Used where the compact time/date row is inactive, up to 55% of the original clock size.</string>
+    <string name="clock_size_summary">Only used with “Shrink in place”, up to 55% of the original clock size.</string>
     <string name="lyrics_bpm_companion">Kaomoji companion</string>
-    <string name="lyrics_bpm_companion_summary">Show a beat-reactive kaomoji whenever neither the lyrics nor the big cover are on screen. The lyrics button searches for lyrics.</string>
+    <string name="lyrics_bpm_companion_summary">When artwork and lyrics are closed, show a character moving to the beat in the player view. Tap the lyrics button to search.</string>
     <string name="lyrics_bpm_players">Players for the beat companion</string>
     <string name="lyrics_bpm_players_summary">Choose which media players can drive the beat companion. Leave all unchecked to allow every player.</string>
     <string name="lyrics_bpm_players_all">All media players</string>
     <string name="lyrics_bpm_players_empty">No compatible media players were found yet. Start a player and reopen this menu.</string>
     <string name="lyrics_bpm_players_done">Done</string>
     <string name="media_customization_title">Media player customization</string>
-    <string name="media_customization_summary">Cover styles, backgrounds and motion for notification and expanded island players</string>
+    <string name="media_customization_summary">The notification and native lock screen player</string>
     <string name="media_scope_notification">Notification &amp; lock screen player</string>
     <string name="media_scope_island">Expanded Super Island player</string>
     <string name="media_style_cover">Cover style</string>
@@ -331,12 +335,12 @@
     <string name="media_style_circle">Circular</string>
     <string name="media_style_rotating">Rotating circle</string>
     <string name="media_style_hidden">Hidden</string>
-    <string name="media_scroll_text">Scrolling song information</string>
-    <string name="media_scroll_text_summary">Scroll long song titles and artist names. Scrolling pauses on the always-on display.</string>
+    <string name="media_scroll_text">Scroll long song and artist names</string>
+    <string name="media_scroll_text_summary">Scroll long song or artist names horizontally. Scrolling pauses on AOD.</string>
     <string name="media_hide_source">Hide source app icon</string>
     <string name="media_hide_device">Hide output device button</string>
     <string name="media_background_style">Player background</string>
-    <string name="media_native_material_summary">With default background and motion and the system theme, the music card keeps the current system or module material. Artwork, lyrics and controls remain independent. For a custom background, turn off other modules’ music-material control.</string>
+    <string name="media_native_material_summary">Default background and motion with the system theme retain the system or other module material. Turn off other music material overrides before choosing a custom background.</string>
     <string name="media_background_mosaic">Cover collage</string>
     <string name="media_background_blur">Blurred cover</string>
     <string name="media_background_radial">Radial gradient</string>
@@ -367,7 +371,7 @@
     <string name="cover_on_tap_summary">Playing music shows only the player over your wallpaper. Tap the artwork to open the cover.</string>
     <string name="media_appearance_tab">Appearance</string>
     <string name="cover_wallpaper_dim">Wallpaper dimming</string>
-    <string name="cover_wallpaper_dim_summary">Darken the wallpaper while the floating cover or lyrics are displayed.</string>
+    <string name="cover_wallpaper_dim_summary">0% adds no dimming. Higher values darken the background behind artwork or lyrics.</string>
     <string name="mini_media_collapsed">Keep music artwork collapsed</string>
     <string name="mini_media_collapsed_summary">With the lock screen island enabled, music starts as a pill. Tap or swipe up to open it. Your selected cover or lyrics view stays the same.</string>
     <string name="lyrics_depth_blur">Inactive lyrics blur</string>
@@ -386,12 +390,12 @@
     <string name="about_releases">Releases</string>
     <string name="about_duo_summary">Independent lock-screen music, lyrics and layout for foldable displays.</string>
     <string name="duo_vertical_text">Vertical text</string>
-    <string name="duo_vertical_text_summary">Upright CJK, sideways words and horizontal short numbers. Open the card to read longer content.</string>
+    <string name="duo_vertical_text_summary">Text layout: upright CJK characters, sideways English and horizontal short numbers. Expand to read longer text horizontally.</string>
     <string name="fold_keep_last">Keep last lock-screen state</string>
-    <string name="fold_keep_last_summary">Remember expanded content and the music page. Custom initial choices below are disabled while this is on.</string>
-    <string name="fold_collapsed_categories">Collapse on lock (select any)</string>
-    <string name="fold_landscape_collapsed">Collapse in inner landscape (select any)</string>
-    <string name="fold_collapsed_categories_summary">Selected categories start in capsules. Select none to expand everything, or all to collapse everything.</string>
+    <string name="fold_keep_last_summary">Remember the last expanded content and music view. Turn off to customize the initial state.</string>
+    <string name="fold_collapsed_categories">Collapse on lock screen entry</string>
+    <string name="fold_landscape_collapsed">Collapse in inner landscape</string>
+    <string name="fold_collapsed_categories_summary">Selected categories collapse into capsules. Select none to expand everything, or all to collapse everything.</string>
     <string name="fold_live_cards">Live cards</string>
     <string name="fold_notifications">Notifications</string>
     <string name="duo_notification_section">Lock-screen notifications</string>
@@ -399,21 +403,21 @@
     <string name="duo_notification_show_all_summary">Show notifications hidden by app lock-screen rules. System privacy settings still apply.</string>
     <string name="duo_notification_retain">Keep notifications on the lock screen</string>
     <string name="duo_notification_retain_summary">Keep existing notifications visible after unlocking and locking again, until dismissed.</string>
-    <string name="duo_notification_other_module">Disable the corresponding HyperLight options when using these features in Duo.</string>
-    <string name="cover_style_content_area">Artwork uses the main content area, leaving the date and shortcut rail clear.</string>
+    <string name="duo_notification_other_module">If another module also manages lock screen notifications, turn off its matching features.</string>
+    <string name="cover_style_content_area">Full-screen artwork blends into the backdrop; square artwork stays in a separate card.</string>
     <string name="cover_background_mode">Lock-screen background</string>
-    <string name="cover_background_mode_summary">Choose the backdrop independently of the foreground cover layout.</string>
+    <string name="cover_background_mode_summary">Only changes the backdrop behind artwork and lyrics.</string>
     <string name="cover_background_native">System wallpaper</string>
     <string name="cover_background_artwork">Artwork</string>
     <string name="cover_background_dynamic">Animated artwork colours</string>
     <string name="cover_background_blur">Background blur</string>
     <string name="clock_artwork_destination">Time with artwork or lyrics</string>
-    <string name="clock_artwork_destination_summary">Applies to the outer screen and inner landscape. Full-screen AOD keeps the selected layout.</string>
+    <string name="clock_artwork_destination_summary">Used with artwork, lyrics or the navigation map on the outer and inner displays, in portrait or landscape. Full-screen AOD keeps the selected position.</string>
     <string name="clock_artwork_shrink">Shrink in place</string>
     <string name="clock_artwork_date">Join the date row</string>
-    <string name="clock_artwork_status">Show in the status cluster</string>
+    <string name="clock_artwork_status">Use the time in the upper-right status area</string>
     <string name="clock_artwork_row">Time beside the date</string>
-    <string name="clock_artwork_row_summary">On the outer screen and inner landscape, cover and lyrics shrink the clock into the date row. Full-screen AOD keeps this row.</string>
+    <string name="clock_artwork_row_summary">Move the artwork or lyrics clock into the date row on either display and orientation. Full-screen AOD keeps this layout.</string>
     <string name="clock_artwork_row_side">Time position</string>
     <string name="clock_artwork_row_left">Left of the date</string>
     <string name="clock_artwork_row_right">Right of the date</string>
@@ -423,25 +427,26 @@
     <string name="about_support_duo_pending">WeChat and Alipay details will be added by the maintainer.</string>
     <string name="cover_fold_columns">Landscape cover and lyrics</string>
     <string name="lock_right_rail">Vertical island on the right</string>
-    <string name="lock_right_rail_summary">Preview: arrange capsules, flashlight and camera in a fixed right-hand column, with time, battery and network status above. Works without MiDuo.</string>
-    <string name="lock_reflow_content">Reserve space for the right column</string>
-    <string name="lock_reflow_content_summary">Preview: reflow the native clock, date and notifications into the remaining area and center them there.</string>
+    <string name="lock_right_rail_summary">Place capsules, flashlight and camera on the right, with status information above.</string>
+    <string name="lock_reflow_content">Keep lock screen content clear of the rail</string>
+    <string name="lock_reflow_content_summary">Center the date, clock and notifications in the space left of the right rail.</string>
     <string name="lock_follow_native_glass">Follow native notification glass</string>
     <string name="lock_follow_native_glass_summary">Preview: use the native player’s final glass parameters for island and shortcut backgrounds, including changes made by HyperLight.</string>
-    <string name="cover_fold_columns_summary">Preview: on a wide inner display, show artwork and playback controls on the left and reflow lyrics on the right. Returns to the regular layout when folded or in portrait.</string>
+    <string name="cover_fold_columns_summary">On a wide inner display, place artwork and controls on the left and lyrics on the right. Portrait returns to one column.</string>
     <string name="fold_material_section">Material</string>
     <string name="fold_material">Island and shortcut material</string>
-    <string name="fold_material_summary">Only capsules and shortcut backgrounds follow the native player’s current final material. The player is not modified.</string>
-    <string name="fold_material_native">Native Soft Glass</string>
-    <string name="fold_material_follow">Follow final system material</string>
+    <string name="fold_material_summary">Only affects capsules and shortcuts. Use the original system material or match the current player material; the player is unchanged.</string>
+    <string name="fold_material_native">Independent native material</string>
+    <string name="fold_material_follow">Match current player material</string>
     <string name="lock_hide_charging_hint">Hide lock-screen charging hint</string>
     <string name="lock_hide_charging_hint_summary">Hide the charging status text at the bottom of the lock screen.</string>
     <string name="fold_updates_paused">Updates are paused</string>
     <string name="credits_fold_upstream">Upstream Enhanced fork and its maintainer. This Fold version builds on their artwork, lyrics, lock-screen and AOD work.</string>
     <string name="credits_group_upstream">Upstream project</string>
+    <!-- Historical label, not a fixed runtime material contract. -->
     <string name="fold_island_glass_fixed">Soft Glass</string>
     <string name="fold_layout_section">Layout</string>
-    <string name="fold_force_notification_floor">Force notifications to the bottom</string>
+    <string name="fold_force_notification_floor">Extend notifications to the bottom</string>
     <string name="fold_startup_mode">Initial lock-screen layout</string>
     <string name="fold_startup_mode_summary">The layout to use when entering a new lock-screen session.</string>
     <string name="fold_start_collapsed">Collapse everything into capsules</string>
@@ -452,4 +457,15 @@
     <string name="fold_music_artwork">Artwork</string>
     <string name="fold_music_lyrics">Lyrics</string>
     <string name="fold_notice_back">Back</string>
+    <string name="cover_display_section">Cover and background</string>
+    <string name="rail_layout_section">Right rail and lock screen layout</string>
+    <string name="lock_cleanup_section">Lock screen cleanup</string>
+    <string name="wallpaper_depth_section">Wallpaper depth</string>
+    <string name="fold_force_notification_floor_summary">Use the bottom notification space after shortcuts move to the right rail.</string>
+    <string name="fold_startup_music_view_summary">Used when music is not collapsed into a capsule.</string>
+    <string name="media_scope_note">These controls affect the notification and native lock screen player. Set capsule and shortcut materials under Lock screen islands.</string>
+    <string name="media_background_amount_summary">Higher levels blur the artwork background more.</string>
+    <string name="media_background_amount_value">Level %1$d</string>
+    <string name="settings_copy_launcher_code">Copy dialer code</string>
+    <string name="settings_launcher_code_copied">Dialer code copied</string>
 </resources>
