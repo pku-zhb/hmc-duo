@@ -1,30 +1,20 @@
-# HC launcher icon family
+# HC function icon family
 
-HMC Duo shares hc-lite's orange device family, derived from HyperChanger's
-launcher motif: `ColdP/HyperChanger`,
-`app/src/main/res/drawable-nodpi/hc_home_launcher.png`.
-The upstream AGPL-3.0 attribution and this project's existing notices remain in
-place. The native vectors are independently redrawn; the main color retains the
-original HC solid orange `#FF7700`, with a `#FFFDF9` background.
+The common solid orange `#EA6500` derives from HyperChanger's `#FF7700`,
+slightly darkened to keep small white function glyphs distinct.
+The function glyphs are independently drawn native vectors: a musical note and
+album outline for HMC Duo, transparent overlapping glass panes and a reflection
+spark for hc-lite, and an open wrench for miduo-compat. Each mark uses one large
+recognizable function rather than a miniature device silhouette. Existing
+upstream attribution and licences remain unchanged.
 
-The rounded phone and its simple earpiece/home marks establish the family. Duo's
-large play control and separate side capsule distinguish its music/lockscreen
-role from Lite's two adjustment tracks and three-panel silhouette. Neither mark
-uses letters, clock text, gradients or glow.
+The adaptive foreground uses a 108 dp viewport and the common warm white
+`#FFFDF9`. Round icons share its layers, and monochrome vectors retain alpha
+cutouts for native themed icons. The original resources remain in their owning
+project; no raster, screenshot, font or third-party asset is bundled.
 
-- `drawable/duo_launcher_foreground.xml` owns the transparent 108 dp layer.
-- `drawable/duo_launcher_monochrome.xml` uses transparent control cutouts so the
-  same structure remains visible with system themed-icon colors.
-- `drawable/duo_launcher_artwork.xml` renders the same vector for the existing
-  About-page resource ID and its existing rounded crop.
-- Launcher and round-icon resources share the same layers; Android 13 and newer
-  select the monochrome-enabled adaptive resource.
+The compatibility module remains headless. Its icon is displayed by Android and
+LSPosed without adding an activity, launcher intent or device operation. HMC's
+About image and Lite's legacy drawable use the same glyph as their launcher.
 
-The retired raster artwork and unused legacy launcher background/foreground are
-retained in the local development archive. They are absent from active APK
-resources. The About page continues using `painterResource`, which supports its
-replacement VectorDrawable without changing the UI code.
-
-All foreground geometry fits inside the centered 66 dp circular safe zone.
-Host rendering checks cover circular/superellipse masks and 48 px readability;
-device-specific launcher masks and themed colors remain native behavior.
+Host vector/XML and mask checks are separate from device launcher acceptance.
