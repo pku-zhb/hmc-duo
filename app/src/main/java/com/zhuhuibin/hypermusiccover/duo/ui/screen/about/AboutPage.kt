@@ -323,6 +323,11 @@ private fun AboutContent(
                             title = stringResource(R.string.about_dependencies),
                             onClick = openLicensePage,
                         )
+                        ArrowPreference(
+                            title = "hc-lite",
+                            summary = stringResource(R.string.about_friend_link),
+                            onClick = { uriHandler.openUri("https://github.com/pku-zhb/hc-lite") },
+                        )
                         // Under the licence list, because it answers the question that one
                         // raises: the licences say what this build is legally made of, the
                         // credits say whose work it was learnt from.

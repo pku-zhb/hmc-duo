@@ -6,14 +6,14 @@
     <string name="rail_status_offset_y_range">−80 … 80 dp</string>
     <string name="rail_status_offset_y_input">偏移（dp）</string>
     <string name="rail_status_offset_y_invalid">请输入 −80 到 80 之间的数值。</string>
-    <string name="amap_navigation_map">锁屏导航地图（高德）</string>
+    <string name="amap_navigation_map">锁屏导航地图</string>
     <string name="amap_navigation_map_summary">步行或骑行时，在锁屏显示导航地图。</string>
     <string name="lock_right_rail">右侧纵向胶囊</string>
     <string name="lock_right_rail_summary">将胶囊、手电筒与相机放到右侧，上方显示状态信息。</string>
     <string name="lock_reflow_content">锁屏内容避让右侧栏</string>
     <string name="lock_reflow_content_summary">日期、时钟和通知在左侧剩余空间内居中，避开右侧快捷栏。</string>
     <string name="lock_follow_native_glass">跟随原生通知玻璃</string>
-    <string name="lock_follow_native_glass_summary">预览功能：胶囊和快捷按钮底板跟随原生播放器最终使用的玻璃参数，包括 HyperLight 的调整。</string>
+    <string name="lock_follow_native_glass_summary">胶囊和快捷按钮底板跟随原生播放器最终使用的玻璃参数，包括其他模块的调整。</string>
     <string name="cover_fold_columns">内屏横屏双栏</string>
     <string name="cover_fold_columns_summary">内屏横屏且空间足够时，左侧显示封面与播放控制，右侧显示歌词；竖屏恢复单栏。</string>
     <string name="app_name">hmc-duo</string>
@@ -62,7 +62,7 @@
     <string name="blur_enabled">背景模糊</string>
     <string name="blur_enabled_summary">启用导航栏和底栏的背景模糊效果</string>
     <string name="hide_launcher_icon">隐藏桌面图标</string>
-    <string name="hide_launcher_icon_summary">隐藏后可在系统电话的拨号键盘输入 *#*#95993926#*#*，或从 LSPosed 模块列表打开；下方可复制暗码。</string>
+    <string name="hide_launcher_icon_summary">隐藏后可在系统拨号键盘输入 *#*#95993926#*#*，或从模块管理器打开；下方可复制暗码。</string>
     <string name="language_default">默认</string>
     <string name="language_zh_cn">简体中文</string>
     <string name="language_en">English</string>
@@ -118,7 +118,7 @@
     <string name="tab_features">功能</string>
     <string name="home_status_active">模块已激活</string>
     <string name="home_status_inactive">模块未激活</string>
-    <string name="home_status_inactive_hint">请在 LSPosed 中启用并重启系统界面</string>
+    <string name="home_status_inactive_hint">请在模块管理器中启用并重启系统界面</string>
     <string name="home_device_name">设备名称</string>
     <string name="home_device_model">设备型号</string>
     <string name="home_hyperos_version">HyperOS 版本</string>
@@ -137,12 +137,12 @@
     <!-- The lyric source row. Its title names where the words on the lock screen came from, or
          says there is none; only when neither provider module is on the phone does it warn. -->
     <string name="lyrics_provider_title_missing">未安装歌词模块</string>
-    <string name="lyrics_provider_missing">显示歌词可能不准或缺失；如未正确安装 LyricInfo 或Lyricon带来的问题请勿向开发者反馈</string>
+    <string name="lyrics_provider_missing">歌词模块尚未就绪，部分歌曲可能没有歌词；请确认模块及播放器作用域已启用。</string>
     <string name="lyrics_provider_ready">作用域外的应用仍存在匹配失败可能</string>
     <string name="lyrics_source">取词方式：%1$s</string>
     <string name="lyrics_source_none">无歌词来源</string>
     <string name="lyrics_source_session">播放器提供</string>
-    <string name="lyrics_source_lyricon">Lyricon 插件</string>
+    <string name="lyrics_source_lyricon">歌词模块</string>
     <string name="lyrics_source_local">歌曲文件</string>
     <string name="lyrics_source_amll">AMLL 数据库</string>
     <string name="lyrics_source_ttmlhub">AMLL TTML 库</string>
@@ -417,14 +417,14 @@
     <string name="fold_start_collapsed">全部收到胶囊</string>
     <string name="fold_start_expanded">通知和音乐全部展开</string>
     <string name="fold_start_music_only">仅展开音乐</string>
-    <string name="fold_startup_music_view">音乐默认界面</string>
+    <string name="fold_startup_music_view">展开播放器时显示</string>
     <string name="fold_music_player">播放器</string>
     <string name="fold_music_artwork">封面</string>
     <string name="fold_music_lyrics">歌词</string>
     <string name="fold_notice_back">返回</string>
     <string name="fold_landscape_startup_mode">内屏横屏初始状态</string>
     <string name="fold_landscape_startup_summary">首次进入内屏横屏时独立应用；熄屏再唤醒保留当前状态。</string>
-    <string name="fold_landscape_music_view">内屏横屏音乐界面</string>
+    <string name="fold_landscape_music_view">横屏展开播放器时显示</string>
     <string name="fold_music_artwork_and_lyrics">封面和歌词</string>
     <string name="about_maintainer">维护者</string>
     <string name="about_releases">版本发布</string>
@@ -433,8 +433,8 @@
     <string name="duo_vertical_text_summary">排版说明：汉字直立、英文侧转、短数字横排；展开后横向阅读长内容。</string>
     <string name="fold_keep_last">保持上次锁屏状态</string>
     <string name="fold_keep_last_summary">记住上次的展开状态与音乐界面；关闭后可自定义初始状态。</string>
-    <string name="fold_collapsed_categories">锁屏时收进胶囊</string>
-    <string name="fold_landscape_collapsed">内屏横屏时收进胶囊</string>
+    <string name="fold_collapsed_categories">外屏与内屏竖屏</string>
+    <string name="fold_landscape_collapsed">内屏横屏</string>
     <string name="fold_collapsed_categories_summary">勾选的类别收进胶囊；全不选则全部展开，全选则全部收起。</string>
     <string name="fold_live_cards">实时卡片</string>
     <string name="fold_notifications">普通通知</string>
@@ -469,7 +469,7 @@
     <string name="lock_cleanup_section">锁屏界面精简</string>
     <string name="wallpaper_depth_section">壁纸景深</string>
     <string name="fold_force_notification_floor_summary">快捷按钮移至右侧后，让通知用满底部空间。</string>
-    <string name="fold_startup_music_view_summary">仅在音乐未收进胶囊时使用。</string>
+    <string name="fold_startup_music_view_summary">点击胶囊与上滑展开共用此设置；首次锁屏优先沿用记忆状态。</string>
     <string name="media_scope_note">本页调整通知栏与原生锁屏播放器；胶囊和快捷按钮材质在“锁屏超级岛”中设置。</string>
     <string name="media_background_amount_summary">数值越大，封面背景越模糊。</string>
     <string name="media_background_amount_value">%1$d 级</string>
@@ -482,4 +482,14 @@
     <string name="support_image_saving">保存中…</string>
     <string name="support_image_saved">已保存到相册的 hmc-duo 文件夹</string>
     <string name="support_image_save_failed">保存失败，请重试。</string>
+    <string name="about_friend_link">友情链接</string>
+    <string name="media_height_portrait">播放器高度 · 竖屏</string>
+    <string name="media_height_landscape">播放器高度 · 横屏</string>
+    <string name="media_height_summary" formatted="false">仅压缩留白；100% 跟随系统</string>
+    <string name="credits_hyperlight_behavior">锁屏通知交互的行为参考；未获源码授权，不分发其反编译源码或资源。</string>
+    <string name="credits_libxposed">模块接口及与模块管理器的通信。</string>
+    <string name="license_bundled_title">随应用提供的许可</string>
+    <string name="license_loading">正在加载许可文本</string>
+    <string name="license_load_failed">许可文本加载失败，请重新进入本页</string>
+    <string name="license_notices">版权与来源声明</string>
 </resources>

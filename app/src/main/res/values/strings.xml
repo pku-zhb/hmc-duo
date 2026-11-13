@@ -6,7 +6,7 @@
     <string name="rail_status_offset_y_range">−80 … 80 dp</string>
     <string name="rail_status_offset_y_input">Offset (dp)</string>
     <string name="rail_status_offset_y_invalid">Enter a number from −80 to 80.</string>
-    <string name="amap_navigation_map">Lock-screen navigation map (Amap)</string>
+    <string name="amap_navigation_map">Lock-screen navigation map</string>
     <string name="amap_navigation_map_summary">Show a navigation map on the lock screen while walking or cycling.</string>
     <string name="app_name">hmc-duo</string>
     <string name="about_source_code_summary">https://github.com/pku-zhb/hmc-duo</string>
@@ -24,7 +24,7 @@
     <string name="lock_reflow_content">Keep lock screen content clear of the rail</string>
     <string name="lock_reflow_content_summary">Center the date, clock and notifications in the space left of the right rail.</string>
     <string name="lock_follow_native_glass">Follow native notification glass</string>
-    <string name="lock_follow_native_glass_summary">Preview: use the native player’s final glass parameters for island and shortcut backgrounds, including changes made by HyperLight.</string>
+    <string name="lock_follow_native_glass_summary">Island and shortcut backgrounds follow the native player’s final glass parameters, including changes made by other modules.</string>
     <string name="cover_fold_columns_summary">On a wide inner display, place artwork and controls on the left and lyrics on the right. Portrait returns to one column.</string>
     <string name="cover_flip">Flip the cover on track change</string>
     <string name="cover_flip_summary">When the track changes, by a skip or on its own, the big cover art turns over to the new art like the media card does</string>
@@ -62,7 +62,7 @@
     <string name="blur_enabled">Background Blur</string>
     <string name="blur_enabled_summary">Blur behind the navigation bar and bottom bar</string>
     <string name="hide_launcher_icon">Hide Launcher Icon</string>
-    <string name="hide_launcher_icon_summary">Open again by entering *#*#95993926#*#* in the system dialer or from the LSPosed module list. Copy the code below.</string>
+    <string name="hide_launcher_icon_summary">Open again by entering *#*#95993926#*#* in the system dialer or from your module manager. Copy the code below.</string>
     <string name="language_default">Default</string>
     <string name="language_zh_cn">简体中文</string>
     <string name="language_en">English</string>
@@ -118,7 +118,7 @@
     <string name="tab_features">Features</string>
     <string name="home_status_active">Module active</string>
     <string name="home_status_inactive">Module not active</string>
-    <string name="home_status_inactive_hint">Enable it in LSPosed and restart System UI</string>
+    <string name="home_status_inactive_hint">Enable this module in your module manager and restart System UI</string>
     <string name="home_device_name">Device name</string>
     <string name="home_device_model">Model</string>
     <string name="home_hyperos_version">HyperOS</string>
@@ -131,12 +131,12 @@
     <string name="lyrics_two_finger_tap">Two-finger tap the cover to switch to the lyrics</string>
     <!-- Three states rather than two; see the default strings for what they mean. -->
     <string name="lyrics_provider_title_missing">No lyrics provider module installed</string>
-    <string name="lyrics_provider_missing">Lyrics may be wrong or missing. Please do not report problems caused by installing LyricInfo or Lyricon incorrectly.</string>
+    <string name="lyrics_provider_missing">The lyrics module is not ready; some songs may have no lyrics. Check that the module and player scope are enabled.</string>
     <string name="lyrics_provider_ready">Lyrics may still be missing for apps outside its scope.</string>
     <string name="lyrics_source">Lyrics from: %1$s</string>
     <string name="lyrics_source_none">No lyric source</string>
     <string name="lyrics_source_session">Player</string>
-    <string name="lyrics_source_lyricon">Lyricon plugin</string>
+    <string name="lyrics_source_lyricon">Lyrics module</string>
     <string name="lyrics_source_local">Song file</string>
     <string name="lyrics_source_amll">AMLL Database</string>
     <string name="lyrics_source_ttmlhub">AMLL TTML Hub</string>
@@ -409,14 +409,14 @@
     <string name="fold_start_collapsed">Collapse everything into capsules</string>
     <string name="fold_start_expanded">Expand notifications and music</string>
     <string name="fold_start_music_only">Expand music only</string>
-    <string name="fold_startup_music_view">Initial music view</string>
+    <string name="fold_startup_music_view">Show when expanding the player</string>
     <string name="fold_music_player">Player</string>
     <string name="fold_music_artwork">Artwork</string>
     <string name="fold_music_lyrics">Lyrics</string>
     <string name="fold_notice_back">Back</string>
     <string name="fold_landscape_startup_mode">Inner landscape initial state</string>
     <string name="fold_landscape_startup_summary">Applied on first entering inner landscape; AOD wake retains current choices.</string>
-    <string name="fold_landscape_music_view">Inner landscape music view</string>
+    <string name="fold_landscape_music_view">Show when expanding in landscape</string>
     <string name="fold_music_artwork_and_lyrics">Artwork and lyrics</string>
     <string name="about_maintainer">Maintainer</string>
     <string name="about_releases">Releases</string>
@@ -425,8 +425,8 @@
     <string name="duo_vertical_text_summary">Text layout: upright CJK characters, sideways English and horizontal short numbers. Expand to read longer text horizontally.</string>
     <string name="fold_keep_last">Keep last lock-screen state</string>
     <string name="fold_keep_last_summary">Remember the last expanded content and music view. Turn off to customize the initial state.</string>
-    <string name="fold_collapsed_categories">Collapse on lock screen entry</string>
-    <string name="fold_landscape_collapsed">Collapse in inner landscape</string>
+    <string name="fold_collapsed_categories">Outer display and inner portrait</string>
+    <string name="fold_landscape_collapsed">Inner landscape</string>
     <string name="fold_collapsed_categories_summary">Selected categories collapse into capsules. Select none to expand everything, or all to collapse everything.</string>
     <string name="fold_live_cards">Live cards</string>
     <string name="fold_notifications">Notifications</string>
@@ -461,7 +461,7 @@
     <string name="lock_cleanup_section">Lock screen cleanup</string>
     <string name="wallpaper_depth_section">Wallpaper depth</string>
     <string name="fold_force_notification_floor_summary">Use the bottom notification space after shortcuts move to the right rail.</string>
-    <string name="fold_startup_music_view_summary">Used when music is not collapsed into a capsule.</string>
+    <string name="fold_startup_music_view_summary">Tapping and swiping to expand use this setting. The first lock-screen entry respects the remembered state.</string>
     <string name="media_scope_note">These controls affect the notification and native lock screen player. Set capsule and shortcut materials under Lock screen islands.</string>
     <string name="media_background_amount_summary">Higher levels blur the artwork background more.</string>
     <string name="media_background_amount_value">Level %1$d</string>
@@ -474,4 +474,14 @@
     <string name="support_image_saving">Saving…</string>
     <string name="support_image_saved">Saved to the hmc-duo photo album.</string>
     <string name="support_image_save_failed">Could not save the image. Please try again.</string>
+    <string name="about_friend_link">Friends</string>
+    <string name="media_height_portrait">Player height · Portrait</string>
+    <string name="media_height_landscape">Player height · Landscape</string>
+    <string name="media_height_summary" formatted="false">Compress empty space only; 100% follows the system</string>
+    <string name="credits_hyperlight_behavior">Behavioral reference for lock-screen notifications. Source authorization has not been granted; decompiled source and assets are not distributed.</string>
+    <string name="credits_libxposed">Module API and communication with the module manager.</string>
+    <string name="license_bundled_title">Bundled license texts</string>
+    <string name="license_loading">Loading license text</string>
+    <string name="license_load_failed">Could not load the license text. Reopen this page to retry.</string>
+    <string name="license_notices">Copyright and source notices</string>
 </resources>
