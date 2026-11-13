@@ -10,9 +10,13 @@ and [HyperMusicCover](https://github.com/zyl6932/HyperMusicCover).
 Device coverage is focused on the maintainer's foldable phone; compatibility with
 other devices is not established.
 
-Version 0.2.4 reorganizes settings by purpose, makes prerequisites visible and
-keeps existing configuration keys. Native swipe feathering now applies per card,
-including media/live cards and shelf-covered notifications. Clock destinations
+Version 0.2.5 is the final candidate for this iteration. It includes all 0.2.4
+fixes, including last-lockscreen state recovery after AMap, and adds the
+maintainer-provided WeChat support image with an original-image gallery export.
+The existing 0.2.4 archive remains unchanged. Settings are grouped by purpose,
+make prerequisites visible and retain existing configuration keys. Native swipe
+feathering now applies per card, including media/live cards and shelf-covered
+notifications. Clock destinations
 include inner portrait, and music glass can sample the local artwork backdrop
 while another module owns its recipe. See the release record
 for confirmed causes, host checks and the remaining manually operated visual checks.
@@ -119,7 +123,8 @@ Each release lists only its changed behavior to verify.
 
 Thanks to Lewewe, zyl6932, puhboo, juren233, btm_m / HyperChanger and the contributors
 listed in the app's Credits. [AGPL-3.0](LICENSE), [NOTICE](NOTICE) and bundled
-licences preserve the upstream notices. Donation controls await this project's
-own payment assets; upstream payment destinations are not used.
+licences preserve the upstream notices. About → Support Duo displays the
+maintainer-provided WeChat support code and can save the original image to the
+gallery. No other payment channel is shown.
 
 To retain a verified APK, run `python3 tools/archive-apk.py` from a clean, pushed revision. It stores `hmc-duo-<version>.apk` and a receipt under `releases/local/` and copies the same bytes into `$APK_ARCHIVE_DIR` (default `./apk-archive`, which must exist; or pass `--archive-dir`). Source identity is embedded in the APK and recorded in the receipt.

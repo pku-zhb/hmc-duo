@@ -424,7 +424,6 @@
     <string name="lock_hide_status_bar">Hide lock-screen status bar</string>
     <string name="lock_hide_status_bar_summary">Hide the top system status bar on the lock screen. The home screen and control centre keep their normal status bars.</string>
     <string name="about_support_duo">Support Duo</string>
-    <string name="about_support_duo_pending">WeChat and Alipay details will be added by the maintainer.</string>
     <string name="cover_fold_columns">Landscape cover and lyrics</string>
     <string name="lock_right_rail">Vertical island on the right</string>
     <string name="lock_right_rail_summary">Place capsules, flashlight and camera on the right, with status information above.</string>
@@ -468,4 +467,11 @@
     <string name="media_background_amount_value">Level %1$d</string>
     <string name="settings_copy_launcher_code">Copy dialer code</string>
     <string name="settings_launcher_code_copied">Dialer code copied</string>
+    <string name="about_support_duo_summary">View or save the WeChat support code</string>
+    <string name="support_wechat_title">WeChat support code</string>
+    <string name="support_wechat_hint">Save the original image, then choose it from the album in WeChat Scan.</string>
+    <string name="support_save_image">Save image</string>
+    <string name="support_image_saving">Saving…</string>
+    <string name="support_image_saved">Saved to the hmc-duo photo album.</string>
+    <string name="support_image_save_failed">Could not save the image. Please try again.</string>
 </resources>

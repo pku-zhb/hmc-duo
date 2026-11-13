@@ -464,7 +464,6 @@
     <string name="lock_hide_status_bar">隐藏锁屏系统状态栏</string>
     <string name="lock_hide_status_bar_summary">隐藏锁屏顶部的系统状态栏，桌面与控制中心保持系统显示。</string>
     <string name="about_support_duo">支持 Duo</string>
-    <string name="about_support_duo_pending">维护者稍后添加微信与支付宝收款方式。</string>
     <string name="cover_display_section">封面与背景显示</string>
     <string name="rail_layout_section">右侧快捷栏与锁屏布局</string>
     <string name="lock_cleanup_section">锁屏界面精简</string>
@@ -476,4 +475,11 @@
     <string name="media_background_amount_value">%1$d 级</string>
     <string name="settings_copy_launcher_code">复制打开暗码</string>
     <string name="settings_launcher_code_copied">已复制打开暗码</string>
+    <string name="about_support_duo_summary">查看或保存微信赞赏码</string>
+    <string name="support_wechat_title">微信赞赏码</string>
+    <string name="support_wechat_hint">可保存原图后，在微信“扫一扫”中从相册识别。</string>
+    <string name="support_save_image">保存到相册</string>
+    <string name="support_image_saving">保存中…</string>
+    <string name="support_image_saved">已保存到相册的 hmc-duo 文件夹</string>
+    <string name="support_image_save_failed">保存失败，请重试。</string>
 </resources>
