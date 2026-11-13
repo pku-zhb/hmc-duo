@@ -127,7 +127,7 @@ final class LockScreenRailRuntime {
         else RailStatusRuntime.hide();
         if (next != null && Main.sReflowLockContent) {
             cacheNotificationFloor();
-            int id = root.getResources().getIdentifier("notification_stack_scroller", "id", "com.android.systemui");
+            int id = ResourceIds.id(root.getResources(), "notification_stack_scroller");
             View stack = id == 0 ? null : root.findViewById(id);
             // Keep the OEM clock's drawing canvas at its native width. Its glass renderer
             // hard-clips to that canvas even with clipChildren disabled. Move the measured
@@ -168,7 +168,7 @@ final class LockScreenRailRuntime {
     static boolean holdGeometry() {
         if (root == null) return false;
         if (keyguardCanvas == null || !keyguardCanvas.isAttachedToWindow()) {
-            int id = root.getResources().getIdentifier("keyguard_root_view", "id", "com.android.systemui");
+            int id = ResourceIds.id(root.getResources(), "keyguard_root_view");
             keyguardCanvas = id == 0 ? null : root.findViewById(id);
         }
         float scale = keyguardCanvas == null ? 1f : keyguardCanvas.getScaleX();
