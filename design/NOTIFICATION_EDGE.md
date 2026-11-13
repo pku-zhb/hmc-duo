@@ -1,34 +1,98 @@
-# Native notification edge ownership
+# Native-card horizontal feathering
 
-The previous edge treated only positive row translation and placed a blur band at
-its nominal stack width. Its alpha was `1 - smoothstep(x) * swipeStrength`, so a
-small swipe retained nonzero alpha at the original hard cut. It also ignored the
-horizontal native/parent clip and kept pixels beyond the feather band. This can
-leave a hard boundary with blur attached, and differ between directions or native
-expanded/offscreen rendering.
+## 0.2.4: isolate the card, not a strip of the combined stack
 
-The edge now uses a symmetric premultiplied-alpha feather without additional blur.
-Absolute translation controls band width (at most 24 dp, capped at 192 px), never
-terminal opacity: every nonzero swipe reaches alpha zero at its clipping edge.
-Positive motion treats the right side; negative motion treats the left. The active
-row's public actual clip is mapped into stack coordinates with a reused Matrix;
-only axis-aligned transforms are supported. The effective boundary intersects the
-fixed Duo content slot and the original Canvas clip. Pixels beyond that boundary
-are excluded too, so they cannot reappear after passing through the fade. Without any active swipe the dispatch stays entirely native. Unknown actual
-clips are left untreated.
+The owner accepted the symmetric edge curve in 0.2.3 but reported two gaps:
+media/live cards did not all participate, and swiping a partially shelf-covered
+notification affected the stationary card overlapping it. The old implementation
+recorded all of NSSL and filtered a rectangular strip of that composite. No
+rectangle refinement can separate two cards whose pixels already overlap.
 
-OEM evidence from the matched SystemUI sample: `NotificationStackScrollLayout`
-`dispatchDraw` normally dispatches directly, but with `mBlurEffect` it sets the
-native blur node size from `canvas.getWidth()/getHeight()` and records children
-there. `updateClipping` clears the View clip and disables outline clipping.
-`ExpandableView.updateClipping` supplies `(0,0,width,actualHeight-clipBottom)` with
-a minimum-height bound, or null for an unclipped row. The wrapper therefore retains
-the original Canvas dimensions, one native dispatch and its original Z ordering.
-It does not replace any OEM glass effect or intercept input.
+The replacement composes an alpha mask into the moving **card's** native
+RenderEffect instead. NSSL dispatchDraw, its blur node, each child's RenderNode,
+actual clip, outline, elevation, shadows and native Z order remain in their
+original drawing path. There is no copied stack, second native draw, bitmap or
+readback. The stationary card is never included in another card's mask input.
+The previous full-stack recorder and its draw-pass helper are retired outside
+Git under the project's local development cache.
 
-The GPU effect only samples the same composed native content at the same pixel;
-there is no bitmap, screen readback, extra blur pass or moving light/tint layer.
-Effects cache immutable shader snapshots by integer width and direction, bounded
-at 384 entries. Overlapping bands composite once and preserve each other's fully
-transparent terminal region. Content or shadows overlapping the same local band
-share its alpha treatment. Hardware/GPU appearance remains device acceptance.
+## Translation and baseline contracts
+
+The matching SystemUI APK exposes separate `setTranslation(float)` methods on
+ExpandableNotificationRow and MiuiMediaHeaderView. Only observing the former
+missed the media header's swipe. Both exact setters now supply the same curve;
+focus/live content inside native notification rows uses its row's native path.
+The adapter only acts on native cards directly parented by Duo's owned NSSL.
+It does not take over touches or require a partly visible notification to expand.
+
+View.setRenderEffect only scopes the native card/RenderNode identity and whether
+this is an owned mask or restore request. It never commits a lease at View entry.
+Exact native card constructors establish a
+fresh null baseline only when no native effect write was already observed.
+On ROMs exposing getRenderEffect, an already-existing card can also be captured
+at first use. An unknown late card without that getter stays native. An observed
+external setter becomes the new baseline; active swipes reapply their mask before
+the next draw. Cleanup restores only the adapter's current output.
+
+The retained current-ROM framework sources were checked directly: View only
+exposes `setRenderEffect` (View.java:11789), and its RenderNode setter directly
+calls `nSetRenderEffect` (RenderNode.java:798). Neither class exposes a getter or
+retains the Java RenderEffect object. The current ROM therefore uses the early
+constructor/setter observation path, not an inferred RenderNode getter. Unknown
+preexisting cards remain native on this ROM.
+
+The observer therefore sits at the verified RenderNode.setRenderEffect bridge,
+at the lowest hook priority. Its current-ROM body contains only nSetRenderEffect,
+with no View/user callbacks. The one known View caller is deoptimized so inlining
+cannot bypass this bridge. A lease is committed only after this native bridge
+returns, using the argument that actually reached it. View-level argument
+replacement, short-circuit, exceptions and nested setters cannot publish an
+uncommitted baseline. In particular, when a downstream View hook calls an inner
+setter before the outer native write, the outer native commit correctly wins.
+An owned mask/restore whose argument was replaced becomes a fresh native write.
+Direct RenderNode setters on registered native cards are also observed.
+Owned mask/restore writes invoke the original View setter body with an explicit
+node scope. This preserves OEM property invalidation while preventing a separate
+View effect owner's callbacks from retaining, replacing or short-circuiting the
+temporary overlay or its cleanup. Ordinary external setters keep their complete
+hook chain; their eventual RenderNode input remains authoritative.
+
+The bridge contract is the retained OEM implementation, not arbitrary third-party
+reentrant hooks inside RenderNode.setRenderEffect itself. Installation is all-or-
+nothing: missing node identity, bridge hook or deoptimization leaves feathering
+disabled. There is no fallback to setter-entry ordering or a guessed last write.
+
+Where a getter exists, other effect owners read their native baseline rather
+than accidentally retaining the temporary HMC mask as their restore snapshot.
+The adapter's own verification can still read the actual output. Unobserved
+private native writes that bypass the verified RenderNode bridge are not claimed
+to be intercepted. On a ROM without the getter, restoration relies on the early
+constructor and native-commit contract; no arbitrary preexisting effect is guessed.
+
+## Geometry and cost
+
+Both directions use the same smoothstep. Absolute swipe distance controls the
+1..24 dp feather width, while terminal alpha is always zero. The parent viewport
+is mapped into the card's local coordinates and intersected with its existing
+horizontal clip. The native vertical/shelf clip is untouched. Unsupported
+rotation, perspective or invalid geometry restores the native effect.
+
+Only active swipe/return cards are revisited before native dispatch. There is no
+View-tree scan. Shader effects are immutable uniform snapshots in an LRU limited
+to 384 entries. Effect/baseline records use weak View keys, without value-to-key
+references. Scene release removes the masks but keeps weak early-baseline records
+for cards reused by the next lockscreen. Hook installation is transactional and
+passive until complete; unsupported contracts retain native behavior.
+
+## Verification boundary
+
+Production Java compilation passes against the existing compiled project and
+API 37/libxposed 102. Thirteen pure JVM tests cover the edge curve plus independent
+card leases, external/native-null baselines, uncommitted/failed entries, replaced
+arguments and an outer-last View reentry simulated through the production commit
+scope. Native effect state and the lease finish on the same outer commit.
+Full Gradle and actual GPU acceptance are performed by the owning release task.
+No phone UI, screenshots, installation, parameter changes or scope restart were
+used here. Device acceptance must confirm that all intended media/live card
+implementations use the retained native translation contract and that native
+material sampling remains correct with the per-card effect chain.
