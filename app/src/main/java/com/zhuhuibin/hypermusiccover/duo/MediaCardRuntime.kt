@@ -57,6 +57,8 @@ object MediaCardRuntime {
     }
 
     @JvmStatic fun circularNotificationArtwork(): Boolean = setting("notification", "cover") in 1..2
+    @JvmStatic fun heightPercent(innerLandscape: Boolean): Int =
+        setting("notification", if (innerLandscape) "heightLandscape" else "height")
 
     @JvmStatic fun configJson(): String = MediaCardConfig.encode(values)
     @JvmStatic fun configure(json: String?) {
@@ -198,6 +200,7 @@ object MediaCardRuntime {
                 state.apply()
             } }
         } finally { applying = false }
+        FoldMusicRuntime.refresh()
     }
 
     @JvmStatic fun refreshMotion() {
