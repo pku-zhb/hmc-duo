@@ -33,6 +33,13 @@ noninteractive notes and a working dial-code copy action. See the
 [0.2.4 record](releases/0.2.4.md). GPU effects and native transitions await the
 owner's focused acceptance; desktop-to-AOD status overlap remains deferred.
 
+The final keep-last correction distinguishes AMap's cached page readiness from
+an actual live navigation card. An armed page without that card no longer keeps
+the temporary navigation session active or suppresses all normal checkpoints.
+The existing per-presentation snapshot keys and one-shot restoration are retained.
+Four targeted liveness regressions were added; final unified test totals are
+recorded by the release check.
+
 ### 0.2.2 independent controls and notification edge
 
 The current source adds a separate AMap navigation-map switch, a common

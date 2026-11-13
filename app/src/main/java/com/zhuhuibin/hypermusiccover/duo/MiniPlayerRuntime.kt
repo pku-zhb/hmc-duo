@@ -13588,7 +13588,8 @@ private class MiniPlayerController(
 
     private fun applyNavigationPresentation(music: MediaController?): Boolean {
         val locked = Main.keyguardLocked() && Main.onKeyguardNow() && !MiniPlayerScene.keyguardGoingAway
-        if (navigationPresentation.observe(AmapNavScene.INSTANCE.navigationRunning(), locked, MiniPlayerScene.aodActive))
+        if (navigationPresentation.observe(AmapNavScene.INSTANCE.navigationPageArmed(), locked,
+                MiniPlayerScene.aodActive, LockIslands.navigationKey() != null))
             MiniPlayerRuntime.entryDefaults.arm()
         if (!navigationPresentation.active || !locked || Main.bouncerShown() ||
             !MiniPlayerRuntime.detachedRail() || !config.optBoolean(MiniPlayerConfig.ENABLED)) return false
