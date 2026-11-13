@@ -52,4 +52,36 @@ public class NativeSamplingLeaseTest {
         assertEquals(4, lease.nativeFlags().blurType);
         assertEquals(2, lease.nativeFlags().mode);
     }
+
+    @Test public void aDetachedHolderKeepsItsRestorationUntilItReturnsWithoutANativeSetter() {
+        NativeSamplingLease lease = new NativeSamplingLease();
+        lease.bind(0, true, 3);
+        lease.committed(true);
+        lease.attachmentChanged(false);
+        assertFalse(lease.needsApply(false));
+        assertTrue(lease.local());
+        lease.attachmentChanged(true);
+        assertTrue(lease.needsApply(false));
+        assertTrue(lease.target(false).passWindow);
+        assertEquals(0, lease.target(false).mode);
+        assertEquals(3, lease.target(false).blurType);
+        lease.committed(false);
+        assertFalse(lease.needsApply(false));
+    }
+
+    @Test public void reattachedArtworkRevalidatesItsLocalDomainEvenWhenTheSceneChoiceIsUnchanged() {
+        NativeSamplingLease lease = new NativeSamplingLease();
+        lease.bind(2, true, 0);
+        lease.committed(true);
+        lease.attachmentChanged(false);
+        lease.nativeBlurType(4);
+        assertFalse(lease.needsApply(true));
+        lease.attachmentChanged(true);
+        assertTrue(lease.needsApply(true));
+        assertEquals(1, lease.target(true).blurType);
+        assertEquals(4, lease.target(false).blurType);
+        lease.committed(true);
+        lease.attachmentChanged(true);
+        assertFalse(lease.needsApply(true));
+    }
 }

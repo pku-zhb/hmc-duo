@@ -307,7 +307,7 @@ final class NativeGlassRelay {
     static boolean bindNativePlayerBackground(View view, View owner) {
         Object parent = view == null ? null : view.getParent();
         Object ownerParent = owner == null ? null : owner.getParent();
-        if (!relaySceneNow()) { NativeMediaBackdrop.clear(); return false; }
+        if (!relaySceneNow()) { NativeMediaBackdrop.suspend(); return false; }
         boolean sameSource = sourceBinding.isSource(view);
         boolean bound = sourceBinding.bind(view, parent, owner, ownerParent,
                 () -> nativePlayerBackground(view, owner));
@@ -328,7 +328,7 @@ final class NativeGlassRelay {
             return bindNativePlayerBackground(view, owner);
         }
         sourceBinding.clear();
-        NativeMediaBackdrop.clear();
+        NativeMediaBackdrop.suspend();
         clearSourceProfiles();
         return false;
     }

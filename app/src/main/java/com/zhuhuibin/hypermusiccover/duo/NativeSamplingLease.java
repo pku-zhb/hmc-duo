@@ -12,11 +12,12 @@ final class NativeSamplingLease {
         }
     }
 
-    private boolean bound, nativePassWindow, local, dirty;
+    private boolean bound, attached, nativePassWindow, local, dirty;
     private int nativeMode, nativeBlurType;
 
     void bind(int mode, boolean passWindow, int blurType) {
         bound = true;
+        attached = true;
         nativeMode = mode;
         nativePassWindow = passWindow;
         nativeBlurType = blurType;
@@ -44,7 +45,14 @@ final class NativeSamplingLease {
         dirty = true;
     }
 
-    boolean needsApply(boolean wantLocal) { return bound && (dirty || local != wantLocal); }
+    /** Detach pauses writes without forgetting the native domain or the pending restoration. */
+    void attachmentChanged(boolean value) {
+        if (attached == value) return;
+        attached = value;
+        if (value) dirty = true;
+    }
+
+    boolean needsApply(boolean wantLocal) { return bound && attached && (dirty || local != wantLocal); }
     boolean bound() { return bound; }
     boolean local() { return local; }
     Flags nativeFlags() { return new Flags(nativeMode, nativePassWindow, nativeBlurType); }
@@ -53,5 +61,5 @@ final class NativeSamplingLease {
         return wantLocal ? new Flags(1, false, 1) : nativeFlags();
     }
     void committed(boolean wantLocal) { local = wantLocal; dirty = false; }
-    void clear() { bound = false; local = false; dirty = false; }
+    void clear() { bound = attached = local = dirty = false; }
 }

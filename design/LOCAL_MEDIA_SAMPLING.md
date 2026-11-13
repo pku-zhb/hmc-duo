@@ -29,7 +29,7 @@ add another glass overlay or replace the native recipe.
 The glass recipe, refraction radii, blur strength and color palettes remain
 under native/Lite ownership. Background mode, pass-window, type and explicit
 container are read before the lease and restored when the artwork disappears
-or the source is detached/replaced. Subsequent native writes update only their
+or the source is replaced. Subsequent native writes update only their
 own baseline property; HMC's own writes are excluded from that capture.
 Normal solid media cards do not enter the lease. Unsupported getters or
 rejected writes restore native state and retire that binding.
@@ -37,6 +37,16 @@ rejected writes restore native state and retire that binding.
 There is no per-frame hierarchy discovery or native effect rebind. The existing
 backdrop pre-draw guard evaluates cached state and only writes when the lease
 changes. The content-free `glassRelay` diagnostic reports its active state.
+
+The validated holder is retained weakly across temporary detach and off-keyguard
+material calls. Detach pauses writes without removing its source/owner attach
+listeners: the framework can already have lost the ViewRoot needed by the
+pass-window setter. Reattach rechecks its topology, then reapplies the current
+domain or restores the retained native baseline. A changed root is revalidated
+through the existing OEM-holder check. Replacing/rejecting the holder or a failed
+getter/write still clears the binding. Previously detach removed its own only
+attach listener, so a reused holder needed another OEM effect call before local
+sampling could return; backdrop pre-draw alone could not recover it.
 
 ## Verification boundary
 
