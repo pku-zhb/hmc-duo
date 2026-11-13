@@ -4,15 +4,15 @@ import org.junit.Test;
 import static org.junit.Assert.*;
 
 public class CompactClockRowLayoutTest {
-    @Test public void artworkAndLyricsHonorTheSamePreferenceOnOuterAndInnerLandscape() {
+    @Test public void artworkAndNavigationHonorTheSamePreferenceOnEveryOrientation() {
         assertTrue(CompactClockRowLayout.requested(true, 1168, 1712, 2.75f, true, false, false));
         assertTrue(CompactClockRowLayout.requested(true, 2488, 2224, 2.75f, true, false, false));
-        assertFalse(CompactClockRowLayout.requested(true, 2224, 2488, 2.75f, true, false, false));
+        assertTrue(CompactClockRowLayout.requested(true, 2224, 2488, 2.75f, true, false, false));
     }
 
     @Test public void orientationChangesUseTheCurrentDisplayRatherThanThePreviousScreen() {
         float[][] windows = {{1168,1712}, {2488,2224}, {2224,2488}, {2488,2224}, {1168,1712}};
-        boolean[] expected = {true, true, false, true, true};
+        boolean[] expected = {true, true, true, true, true};
         for (int i = 0; i < windows.length; i++) {
             assertEquals(expected[i], CompactClockRowLayout.supportsDisplay(
                     windows[i][0], windows[i][1], 2.75f));
