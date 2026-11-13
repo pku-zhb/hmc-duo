@@ -439,6 +439,7 @@ public class Main extends XposedModule {
     /** Preview stays opt-in until the native media container is checked on a device. */
     static volatile boolean sFoldMusicLayout;
     static volatile boolean sRightRail, sReflowLockContent, sFollowNativeMaterial;
+    static volatile float sRailStatusOffsetYDp = 0f;
     static volatile boolean sHideChargingHint = true;
     static volatile boolean sHideLockStatusBar = true;
     static volatile boolean sArtworkClockRow = true; // Legacy backup compatibility.
@@ -2126,6 +2127,7 @@ public class Main extends XposedModule {
                     + "\ncoverstyle=" + sCoverCardStyle.mode
                     + "\nfoldmusiclayout=" + (sFoldMusicLayout ? 1 : 0)
                     + "\nrightRail=" + (sRightRail ? 1 : 0)
+                    + "\nrailstatusy=" + sRailStatusOffsetYDp
                     + "\nreflowLockContent=" + (sReflowLockContent ? 1 : 0)
                     + "\nfollowNativeMaterial=" + (sFollowNativeMaterial ? 1 : 0)
                     + "\nhideLockStatusBar=" + (sHideLockStatusBar ? 1 : 0)
@@ -2160,6 +2162,7 @@ public class Main extends XposedModule {
                     // not read them. lyrichidden still is - the two-finger tap is the one way the
                     // lock screen can be asked for the cover instead, and it has to survive.
                     + "\ncolon=" + (HyperTweaks.sForceColon ? 1 : 0)
+                    + "\namapmap=" + (AmapNavScene.INSTANCE.enabled() ? 1 : 0)
                     + "\nseekglow=" + (HyperTweaks.sBarGlow ? 1 : 0)
                     + "\nlyrickeep=" + (LockLyrics.sKeepOn ? 1 : 0)
                     + "\nlyrichidden=" + (LockLyrics.sTapHidden ? 1 : 0)
@@ -2306,6 +2309,8 @@ public class Main extends XposedModule {
                                 FoldSettingsPolicy.wallpaperBackground("1".equals(v));
                         else if ("foldmusiclayout".equals(k)) sFoldMusicLayout = "1".equals(v);
                         else if ("rightRail".equals(k)) sRightRail = "1".equals(v);
+                        else if ("railstatusy".equals(k)) sRailStatusOffsetYDp =
+                                RailStatusLayout.normalizeOffsetY(Float.parseFloat(v));
                         else if ("reflowLockContent".equals(k)) sReflowLockContent = "1".equals(v);
                         else if ("followNativeMaterial".equals(k)) sFollowNativeMaterial = "1".equals(v);
                         else if ("hideLockStatusBar".equals(k)) sHideLockStatusBar = "1".equals(v);
@@ -2327,6 +2332,7 @@ public class Main extends XposedModule {
                         else if ("glowdrift".equals(k)) sGlowDrift = "1".equals(v);
                         else if ("meshbackdrop".equals(k)) sMeshBackdrop = "1".equals(v);
                         else if ("colon".equals(k)) HyperTweaks.sForceColon = "1".equals(v);
+                        else if ("amapmap".equals(k)) AmapNavScene.INSTANCE.setMapEnabled("1".equals(v));
                         else if ("seekglow".equals(k)) HyperTweaks.sBarGlow = "1".equals(v);
                         // aodsmall and lyrics are not read: cover mode keeps its small clock in
                         // the AOD and the lock screen shows the lyrics, both unconditionally now.
@@ -3079,6 +3085,10 @@ public class Main extends XposedModule {
                         HyperTweaks.publishDepthOpen(sAppCtx != null ? sAppCtx : c, on);
                         Xp.log(TAG + "depth limits " + (on ? "lifted" : "kept")
                                 + " (fully applies after SystemUI and the editor restart)");
+                    } else if ("amapmap".equals(op)) {
+                        AmapNavScene.INSTANCE.setMapEnabled(i.getBooleanExtra("on", true));
+                        saveState();
+                        Xp.log(TAG + "Amap lock-screen map " + (AmapNavScene.INSTANCE.enabled() ? "on" : "off"));
                     } else if ("colon".equals(op)) {
                         HyperTweaks.sForceColon = i.getBooleanExtra("on",
                                 !HyperTweaks.sForceColon);
@@ -3103,6 +3113,13 @@ public class Main extends XposedModule {
                         Xp.log(TAG + "media bar glow " + (HyperTweaks.sBarGlow ? "on" : "off")
                                 + " - " + r);
                         setResultData((HyperTweaks.sBarGlow ? "on " : "off ") + r);
+                    } else if ("railstatusy".equals(op)) {
+                        if (i.hasExtra("v")) {
+                            sRailStatusOffsetYDp = RailStatusLayout.normalizeOffsetY(i.getFloatExtra("v", 0f));
+                            RailStatusRuntime.refreshPosition();
+                            saveStateSoon();
+                        }
+                        setResultData(Float.toString(sRailStatusOffsetYDp));
                     } else if ("wallpaperdim".equals(op)) {
                         sWallpaperDim = Math.max(0, Math.min(100, i.getIntExtra("v", 35)));
                         saveState();
@@ -3333,6 +3350,7 @@ public class Main extends XposedModule {
                         out.putInt("coverstyle", sCoverCardStyle.mode);
                         out.putBoolean("foldmusiclayout", sFoldMusicLayout);
                         out.putBoolean("rightRail", sRightRail);
+                        out.putFloat("railstatusy", sRailStatusOffsetYDp);
                         out.putBoolean("reflowLockContent", sReflowLockContent);
                         out.putBoolean("followNativeMaterial", sFollowNativeMaterial);
                         out.putBoolean("hideLockStatusBar", sHideLockStatusBar);
@@ -3373,6 +3391,7 @@ public class Main extends XposedModule {
                         out.putBoolean("aodsmall", sAodSmall);
                         out.putBoolean("colon", HyperTweaks.sForceColon);
                         out.putBoolean("depthopen", HyperTweaks.depthOpen());
+                        out.putBoolean("amapmap", AmapNavScene.INSTANCE.enabled());
                         out.putBoolean("seekglow", HyperTweaks.sBarGlow);
                         out.putBoolean("lyrics", LockLyrics.sEnabled);
                         // Where the lock screen's words came from right now, and whether there is

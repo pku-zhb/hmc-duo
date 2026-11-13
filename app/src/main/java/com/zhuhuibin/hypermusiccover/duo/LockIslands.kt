@@ -251,11 +251,18 @@ internal object LockIslands {
 
     /** The page's scene is no longer ready: its island is an island again. */
     fun forgetScene(which: ImmersiveScene) {
+        forgetScene(which, false)
+    }
+
+    /** A disabled map gives up page ownership while its notification remains a normal row. */
+    fun forgetScene(which: ImmersiveScene, preserveNotification: Boolean) {
         if (scene !== which) return
         val key = sceneKey
         sceneKey = null
         scene = null
-        if (key != null && released.remove(key)) invalidate("${which.id()} over")
+        sceneMissingSince = 0L
+        if (preserveNotification) invalidate("${which.id()} page disabled")
+        else if (key != null && released.remove(key)) invalidate("${which.id()} over")
     }
 
     /**

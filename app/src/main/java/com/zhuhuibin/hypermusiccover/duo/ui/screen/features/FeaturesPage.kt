@@ -82,7 +82,16 @@ fun FeaturesPageView(
     extraBottomPadding: Dp = 0.dp,
 ) {
     val context = LocalContext.current
-    FeatureList(isBlurEnabled, extraBottomPadding) { target ->
+    var module by remember { mutableStateOf(ModuleBridge.State()) }
+    val lost by ModuleBridge.lost.collectAsState()
+    LaunchedEffect(lost) {
+        module = module.copy(alive = false)
+        module = ModuleBridge.queryAlive(context)
+    }
+    FeatureList(isBlurEnabled, extraBottomPadding, module, { on ->
+        module = module.copy(amapNavigationMap = on)
+        ModuleBridge.setAmapNavigationMap(context, on)
+    }) { target ->
         // An Activity, not a page swapped in place - the same thing AboutPage does to reach the
         // licence list, and the reason is the transition: a whole screen arriving is the
         // platform's own animation, it brings its own back handling, and nothing here has to
@@ -103,6 +112,8 @@ fun FeaturesPageView(
 private fun FeatureList(
     isBlurEnabled: Boolean,
     extraBottomPadding: Dp,
+    module: ModuleBridge.State,
+    onAmapMapChange: (Boolean) -> Unit,
     onOpen: (Class<*>) -> Unit,
 ) {
     PageScaffold(
@@ -138,6 +149,15 @@ private fun FeatureList(
                         title = stringResource(R.string.media_customization_title),
                         summary = stringResource(R.string.media_customization_summary),
                         onClick = { onOpen(MediaCardActivity::class.java) },
+                    )
+                }
+                Card(Modifier.padding(horizontal = 12.dp).padding(bottom = 12.dp)) {
+                    SwitchPreference(
+                        title = stringResource(R.string.amap_navigation_map),
+                        summary = stringResource(R.string.amap_navigation_map_summary),
+                        checked = module.amapNavigationMap,
+                        enabled = module.alive,
+                        onCheckedChange = onAmapMapChange,
                     )
                 }
                 Card(
@@ -441,6 +461,11 @@ private fun CoverGroup(
                 ModuleBridge.setRailSetting(context, "rightRail", it)
             },
         )
+        RailStatusOffsetSetting(enabled && module.rightRail, module.railStatusOffsetYDp) { value ->
+            onChange(module.copy(railStatusOffsetYDp = value))
+            if (value == 0f) ModuleBridge.resetRailStatusOffsetY(context)
+            else ModuleBridge.setRailStatusOffsetY(context, value)
+        }
         SwitchPreference(
             title = stringResource(R.string.lock_reflow_content),
             summary = stringResource(R.string.lock_reflow_content_summary),

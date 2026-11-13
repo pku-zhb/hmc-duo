@@ -23,6 +23,9 @@ interface ImmersiveScene {
     /** For logs and the probe: {@code op immersive --es id <id>}. */
     String id();
 
+    /** Independent page preference; ordinary notification presentation remains available. */
+    default boolean enabled() { return true; }
+
     /** Whether a tap on this focus island opens this scene. */
     boolean serves(String pkg, boolean focus);
 

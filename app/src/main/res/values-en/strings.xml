@@ -1,5 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="rail_status_offset_y">Status cluster vertical offset</string>
+    <string name="rail_status_offset_y_summary">Move only time, battery and network status on the lock screen and AOD. Positive values move down. Slider: ±24 dp; tap the value for ±80 dp.</string>
+    <string name="rail_status_offset_y_reset">Reset to default</string>
+    <string name="rail_status_offset_y_range">−80 … 80 dp</string>
+    <string name="rail_status_offset_y_input">Offset (dp)</string>
+    <string name="rail_status_offset_y_invalid">Enter a number from −80 to 80.</string>
+    <string name="amap_navigation_map">Lock-screen navigation map (Amap)</string>
+    <string name="amap_navigation_map_summary">Show the map during walking or cycling navigation. Turning it off keeps navigation notifications, live activity cards and the player.</string>
     <string name="app_name">hmc-duo</string>
     <string name="about_source_code_summary">https://github.com/pku-zhb/hmc-duo</string>
     <string name="about_feedback">Feedback</string>
@@ -413,4 +421,35 @@
     <string name="lock_hide_status_bar_summary">Hide the top system status bar on the lock screen. The home screen and control centre keep their normal status bars.</string>
     <string name="about_support_duo">Support Duo</string>
     <string name="about_support_duo_pending">WeChat and Alipay details will be added by the maintainer.</string>
+    <string name="cover_fold_columns">Landscape cover and lyrics</string>
+    <string name="lock_right_rail">Vertical island on the right</string>
+    <string name="lock_right_rail_summary">Preview: arrange capsules, flashlight and camera in a fixed right-hand column, with time, battery and network status above. Works without MiDuo.</string>
+    <string name="lock_reflow_content">Reserve space for the right column</string>
+    <string name="lock_reflow_content_summary">Preview: reflow the native clock, date and notifications into the remaining area and center them there.</string>
+    <string name="lock_follow_native_glass">Follow native notification glass</string>
+    <string name="lock_follow_native_glass_summary">Preview: use the native player’s final glass parameters for island and shortcut backgrounds, including changes made by HyperLight.</string>
+    <string name="cover_fold_columns_summary">Preview: on a wide inner display, show artwork and playback controls on the left and reflow lyrics on the right. Returns to the regular layout when folded or in portrait.</string>
+    <string name="fold_material_section">Material</string>
+    <string name="fold_material">Island and shortcut material</string>
+    <string name="fold_material_summary">Only capsules and shortcut backgrounds follow the native player’s current final material. The player is not modified.</string>
+    <string name="fold_material_native">Native Soft Glass</string>
+    <string name="fold_material_follow">Follow final system material</string>
+    <string name="lock_hide_charging_hint">Hide lock-screen charging hint</string>
+    <string name="lock_hide_charging_hint_summary">Hide the charging status text at the bottom of the lock screen.</string>
+    <string name="fold_updates_paused">Updates are paused</string>
+    <string name="credits_fold_upstream">Upstream Enhanced fork and its maintainer. This Fold version builds on their artwork, lyrics, lock-screen and AOD work.</string>
+    <string name="credits_group_upstream">Upstream project</string>
+    <string name="fold_island_glass_fixed">Soft Glass</string>
+    <string name="fold_layout_section">Layout</string>
+    <string name="fold_force_notification_floor">Force notifications to the bottom</string>
+    <string name="fold_startup_mode">Initial lock-screen layout</string>
+    <string name="fold_startup_mode_summary">The layout to use when entering a new lock-screen session.</string>
+    <string name="fold_start_collapsed">Collapse everything into capsules</string>
+    <string name="fold_start_expanded">Expand notifications and music</string>
+    <string name="fold_start_music_only">Expand music only</string>
+    <string name="fold_startup_music_view">Initial music view</string>
+    <string name="fold_music_player">Player</string>
+    <string name="fold_music_artwork">Artwork</string>
+    <string name="fold_music_lyrics">Lyrics</string>
+    <string name="fold_notice_back">Back</string>
 </resources>

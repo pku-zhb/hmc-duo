@@ -28,7 +28,7 @@ internal object RailStatusRuntime {
             if (container == null) { hide(); error = "keyguard parent unavailable"; return@runCatching }
             val density = window.resources.displayMetrics.density
             val bounds = RailStatusLayout.place((plan.pill.left+plan.pill.right)/2f,
-                plan.content.top, density) ?: run { hide(); return@runCatching }
+                plan.content.top, density, Main.sRailStatusOffsetYDp) ?: run { hide(); return@runCatching }
             var offsetX = 0; var offsetY = 0; var node: View? = container
             while (node != null && node !== window) {
                 val ancestor = node.parent as? View
@@ -93,6 +93,9 @@ internal object RailStatusRuntime {
         }
     }
 
+    /** Reposition only the status overlay on the next native frame; retain all rail geometry. */
+    @JvmStatic fun refreshPosition() { parent?.rootView?.invalidate() }
+
     @JvmStatic fun hide() {
         holdingX = false; nativeInkX = Float.NaN; correctedInkX = Float.NaN
         view?.apply { visibility = View.INVISIBLE; setTimeAlpha(0f); setListening(false) }
@@ -115,5 +118,6 @@ internal object RailStatusRuntime {
         view = null; parent = null; overlay = null
     }
     @JvmStatic fun describe() = "${view?.describe() ?: "not attached"} holdX=$holdingX " +
-        "nativeInkX=$nativeInkX correctedInkX=$correctedInkX error=$error"
+        "nativeInkX=$nativeInkX correctedInkX=$correctedInkX " +
+        "offsetYDp=${RailStatusLayout.normalizeOffsetY(Main.sRailStatusOffsetYDp)} error=$error"
 }

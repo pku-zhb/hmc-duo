@@ -1,5 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="rail_status_offset_y">三合一纵向偏移</string>
+    <string name="rail_status_offset_y_summary">仅移动时间、电量和网络状态；锁屏与 AOD 共用，正值向下。滑杆微调 ±24 dp，点数值可输入 ±80 dp。</string>
+    <string name="rail_status_offset_y_reset">恢复默认</string>
+    <string name="rail_status_offset_y_range">−80 … 80 dp</string>
+    <string name="rail_status_offset_y_input">偏移（dp）</string>
+    <string name="rail_status_offset_y_invalid">请输入 −80 到 80 之间的数值。</string>
+    <string name="amap_navigation_map">锁屏导航地图（高德）</string>
+    <string name="amap_navigation_map_summary">步行或骑行导航时显示锁屏地图；关闭后保留导航通知、实时活动卡片和播放器。</string>
     <string name="lock_right_rail">右侧纵向胶囊</string>
     <string name="lock_right_rail_summary">预览功能：固定右侧胶囊、手电筒和相机的位置，顶部显示时间、电量和网络状态；无需 MiDuo。</string>
     <string name="lock_reflow_content">为右侧控件预留锁屏空间</string>

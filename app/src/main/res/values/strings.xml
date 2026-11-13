@@ -1,5 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="rail_status_offset_y">Status cluster vertical offset</string>
+    <string name="rail_status_offset_y_summary">Move only time, battery and network status on the lock screen and AOD. Positive values move down. Slider: ±24 dp; tap the value for ±80 dp.</string>
+    <string name="rail_status_offset_y_reset">Reset to default</string>
+    <string name="rail_status_offset_y_range">−80 … 80 dp</string>
+    <string name="rail_status_offset_y_input">Offset (dp)</string>
+    <string name="rail_status_offset_y_invalid">Enter a number from −80 to 80.</string>
+    <string name="amap_navigation_map">Lock-screen navigation map (Amap)</string>
+    <string name="amap_navigation_map_summary">Show the map during walking or cycling navigation. Turning it off keeps navigation notifications, live activity cards and the player.</string>
     <string name="app_name">hmc-duo</string>
     <string name="about_source_code_summary">https://github.com/pku-zhb/hmc-duo</string>
     <string name="about_feedback">Feedback</string>

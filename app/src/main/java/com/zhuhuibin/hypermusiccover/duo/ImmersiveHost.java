@@ -244,7 +244,7 @@ final class ImmersiveHost {
     /** The scene a tap on this focus island opens; null for an island that has none. */
     static ImmersiveScene sceneFor(String pkg, boolean focus, String key) {
         for (ImmersiveScene s : SCENES) {
-            if (s.serves(pkg, focus) && s.servesKey(key)) return s;
+            if (s.enabled() && s.serves(pkg, focus) && s.servesKey(key)) return s;
         }
         return null;
     }
@@ -425,6 +425,7 @@ final class ImmersiveHost {
 
     /** From LockIslands: the scene's island was tapped open. */
     static void open(ImmersiveScene scene) {
+        if (!scene.enabled()) return;
         if (sOpen == scene && !sYield) return;
         // Another page on the lit lock screen - just closed for this one, or still open: the two
         // crossfade. The new one then appears as opened pages do, from nothing - or, when it is
@@ -493,7 +494,7 @@ final class ImmersiveHost {
             if (sOpen == scene) {
                 sOpen = null;
                 try {
-                    LockIslands.INSTANCE.forgetScene(scene);
+                    LockIslands.INSTANCE.forgetScene(scene, !scene.enabled());
                 } catch (Throwable t) {
                     Xp.log(TAG + "island not forgotten: " + t);
                 }
