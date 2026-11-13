@@ -154,24 +154,25 @@ private fun LockScreenEntryControls(config: JSONObject, enabled: Boolean, push: 
             checked = keepLast, enabled = enabled,
             onCheckedChange = { push(MiniPlayerConfig.KEEP_LAST_LOCKSCREEN, it) })
     }
-    if (!keepLast) for (landscape in listOf(false, true)) {
+    for (landscape in listOf(false, true)) {
         val mask = MiniPlayerConfig.collapsedCategories(config, landscape)
         SmallTitle(text = stringResource(if (landscape) R.string.fold_landscape_collapsed
             else R.string.fold_collapsed_categories))
         Card(Modifier.padding(horizontal = 12.dp).padding(bottom = 12.dp)) {
-            SettingsNote(stringResource(R.string.fold_collapsed_categories_summary))
-            val categories = listOf(MiniPlayerConfig.COLLAPSE_MUSIC to R.string.fold_music_player,
-                MiniPlayerConfig.COLLAPSE_LIVE to R.string.fold_live_cards,
-                MiniPlayerConfig.COLLAPSE_NOTIFICATIONS to R.string.fold_notifications)
-            for ((bit, label) in categories) CheckboxPreference(title = stringResource(label),
-                checked = mask and bit != 0, enabled = enabled,
-                onCheckedChange = { checked ->
-                    push(if (landscape) MiniPlayerConfig.LANDSCAPE_COLLAPSED_CATEGORIES else MiniPlayerConfig.COLLAPSED_CATEGORIES,
-                        if (checked) mask or bit else mask and bit.inv())
-                })
-            if (mask and MiniPlayerConfig.COLLAPSE_MUSIC == 0) WindowDropdownPreference(
+            if (!keepLast) {
+                SettingsNote(stringResource(R.string.fold_collapsed_categories_summary))
+                val categories = listOf(MiniPlayerConfig.COLLAPSE_MUSIC to R.string.fold_music_player,
+                    MiniPlayerConfig.COLLAPSE_LIVE to R.string.fold_live_cards,
+                    MiniPlayerConfig.COLLAPSE_NOTIFICATIONS to R.string.fold_notifications)
+                for ((bit, label) in categories) CheckboxPreference(title = stringResource(label),
+                    checked = mask and bit != 0, enabled = enabled,
+                    onCheckedChange = { checked ->
+                        push(if (landscape) MiniPlayerConfig.LANDSCAPE_COLLAPSED_CATEGORIES else MiniPlayerConfig.COLLAPSED_CATEGORIES,
+                            if (checked) mask or bit else mask and bit.inv())
+                    })
+            }
+            WindowDropdownPreference(
                 title = stringResource(if (landscape) R.string.fold_landscape_music_view else R.string.fold_startup_music_view),
-                summary = stringResource(R.string.fold_startup_music_view_summary),
                 items = listOf(stringResource(R.string.fold_music_player), stringResource(R.string.fold_music_artwork),
                     stringResource(R.string.fold_music_lyrics)) +
                     if (landscape) listOf(stringResource(R.string.fold_music_artwork_and_lyrics)) else emptyList(),

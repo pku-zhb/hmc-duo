@@ -139,6 +139,8 @@ fun CreditsPageContent(
             stringResource(R.string.credits_installerx),
             "https://github.com/wxxsfxyzm/InstallerX-Revived",
         ),
+        Credit("HyperLight", stringResource(R.string.credits_hyperlight_behavior), ""),
+        Credit("libxposed", stringResource(R.string.credits_libxposed), "https://github.com/libxposed"),
         Credit(
             "LSPosed",
             stringResource(R.string.credits_lsposed),
@@ -178,7 +180,8 @@ fun CreditsPageContent(
                 )
                 Card(modifier = Modifier.padding(horizontal = 12.dp)) {
                     credits.forEach { credit ->
-                        ArrowPreference(
+                        if (credit.url.isBlank()) BasicComponent(title = credit.name, summary = credit.summary)
+                        else ArrowPreference(
                             title = credit.name,
                             summary = credit.summary,
                             onClick = { uriHandler.openUri(credit.url) },

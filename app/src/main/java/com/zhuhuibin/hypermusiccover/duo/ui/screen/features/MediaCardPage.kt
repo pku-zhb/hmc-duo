@@ -66,6 +66,14 @@ internal fun MediaCardPageView(isBlurEnabled: Boolean, refreshKey: Int, onBack: 
                         R.string.media_style_rotating, R.string.media_style_hidden), values, module.alive, push)
                 MediaSwitch("notification", "hideSource", R.string.media_hide_source, values, module.alive, push)
                 MediaSwitch("notification", "hideDevice", R.string.media_hide_device, values, module.alive, push)
+                for ((name, title) in listOf("height" to R.string.media_height_portrait,
+                    "heightLandscape" to R.string.media_height_landscape)) {
+                    ValueSlider(title = stringResource(title),
+                        summary = stringResource(R.string.media_height_summary),
+                        value = values.getValue("notification.$name").toFloat(), valueRange = 85f..100f,
+                        enabled = module.alive, detent = 100f, label = { "${it.toInt()}%" },
+                        onValueChange = { push("notification.$name", it.toInt()) })
+                }
             }
         }
         item { SmallTitle(stringResource(R.string.media_background_style)) }
