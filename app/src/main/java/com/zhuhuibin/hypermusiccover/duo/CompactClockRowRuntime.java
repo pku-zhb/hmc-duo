@@ -86,7 +86,7 @@ final class CompactClockRowRuntime {
             if (target != null && descendant(date, target)) return unavailable("date inside time target");
         }
         View window = date.getRootView();
-        int id = window.getResources().getIdentifier("keyguard_root_view", "id", "com.android.systemui");
+        int id = ResourceIds.id(window.getResources(), "keyguard_root_view");
         View candidate = id == 0 ? null : window.findViewById(id);
         if (!(candidate instanceof ViewGroup) || !descendant(date, candidate))
             return unavailable("keyguard ancestor unavailable");

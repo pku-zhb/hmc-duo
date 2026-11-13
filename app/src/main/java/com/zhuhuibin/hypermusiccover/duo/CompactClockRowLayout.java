@@ -9,12 +9,11 @@ final class CompactClockRowLayout {
         return enabled && supportsDisplay(width, height, density) && cover && !player && !notifications;
     }
 
-    /** The same artwork-clock preference applies to the outer screen and the wide inner screen. */
+    /** All valid display orientations share the preference; face/date safety stays in runtime. */
     static boolean supportsDisplay(float width, float height, float density) {
         return width > 0f && height > 0f && density > 0f
                 && Float.isFinite(width) && Float.isFinite(height)
-                && Float.isFinite(density)
-                && (Math.min(width, height) / density < 600f || width > height);
+                && Float.isFinite(density);
     }
 
     static final class Row {
