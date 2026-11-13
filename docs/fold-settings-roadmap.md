@@ -12,12 +12,26 @@ not automatically verified on every device, display or OS version.
 | Layout and gestures | Duo-owned card bounds and shortcut geometry, native secure camera/flashlight launch, empty-space expansion/collapse, and native interactions on actual cards. |
 | Capsules | HyperOS spring/fusion/split motion and bounded switching; ColorOS switching; automatic size reduction and top overflow hiding. Short two/three-seat capsules retain their summary and primary action; single-seat bubbles remain icon-only. |
 | Notifications | Independent lock-screen visibility/retention, per-category collapse defaults and last-state restoration. Native visibility is tracked separately from shared-stack state; capsule animation follows native movement while exposure verification retains retry ownership. |
-| Clock and status | Independent status-bar visibility. Outer-screen and inner-landscape artwork/lyrics can shrink the clock, join it to the date row with a side preference, or fade the time into the display-only battery/network cluster. Full-screen AOD retains the selected compact presentation; ordinary AOD uses native presentation. Status and capsule columns share their horizontal AOD/wake anchor. |
+| Clock and status | Independent status-bar visibility. Artwork/lyrics on outer and inner screens can shrink the clock, join it to the date row with a side preference, or fade the time into the display-only battery/network cluster. Full-screen AOD retains the selected compact presentation; ordinary AOD uses native presentation. Status and capsule columns share their horizontal AOD/wake anchor. |
 | Inner screen | Portrait/landscape handling, fixed bounded landscape card widths, category defaults and an explicit combined artwork/lyrics page. Preview 12 layout changes await device acceptance. |
 | Delivery | Duo release identity, preview-compatible signing path, guarded official signing and the project's own update feed. Production key configuration remains a separate owner setup step. |
 | Settings | Export/import with legacy normalization; credentials stay on-device. Donation controls await owner-provided payment assets. |
 
 ## Current acceptance scope
+
+### 0.2.4 card edges, backdrop sampling and settings
+
+Per-card native effects replace the old combined-stack edge copy so an overlapping
+stationary notification is not sampled into the moving row. Media headers' own
+translation method is covered. The current ROM lacks an effect getter; exact
+constructor/native-commit observation establishes known baselines, and unknown
+late cards retain their native path. The local artwork sampler now targets the
+existing native music background without replacing its final glass recipe.
+Inner portrait no longer excludes date-row/status clock destinations. The settings
+restructure preserves keys and adds real prerequisites, concise explanations,
+noninteractive notes and a working dial-code copy action. See the
+[0.2.4 record](releases/0.2.4.md). GPU effects and native transitions await the
+owner's focused acceptance; desktop-to-AOD status overlap remains deferred.
 
 ### 0.2.2 independent controls and notification edge
 
@@ -114,8 +128,8 @@ The previous AOD shortcut material transition was accepted by the owner and is
 not requested again. Each iteration's checklist stays limited to its changed
 behavior rather than repeating all pending cases.
 
-Native glass/refraction may still sample the original wallpaper instead of local
-artwork; this known layer-composition limitation remains open. Long-paused
+Native glass/refraction sampling the original wallpaper has a source correction
+in 0.2.4; local artwork plus third-party final material still needs device acceptance. Long-paused
 music-session recovery has implementation coverage but no explicit long-duration
 device acceptance and does not need repeating in every preview.
 

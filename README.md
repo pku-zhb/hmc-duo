@@ -10,6 +10,13 @@ and [HyperMusicCover](https://github.com/zyl6932/HyperMusicCover).
 Device coverage is focused on the maintainer's foldable phone; compatibility with
 other devices is not established.
 
+Version 0.2.4 reorganizes settings by purpose, makes prerequisites visible and
+keeps existing configuration keys. Native swipe feathering now applies per card,
+including media/live cards and shelf-covered notifications. Clock destinations
+include inner portrait, and music glass can sample the local artwork backdrop
+while another module owns its recipe. See the [release record](docs/releases/0.2.4.md)
+for confirmed causes, host checks and the remaining owner-operated visual checks.
+
 ## Features
 
 - Square or full-screen artwork, synchronized and word-timed lyrics, lyric effects
@@ -20,7 +27,7 @@ other devices is not established.
   and cancellation. MiDuo and MiDuo Notification are not required.
 - An independently switchable AMap walking/cycling lockscreen navigation map.
 - A display-only battery/network cluster and an independent lock-screen status-bar
-  switch and a common lockscreen/AOD vertical offset. Outer-screen artwork and lyrics offer three clock destinations: shrink,
+  switch and a common lockscreen/AOD vertical offset. Artwork and lyrics offer three clock destinations on outer and inner displays: shrink,
   join the date row, or fade into the status cluster. The date-row time can sit on
   either side of the date. Ordinary AOD retains the native presentation; full-screen
   AOD can retain the selected compact time.
