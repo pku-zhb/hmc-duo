@@ -1,5 +1,6 @@
 package com.zhuhuibin.hypermusiccover.duo;
 
+import android.graphics.Canvas;
 import android.view.View;
 import java.lang.reflect.Method;
 
@@ -12,6 +13,8 @@ final class RailStackBounds {
     private static boolean installed;
     private static long measureOverrides, frameOverrides, translationOverrides;
     private static int nativeMeasureWidth, nativeLeft, nativeWidth;
+    private static RailNotificationEdgeRenderer edge;
+    private static boolean edgeInstalled;
 
     static void install(ClassLoader loader) {
         try {
@@ -49,6 +52,38 @@ final class RailStackBounds {
             installed = false;
             Xp.w(Main.TAG + "fixed stack bounds unavailable: " + error);
         }
+        installEdge(loader);
+    }
+
+    private static void installEdge(ClassLoader loader) {
+        try {
+            Class<?> type = Xp.findClass(
+                    "com.android.systemui.statusbar.notification.stack.NotificationStackScrollLayout", loader);
+            Class<?> row = Xp.findClass(
+                    "com.android.systemui.statusbar.notification.row.ExpandableNotificationRow", loader);
+            // Require both methods on these exact OEM classes, never a framework-wide hook.
+            Method draw = type.getDeclaredMethod("dispatchDraw", Canvas.class);
+            Method translation = row.getDeclaredMethod("setTranslation", float.class);
+            Xp.hook(translation, chain -> {
+                Object result = chain.proceed();
+                if (edgeInstalled && edge != null && owns(stack))
+                    edge.translated((View) chain.getThisObject(), (Float) chain.getArg(0));
+                return result;
+            });
+            Xp.hook(draw, chain -> {
+                if (!edgeInstalled || edge == null || !owns(chain.getThisObject())) return chain.proceed();
+                View view = (View) chain.getThisObject();
+                if (view.getWidth() != frame.width || view.getHeight() <= 0) return chain.proceed();
+                edge.configure(view, view.getWidth(), view.getHeight(),
+                        view.getResources().getDisplayMetrics().density);
+                return RailEdgeDrawPass.draw((Canvas) chain.getArg(0), edge,
+                        canvas -> chain.proceed(new Object[]{canvas}));
+            });
+            edgeInstalled = true;
+        } catch (Throwable error) {
+            edgeInstalled = false;
+            Xp.w(Main.TAG + "notification soft edge contract unavailable: " + error);
+        }
     }
 
     private static boolean owns(Object candidate) {
@@ -74,6 +109,7 @@ final class RailStackBounds {
             release();
             originalX = next.getTranslationX();
             stack = next;
+            if (edgeInstalled) edge = new RailNotificationEdgeRenderer();
         }
         boolean changed = frame == null || !frame.matches(target.left, target.width);
         frame = target;
@@ -85,6 +121,7 @@ final class RailStackBounds {
     static void release() {
         View previous = stack;
         stack = null; frame = null;
+        if (edge != null) { edge.release(); edge = null; }
         if (previous == null) return;
         if (previous.getTranslationX() == 0f) previous.setTranslationX(originalX);
         // Native LayoutParams were never touched, so a fresh native pass restores the full shade.
@@ -94,6 +131,7 @@ final class RailStackBounds {
     static String describe() {
         return "installed=" + installed + " target=" + (frame == null ? "none" : frame.left + ".." + frame.right())
                 + " native=" + nativeLeft + "/" + nativeWidth + " measure=" + nativeMeasureWidth
-                + " overrides=" + measureOverrides + "/" + frameOverrides + "/" + translationOverrides;
+                + " overrides=" + measureOverrides + "/" + frameOverrides + "/" + translationOverrides
+                + " softEdge=" + edgeInstalled;
     }
 }
