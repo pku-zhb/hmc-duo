@@ -2731,8 +2731,7 @@ final class ClockCollapse {
             return;
         }
         if (!CompactClockRowRuntime.supportsDisplay() && (compactRowMoving() || statusClockMoving())) {
-            // The inner portrait clock retains its existing layout. Outer and inner landscape
-            // share the configured destination, with new bounds measured for each display.
+            // Invalid display bounds keep the native clock until a usable snapshot arrives.
             sRowFrom = sRowProgress = 0f;
             sRowTarget = false;
             sStatusFrom = sStatusProgress = 0f;

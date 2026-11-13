@@ -442,6 +442,7 @@ object MiniPlayerRuntime {
                     } finally {
                         effectDepth--
                     }
+                    if (mine) NativeMediaBackdrop.refresh()
                     val recorded = recording
                     if (mine && recorded.isNullOrEmpty()) {
                         // An effect that made no material call on a card background - with no
