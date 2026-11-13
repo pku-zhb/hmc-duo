@@ -343,6 +343,9 @@ internal object LockIslands {
     private var presentFocusKeys: List<String> = emptyList()
     fun focusKeys(): List<String> = presentFocusKeys
 
+    /** The navigation card remains identifiable when its optional map is disabled. */
+    fun navigationKey(): String? = presentFocusKeys.firstOrNull { noteFor(it)?.pkg == AmapNavScene.PKG }
+
     fun install(classLoader: ClassLoader) {
         LockscreenNotificationRuntime.install(classLoader)
         NativeNotificationReturn.install(classLoader)

@@ -34,6 +34,11 @@ final class AmapNavScene extends LiveAlertScene {
         super(ID, PKG, "com.autonavi.minimap.immersenavi.AMapImmerseNaviService", "536879184");
     }
 
+    @Override public boolean prepareWhileClosed() { return false; }
+
+    /** Navigation priority belongs to the live navigation, independently of the map switch. */
+    boolean navigationRunning() { return armed(); }
+
     /**
      * 高德's own message on the same Messenger: data{openOverview} 1 = the whole route
      * (isPreview true to its page), 2 = back to following you. ColorOS's card sends it from the
@@ -89,6 +94,7 @@ final class AmapNavScene extends LiveAlertScene {
     /** The navigation ended: the next one starts following. */
     @Override
     void setArmed(boolean armed) {
+        boolean changed = armed() != armed;
         if (!armed) {
             mMain.removeCallbacks(mFlush);
             mOverview = false;
@@ -96,6 +102,7 @@ final class AmapNavScene extends LiveAlertScene {
             mSentAt = 0L;
         }
         super.setArmed(armed);
+        if (changed) MiniPlayerRuntime.refresh();
     }
 
     /** Disable only this map page, releasing its remote surface and lock-screen hold now. */

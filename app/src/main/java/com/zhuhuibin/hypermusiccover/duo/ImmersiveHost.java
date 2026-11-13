@@ -241,6 +241,10 @@ final class ImmersiveHost {
         return sHolding;
     }
 
+    static boolean navigationClock() {
+        return sHolding && !sYield && (sOpen == AmapNavScene.INSTANCE || sLeaving == AmapNavScene.INSTANCE);
+    }
+
     /** The scene a tap on this focus island opens; null for an island that has none. */
     static ImmersiveScene sceneFor(String pkg, boolean focus, String key) {
         for (ImmersiveScene s : SCENES) {
@@ -449,6 +453,7 @@ final class ImmersiveHost {
         sFadeInNext = litNow();
         Xp.log(TAG + "open " + scene.id() + " (ready=" + scene.ready()
                 + " page=" + scene.hasContent() + ")");
+        if (sSlot != null) sSlot.invalidate();
         apply();
     }
 
@@ -661,6 +666,7 @@ final class ImmersiveHost {
         sYield = false;
         sFadeInNext = litNow();
         if (sOpen != null) Xp.log(TAG + sOpen.id() + " back from under the cover");
+        if (sSlot != null) sSlot.invalidate();
         apply();
     }
 
@@ -815,7 +821,9 @@ final class ImmersiveHost {
             if (slot == null) return true;
             if (onLockScreen()) {
                 for (ImmersiveScene s : SCENES) {
-                    if (s.ready() && !sPrepared.contains(s)) {
+                    if (s.ready() && !sPrepared.contains(s)
+                            && (s.prepareWhileClosed() || s == sOpen && !sYield
+                                || s == sLeaving || s == sSwapOut)) {
                         sPrepared.add(s);
                         try {
                             s.prepare(slot);
@@ -957,6 +965,21 @@ final class ImmersiveHost {
         if (shown != sShown) {
             sShown = shown;
             Xp.log(TAG + (shown ? "shown " + page.id() + (dozing ? " (doze)" : "") : "hidden"));
+            changed = true;
+        }
+        // A hidden map still owns a compositor child layer. Retire it instead of
+        // keeping a stale map behind the next wallpaper/glass sampling pass.
+        List<ImmersiveScene> retire = null;
+        for (ImmersiveScene scene : sPrepared) {
+            if (!scene.prepareWhileClosed() && !(scene == sOpen && !sYield)
+                    && scene != sLeaving && scene != sSwapOut) {
+                if (retire == null) retire = new ArrayList<>();
+                retire.add(scene);
+            }
+        }
+        if (retire != null) for (ImmersiveScene scene : retire) {
+            sPrepared.remove(scene); // release() may synchronously re-enter apply().
+            scene.release();
             changed = true;
         }
         return changed;

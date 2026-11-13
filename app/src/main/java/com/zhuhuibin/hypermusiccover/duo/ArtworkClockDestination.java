@@ -11,6 +11,10 @@ public final class ArtworkClockDestination {
 
     public static int fromLegacy(boolean row) { return row ? DATE_ROW : SHRINK; }
 
+    static boolean sceneRequested(boolean cover, boolean player, boolean notifications, boolean navigation) {
+        return navigation || cover && !player && !notifications;
+    }
+
     static float progress(float from, boolean target, float progress) {
         float p = Float.isFinite(progress) ? Math.max(0f, Math.min(1f, progress)) : 1f;
         return from + ((target ? 1f : 0f) - from) * p;

@@ -25,8 +25,10 @@ final class CompactClockRowRuntime {
     static boolean requested() {
         ScreenGeometry s = Main.screenGeometry();
         return CompactClockRowLayout.requested(Main.sArtworkClockDestination == ArtworkClockDestination.DATE_ROW, s.width, s.height,
-                s.densityDpi / 160f, Main.coverModeOn(), LockLyrics.playerChosen(),
-                LockLyrics.notificationCompact()) && !ImmersiveHost.holdsClock();
+                s.densityDpi / 160f,
+                ArtworkClockDestination.sceneRequested(Main.coverModeOn(), LockLyrics.playerChosen(),
+                        LockLyrics.notificationCompact(), ImmersiveHost.navigationClock()), false, false)
+                && (!ImmersiveHost.holdsClock() || ImmersiveHost.navigationClock());
     }
 
     static boolean supportsDisplay() {

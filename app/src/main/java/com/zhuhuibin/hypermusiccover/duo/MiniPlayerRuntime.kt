@@ -11091,6 +11091,7 @@ private class MiniPlayerController(
     private fun listPulled(): Boolean = stackDragged() || kotlin.math.abs(NumState.overScroll()) > 0.5f
 
     fun prepareForSleep() {
+        navigationPresentation.sleepEntry()
         // The OEM fades the shortcut branch before setIsDozing reports AOD. Prepare only
         // this short entry interval, using its supported full-screen mode once per event.
         // Actual ownership still requires a locked screen and wanted discs on every frame.
@@ -13532,10 +13533,14 @@ private class MiniPlayerController(
 
     private fun entryLandscape() = FoldArtworkLayout.innerLandscape(host.width.toFloat(), host.height.toFloat(), density())
 
+    private val navigationPresentation = NavigationPresentationSession()
+
     private fun entrySnapshot(landscape: Boolean): LockscreenSnapshot? =
-        if (MiniPlayerConfig.keepLastLockscreen(config)) MiniPlayerRuntime.entryDefaults.snapshot(landscape) {
-            LockscreenSnapshot.decode(prefs.getString(LockscreenSnapshot.preference(landscape), null), landscape)
-        } else null
+        MiniPlayerRuntime.entryDefaults.snapshot(landscape) {
+            navigationPresentation.restore(landscape) ?: if (MiniPlayerConfig.keepLastLockscreen(config))
+                LockscreenSnapshot.decode(prefs.getString(LockscreenSnapshot.preference(landscape), null), landscape)
+            else null
+        }
 
     private val rememberPresentation = Runnable { rememberLockPresentation() }
     private fun scheduleRememberPresentation() {
@@ -13547,11 +13552,18 @@ private class MiniPlayerController(
         if (!MiniPlayerRuntime.detachedRail() || !config.optBoolean(MiniPlayerConfig.ENABLED) ||
             !Main.screenOnCached() || !Main.keyguardLocked() || !Main.onKeyguardNow() ||
             Main.bouncerShown() || MiniPlayerScene.aodActive || MiniPlayerScene.keyguardGoingAway ||
-            MiniPlayerRuntime.applyingEntryDefaults || railMediaExiting() || railOpening.isNotEmpty() ||
+            MiniPlayerRuntime.applyingEntryDefaults || navigationPresentation.active || railMediaExiting() || railOpening.isNotEmpty() ||
             railFusion != null || railReturn != null || railNoteExit != null || nativeRailNote != null ||
             morph != null || exchange != null || !host.isAttachedToWindow || !host.isShown ||
             host.width <= 0 || host.height <= 0) return
         val landscape = entryLandscape()
+        val preference = LockscreenSnapshot.preference(landscape)
+        val snapshot = currentLockPresentation(landscape)
+        val encoded = snapshot.encode()
+        if (encoded != prefs.getString(preference, null)) prefs.edit().putString(preference, encoded).apply()
+    }
+
+    private fun currentLockPresentation(landscape: Boolean): LockscreenSnapshot {
         val preference = LockscreenSnapshot.preference(landscape)
         val previous = LockscreenSnapshot.decode(prefs.getString(preference, null), landscape)
         var collapsed = previous?.collapsed ?: MiniPlayerConfig.collapsedCategories(config, landscape)
@@ -13569,13 +13581,43 @@ private class MiniPlayerController(
             else if (LockLyrics.sTapHidden) MiniPlayerConfig.VIEW_ARTWORK
             else if (FoldMusicRuntime.combinedRequested()) MiniPlayerConfig.VIEW_ARTWORK_AND_LYRICS
             else MiniPlayerConfig.VIEW_LYRICS
-        val snapshot = LockscreenSnapshot(collapsed, musicView, focus, expanded,
+        return LockscreenSnapshot(collapsed, musicView, focus, expanded,
             selectedIsland?.takeIf { it in collapsedRailKeys() })
-        val encoded = snapshot.encode()
-        if (encoded != prefs.getString(preference, null)) prefs.edit().putString(preference, encoded).apply()
+    }
+
+    private fun applyNavigationPresentation(music: MediaController?): Boolean {
+        val locked = Main.keyguardLocked() && Main.onKeyguardNow() && !MiniPlayerScene.keyguardGoingAway
+        if (navigationPresentation.observe(AmapNavScene.INSTANCE.navigationRunning(), locked, MiniPlayerScene.aodActive))
+            MiniPlayerRuntime.entryDefaults.arm()
+        if (!navigationPresentation.active || !locked || Main.bouncerShown() ||
+            !MiniPlayerRuntime.detachedRail() || !config.optBoolean(MiniPlayerConfig.ENABLED)) return false
+        val landscape = entryLandscape()
+        navigationPresentation.remember(landscape) { currentLockPresentation(landscape) }
+        val entry = navigationPresentation.entry
+        val notifications = entry.takeNotifications(NumState.model() != null, landscape)
+        val focus = LockIslands.focusKeys().filter { entry.takeFocus(it, landscape) }
+        val foldMusic = entry.takeMusic(music != null && Main.miniPlayerMediaCardPresent() &&
+            (transitionHeader()?.height ?: 0) > 0, landscape)
+        if (!notifications && !foldMusic && focus.isEmpty()) return false
+        MiniPlayerRuntime.applyingEntryDefaults = true
+        try {
+            if (notifications) NumState.goTo("NUMBER", anim = false, why = "navigation lock entry")
+            if (foldMusic && music != null) {
+                MiniPlayerRuntime.chooseMini(music.sessionToken)
+                Main.selectLockscreenStartupView(-1)
+            }
+            val navigation = LockIslands.navigationKey()
+            for (key in focus) {
+                if (key == navigation) LockIslands.release(key) else LockIslands.recapture(key)
+            }
+        } finally { MiniPlayerRuntime.applyingEntryDefaults = false }
+        scheduleRefresh()
+        return true
     }
 
     private fun applyLockscreenDefaults(music: MediaController?, hasNotes: Boolean): Boolean {
+        if (applyNavigationPresentation(music)) return true
+        if (navigationPresentation.active) return false
         if (MiniPlayerRuntime.applyingEntryDefaults || !config.optBoolean(MiniPlayerConfig.ENABLED) ||
             !Main.keyguardLocked() || !Main.onKeyguardNow() || Main.bouncerShown() ||
             MiniPlayerScene.aodActive || MiniPlayerScene.keyguardGoingAway) return false
