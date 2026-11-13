@@ -42,6 +42,10 @@ object MiniPlayerConfig {
         if (innerLandscape) landscapeMusicView(config)
         else startupMusicView(config)
 
+    /** Every manual reopen uses the existing shared portrait or independent landscape choice. */
+    @JvmStatic fun expandedMusicView(config: JSONObject, innerLandscape: Boolean): Int =
+        startupMusicView(config, innerLandscape)
+
     /** Preview 11 used value 2 for the combined landscape scene. Preserve that saved intent. */
     private fun landscapeMusicView(config: JSONObject): Int {
         val value = config.optInt(LANDSCAPE_MUSIC_VIEW, VIEW_ARTWORK_AND_LYRICS)

@@ -11521,8 +11521,18 @@ public class Main extends XposedModule {
 
     /** Resolve a button's requested page before entering the scene, including the first tap. */
     private static void selectRailMusicPage(int page) {
+        selectRailMusicPage(page, false);
+    }
+
+    /** A verified capsule expansion may precede the native header's first visible frame. */
+    static void selectExpandedMusicPage(int page) {
+        selectRailMusicPage(RailMusicPagePolicy.showsLyrics(page) && !LockLyrics.sEnabled
+                ? MiniPlayerConfig.VIEW_ARTWORK : page, true);
+    }
+
+    private static void selectRailMusicPage(int page, boolean expanding) {
         if (!screenOnCached() || !keyguardShowing() || !onKeyguardNow() || bouncerUp()
-                || controlCenterUp() || chargeAnimUp() || !sCardShowing
+                || controlCenterUp() || chargeAnimUp() || !(expanding ? sCardPresent : sCardShowing)
                 || MiniPlayerScene.INSTANCE.getKeyguardGoingAway()) return;
         boolean lyrics = RailMusicPagePolicy.showsLyrics(page);
         // A pending lyric lookup must not turn the first click into a no-op. The selected

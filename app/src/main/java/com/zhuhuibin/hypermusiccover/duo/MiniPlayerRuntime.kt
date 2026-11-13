@@ -7617,7 +7617,7 @@ private class MiniPlayerController(
     /** [up] - the pill's island or the small one - goes out in place of the one out now. */
     private fun startExchange(up: String, toCover: Boolean = false): Boolean { android.os.Trace.beginSection("MC startExchange"); try {
         if (MiniPlayerRuntime.detachedRail()) {
-            openDetachedIsland(up, toCover)
+            openDetachedIsland(up)
             return true
         }
         val down = expandedKey()
@@ -8907,7 +8907,7 @@ private class MiniPlayerController(
         }
     }
 
-    private fun openDetachedIsland(key: String, cover: Boolean = false, musicVerified: Boolean = false) {
+    private fun openDetachedIsland(key: String, musicVerified: Boolean = false) {
         if (key != MUSIC_ISLAND) MiniPlayerRuntime.cancelMusicExpansion()
         if (key == MUSIC_ISLAND && !musicVerified) {
             val token = controller?.sessionToken ?: return
@@ -8915,7 +8915,7 @@ private class MiniPlayerController(
             MiniPlayerRuntime.requestMusicExpansion(token) {
                 if (!destroyed && host.isAttachedToWindow && controller?.sessionToken == token) {
                     MiniPlayerRuntime.withMusicPillTap(fromPill) {
-                        openDetachedIsland(key, cover, musicVerified = true)
+                        openDetachedIsland(key, musicVerified = true)
                     }
                 }
             }
@@ -8929,8 +8929,8 @@ private class MiniPlayerController(
         railClosing.remove(key)
         railDismissOrder.opened(key)
         if (key == MUSIC_ISLAND) {
-            if (cover) Main.miniPlayerEnterCover()
-            else controller?.sessionToken?.let(MiniPlayerRuntime::selectNative)
+            controller?.sessionToken?.let(MiniPlayerRuntime::selectNative)
+            Main.selectExpandedMusicPage(MiniPlayerConfig.expandedMusicView(config, entryLandscape()))
         } else {
             if (Main.coverModeOn()) {
                 Main.miniPlayerLeaveCover()
@@ -8955,7 +8955,7 @@ private class MiniPlayerController(
         }
         if (MiniPlayerRuntime.detachedRail()) {
             MiniPlayerRuntime.forgetRestoreScene()
-            openDetachedIsland(MUSIC_ISLAND, cover = true, musicVerified = true)
+            openDetachedIsland(MUSIC_ISLAND, musicVerified = true)
             return
         }
         MiniPlayerRuntime.forgetRestoreScene()
@@ -11092,7 +11092,11 @@ private class MiniPlayerController(
     private fun listPulled(): Boolean = stackDragged() || kotlin.math.abs(NumState.overScroll()) > 0.5f
 
     fun prepareForSleep() {
-        navigationPresentation.sleepEntry()
+        runCatching {
+            navigationPresentation.prepareSleep(host.isAttachedToWindow && Main.fullAodOn(), {
+                applyNavigationPresentation(controller?.takeIf(::isUsable))
+            }, { ImmersiveHost.prepareNavigationAod() })
+        }.onFailure { Xp.w("MCMini: navigation sleep preparation unavailable: $it") }
         // The OEM fades the shortcut branch before setIsDozing reports AOD. Prepare only
         // this short entry interval, using its supported full-screen mode once per event.
         // Actual ownership still requires a locked screen and wanted discs on every frame.

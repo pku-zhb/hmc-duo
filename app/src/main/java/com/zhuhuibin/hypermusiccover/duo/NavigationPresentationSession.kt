@@ -38,4 +38,12 @@ internal class NavigationPresentationSession {
         if (restoring) saved.remove(landscape) else null
 
     fun sleepEntry() { if (active) entry.arm() }
+
+    /** Commit navigation and its clock reservation before the OEM snapshots its AOD pose. */
+    fun prepareSleep(fullAod: Boolean, applyPresentation: () -> Unit, reserveClock: () -> Unit) {
+        sleepEntry()
+        if (!fullAod) return
+        applyPresentation()
+        if (active) reserveClock()
+    }
 }

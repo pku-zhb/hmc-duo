@@ -113,4 +113,42 @@ class NavigationPresentationSessionTest {
         s.observe(true, true, false, navigationCardPresent = false)
         assertEquals(nextNormal, s.restore(false))
     }
+
+    @Test fun aManuallyCollapsedNavigationIsReopenedAndClockReservedBeforeTheAodCapture() {
+        val s = NavigationPresentationSession()
+        s.observe(true, true, false, navigationCardPresent = true)
+        assertTrue(s.entry.takeFocus("navigation"))
+        val order = mutableListOf<String>()
+        s.prepareSleep(true, {
+            assertTrue(s.entry.takeFocus("navigation"))
+            order += "navigation-layout"
+        }, { order += "clock-reserved" })
+        order += "native-aod-capture"
+        assertEquals(listOf("navigation-layout", "clock-reserved", "native-aod-capture"), order)
+    }
+
+    @Test fun endingNavigationDuringSleepPreparationCannotReserveItsClock() {
+        val s = NavigationPresentationSession()
+        s.observe(true, true, false, navigationCardPresent = true)
+        var reserved = false
+        s.prepareSleep(true, { s.observe(true, true, true, navigationCardPresent = false) }, { reserved = true })
+        assertFalse(reserved)
+        assertFalse(s.active)
+    }
+
+    @Test fun plainAodRetainsTheExistingDeferredPresentationAndNativeClock() {
+        val s = NavigationPresentationSession()
+        s.observe(true, true, false, navigationCardPresent = true)
+        assertTrue(s.entry.takeFocus("navigation"))
+        s.prepareSleep(false, { fail("Plain AOD must not synchronously reopen a map") }, { fail("Plain AOD clock stays native") })
+        assertTrue(s.entry.takeFocus("navigation"))
+    }
+
+    @Test fun readinessWithoutTheLiveCardCannotRegainClockOwnershipAtSleep() {
+        val s = NavigationPresentationSession()
+        s.observe(true, true, false, navigationCardPresent = false)
+        var reserved = false
+        s.prepareSleep(true, { s.observe(true, true, true, navigationCardPresent = false) }, { reserved = true })
+        assertFalse(reserved)
+    }
 }

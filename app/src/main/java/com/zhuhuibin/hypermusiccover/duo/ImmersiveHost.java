@@ -245,6 +245,26 @@ final class ImmersiveHost {
         return sHolding && !sYield && (sOpen == AmapNavScene.INSTANCE || sLeaving == AmapNavScene.INSTANCE);
     }
 
+    /** Sleep reopens the real navigation card before the OEM captures the clock's AOD pose. */
+    static void prepareNavigationAod() {
+        ImmersiveScene navigation = AmapNavScene.INSTANCE;
+        if (!NavigationAodPolicy.prepare(Main.fullAodOn(), onLockScreen()
+                        && !MiniPlayerScene.INSTANCE.getKeyguardGoingAway(),
+                LockIslands.INSTANCE.navigationKey() != null, navigation.ready(),
+                sOpen == navigation && !sYield)) return;
+        ensureSlot();
+        if (sSlot == null) return;
+        // A closed remote page returns asynchronously. Reserve the same bounded
+        // clock hold used while a page comes back after unlock, before it can draw.
+        if (!navigation.hasContent() && sLetGo.add(navigation)) {
+            sMain.removeCallbacks(LET_GO_EXPIRED);
+            sMain.postDelayed(LET_GO_EXPIRED, PAGE_BACK_MS);
+        }
+        apply();
+        if (navigationClock()) ClockCollapse.prepareNavigationAod();
+        sSlot.invalidate();
+    }
+
     /** The scene a tap on this focus island opens; null for an island that has none. */
     static ImmersiveScene sceneFor(String pkg, boolean focus, String key) {
         for (ImmersiveScene s : SCENES) {
@@ -518,6 +538,8 @@ final class ImmersiveHost {
         if (scene == sOpen && !sYield && scene.hasContent() && !sShown && litNow()) {
             sFadeInNext = true;
         }
+        if (scene == AmapNavScene.INSTANCE && scene.hasContent() && navigationClock()
+                && !screenOn()) ClockCollapse.prepareNavigationAod();
         apply();
     }
 
@@ -915,6 +937,7 @@ final class ImmersiveHost {
             sHolding = keep;
             try {
                 Main.onImmersive(keep);
+                if (keep && navigationClock() && !screenOn()) ClockCollapse.prepareNavigationAod();
             } catch (Throwable t) {
                 Xp.w(TAG + "lock screen " + (keep ? "hold" : "hand-back") + " failed: " + t);
             }

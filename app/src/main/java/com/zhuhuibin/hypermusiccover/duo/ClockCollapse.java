@@ -102,8 +102,10 @@ final class ClockCollapse {
         // An immersive page as well as the cover: the full-screen doze keeps the page under the
         // clock (ImmersiveHost), and only that doze - the plain one is the OEM's, page and clock
         // alike.
-        return (Main.sAodSmall || statusClockRequested() || CompactClockRowRuntime.requested()
-                && compactRowPlan(Main.visibleDate()) != null) && Main.fullAodOn();
+        boolean fullAod = Main.fullAodOn();
+        return (NavigationAodPolicy.keepClock(ImmersiveHost.navigationClock(), fullAod)
+                || Main.sAodSmall || statusClockRequested() || CompactClockRowRuntime.requested()
+                && compactRowPlan(Main.visibleDate()) != null) && fullAod;
     }
 
     /**
@@ -514,12 +516,16 @@ final class ClockCollapse {
 
     /** @param src which route took this entry, for the log - see noteEntry. */
     static void enter(boolean animate, boolean wake, String src) {
+        enter(animate, wake, src, false);
+    }
+
+    private static void enter(boolean animate, boolean wake, String src, boolean preparingNavigationAod) {
         if (MiniPlayerScene.INSTANCE.getKeyguardGoingAway()) {
             sWaking = false;
             return;
         }
         observeClockGeometry();
-        if (!Main.screenOn() && !sWaking) {
+        if (!preparingNavigationAod && !Main.screenOn() && !sWaking) {
             // The AOD shows the full clock; the wake brings it in.
             toAod();
             return;
@@ -802,6 +808,20 @@ final class ClockCollapse {
                 }
             }
         }, LAND_ANYWAY_MS);
+    }
+
+    /** Pose first, then latch AOD: a newly rebound map must never inherit the native big clock. */
+    static void prepareNavigationAod() {
+        if (!NavigationAodPolicy.keepClock(ImmersiveHost.navigationClock(), Main.fullAodOn())
+                || MiniPlayerScene.INSTANCE.getKeyguardGoingAway() || Main.sContainer == null) return;
+        if (sPhase == Phase.AOD && sAodHeld && sPoseDrawn && Float.isFinite(sFromTop)) return;
+        try {
+            enter(false, false, "navigation AOD priority", true);
+            frame();
+            if (sPoseDrawn) toAod();
+        } catch (Throwable error) {
+            Xp.w(TAG + "navigation AOD clock preparation unavailable: " + error);
+        }
     }
 
     /** Everything of ours off the clock - the phone was unlocked, or cover mode went away. */
