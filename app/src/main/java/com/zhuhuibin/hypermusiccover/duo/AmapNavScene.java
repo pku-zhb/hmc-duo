@@ -36,8 +36,8 @@ final class AmapNavScene extends LiveAlertScene {
 
     @Override public boolean prepareWhileClosed() { return false; }
 
-    /** Navigation priority belongs to the live navigation, independently of the map switch. */
-    boolean navigationRunning() { return armed(); }
+    /** Page initialization can outlive navigation; the live card supplies separate liveness. */
+    boolean navigationPageArmed() { return armed(); }
 
     /**
      * 高德's own message on the same Messenger: data{openOverview} 1 = the whole route

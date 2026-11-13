@@ -11,7 +11,11 @@ internal class NavigationPresentationSession {
         private set
 
     /** Returns true once at the end so the normal entry gates can replay the saved choices. */
-    fun observe(navigation: Boolean, keyguard: Boolean, aod: Boolean): Boolean {
+    fun observe(pageArmed: Boolean, keyguard: Boolean, aod: Boolean,
+                navigationCardPresent: Boolean = true): Boolean {
+        // Amap can retain its initialized page after navigation has ended. Readiness
+        // alone must not suppress ordinary entry choices or their persistence forever.
+        val navigation = pageArmed && navigationCardPresent
         val ended = active && !navigation
         if (!active && navigation) {
             saved.clear()
