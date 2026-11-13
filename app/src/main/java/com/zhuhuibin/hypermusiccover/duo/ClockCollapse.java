@@ -143,8 +143,9 @@ final class ClockCollapse {
 
     static boolean statusClockRequested() {
         return Main.sArtworkClockDestination == ArtworkClockDestination.STATUS
-                && Main.coverModeOn() && !LockLyrics.playerChosen() && !LockLyrics.notificationCompact()
-                && !ImmersiveHost.holdsClock() && statusClockAvailable();
+                && ArtworkClockDestination.sceneRequested(Main.coverModeOn(), LockLyrics.playerChosen(),
+                        LockLyrics.notificationCompact(), ImmersiveHost.navigationClock())
+                && (!ImmersiveHost.holdsClock() || ImmersiveHost.navigationClock()) && statusClockAvailable();
     }
 
     static boolean statusClockMoving() { return sStatusProgress > 0f || sStatusTarget; }

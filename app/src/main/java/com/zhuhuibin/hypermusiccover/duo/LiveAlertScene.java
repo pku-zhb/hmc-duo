@@ -78,6 +78,8 @@ class LiveAlertScene implements ImmersiveScene {
     private final String mCardId;
 
     private final ImmersiveSceneAvailability mAvailability = new ImmersiveSceneAvailability();
+    private final RemotePageGeneration mGeneration = new RemotePageGeneration();
+    private Messenger mReplyTo;
     private Context mCtx;
     private SurfaceView mSurface;
     private Messenger mServer;
@@ -125,6 +127,8 @@ class LiveAlertScene implements ImmersiveScene {
         return mAvailability.ready();
     }
 
+    final boolean armed() { return mAvailability.armed(); }
+
     void setEnabled(boolean enabled) {
         if (!mAvailability.setEnabled(enabled)) return;
         ImmersiveHost.readyChanged(this);
@@ -151,6 +155,8 @@ class LiveAlertScene implements ImmersiveScene {
     @Override
     public void prepare(ViewGroup slot) {
         if (mSurface != null) return;
+        final long generation = mGeneration.begin();
+        mReplyTo = replyTo(generation);
         mCtx = slot.getContext().getApplicationContext();
         mReplies = 0;
         mBindSent = false;
@@ -174,12 +180,14 @@ class LiveAlertScene implements ImmersiveScene {
         sv.getHolder().addCallback(new SurfaceHolder.Callback() {
             @Override
             public void surfaceCreated(SurfaceHolder holder) {
+                if (!mGeneration.accepts(generation)) return;
                 // A new surface starts opaque; a fade may be under way.
                 applyFade();
             }
 
             @Override
             public void surfaceChanged(SurfaceHolder holder, int format, int w, int h) {
+                if (!mGeneration.accepts(generation)) return;
                 if (mBindSent) send(MSG_RESIZE, resizeData());
             }
 
@@ -359,6 +367,7 @@ class LiveAlertScene implements ImmersiveScene {
     public void release() {
         SurfaceView sv = mSurface;
         if (sv == null) return;
+        mGeneration.retire();
         IBinder token = sv.getHostToken();
         if (mServer != null && token != null) {
             Bundle data = new Bundle();
@@ -380,6 +389,10 @@ class LiveAlertScene implements ImmersiveScene {
             } catch (Throwable ignored) {
             }
         }
+        SurfaceControlViewHost.SurfacePackage oldPackage = mPackage;
+        mPackage = null;
+        if (oldPackage != null) oldPackage.release();
+        mReplyTo = null;
         ViewGroup parent = (ViewGroup) sv.getParent();
         if (parent != null) parent.removeView(sv);
         mSurface = null;
@@ -406,9 +419,11 @@ class LiveAlertScene implements ImmersiveScene {
 
     private void bind() {
         mStartedAt = SystemClock.uptimeMillis();
+        final long generation = mGeneration.current();
         mConn = new ServiceConnection() {
             @Override
             public void onServiceConnected(ComponentName name, IBinder service) {
+                if (!mGeneration.accepts(generation) || mConn != this) return;
                 mServer = new Messenger(service);
                 Xp.log(mTag + "connected");
                 sendBind();
@@ -416,6 +431,7 @@ class LiveAlertScene implements ImmersiveScene {
 
             @Override
             public void onServiceDisconnected(ComponentName name) {
+                if (!mGeneration.accepts(generation) || mConn != this) return;
                 mServer = null;
                 // The app's process died, and its page with it; what is left in the SurfaceView
                 // is the black layer behind it. Nothing comes back on its own: the app has to be
@@ -445,7 +461,8 @@ class LiveAlertScene implements ImmersiveScene {
     }
 
     /** The app's replies, on the main thread like the plugin's MsgReceiver. */
-    private final Messenger mReplyTo = new Messenger(new Handler(Looper.getMainLooper()) {
+    private Messenger replyTo(final long generation) {
+        return new Messenger(new Handler(Looper.getMainLooper()) {
         @Override
         public void handleMessage(Message msg) {
             mReplies++;
@@ -460,12 +477,16 @@ class LiveAlertScene implements ImmersiveScene {
             } catch (Throwable t) {
                 Xp.log(mTag + "21 unreadable: " + t);
             }
-            if (pkg == null || mSurface == null) {
+            if (pkg == null) return;
+            if (!mGeneration.accepts(generation) || mSurface == null || !ready()) {
+                pkg.release();
                 Xp.log(mTag + "21 without a package, or after release");
                 return;
             }
+            SurfaceControlViewHost.SurfacePackage previous = mPackage;
             mSurface.setChildSurfacePackage(pkg);
             mPackage = pkg;
+            if (previous != null && previous != pkg) previous.release();
             // A new page takes the scale the fade has it at.
             applyScale(mScale);
             boolean first = !mContent;
@@ -474,7 +495,8 @@ class LiveAlertScene implements ImmersiveScene {
             onPage();
             if (first) ImmersiveHost.contentChanged(LiveAlertScene.this);
         }
-    });
+        });
+    }
 
     /** A page came back (21): the first, or a new one after the app re-rendered. */
     void onPage() {

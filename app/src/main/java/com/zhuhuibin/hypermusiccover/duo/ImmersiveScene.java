@@ -26,6 +26,9 @@ interface ImmersiveScene {
     /** Independent page preference; ordinary notification presentation remains available. */
     default boolean enabled() { return true; }
 
+    /** Remote map surfaces must not remain under native glass while their page is closed. */
+    default boolean prepareWhileClosed() { return true; }
+
     /** Whether a tap on this focus island opens this scene. */
     boolean serves(String pkg, boolean focus);
 
