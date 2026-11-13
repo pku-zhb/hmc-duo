@@ -4,6 +4,22 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class MediaCardConfigTest {
+    @Test fun playerHeightDefaultsRemainNativeForOldSettings() {
+        val values = MediaCardConfig.parse("""{"notification.cover":2}""")
+        assertEquals(100, values.getValue("notification.height"))
+        assertEquals(100, values.getValue("notification.heightLandscape"))
+        assertEquals(100, MediaCardConfig.parse("""{"island.height":85}""").getValue("island.height"))
+    }
+    @Test fun playerHeightProfilesAreIndependentBoundedAndBackedUp() {
+        val values = MediaCardConfig.parse("""{"notification.height":90,"notification.heightLandscape":95}""")
+        assertEquals(90, values.getValue("notification.height"))
+        assertEquals(95, values.getValue("notification.heightLandscape"))
+        assertEquals(values, MediaCardConfig.parse(MediaCardConfig.encode(values)))
+        assertTrue(MediaCardConfig.followsNativeMaterial(values))
+        val bounded = MediaCardConfig.parse("""{"notification.height":1,"notification.heightLandscape":999}""")
+        assertEquals(85, bounded.getValue("notification.height"))
+        assertEquals(100, bounded.getValue("notification.heightLandscape"))
+    }
     @Test fun nativeMaterialIsIndependentOfContentAndGeometryChoices() {
         val defaults = MediaCardConfig.parse(null)
         assertTrue(MediaCardConfig.followsNativeMaterial(defaults))

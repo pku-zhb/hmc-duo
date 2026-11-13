@@ -15,7 +15,8 @@ object MediaCardConfig {
     val scopes = listOf("notification", "island")
     val defaults = linkedMapOf("cover" to 0, "scrollText" to 0, "hideSource" to 0, "hideDevice" to 0,
         "background" to 0, "theme" to 0, "flow" to 0, "pauseRestore" to 1,
-        "animate" to 1, "blur" to 8, "invert" to 1, "tone" to 1)
+        "animate" to 1, "blur" to 8, "invert" to 1, "tone" to 1,
+        "height" to 100, "heightLandscape" to 100)
 
     fun limit(name: String, value: Int): Int = when (name) {
         "cover" -> value.coerceIn(0, 3)
@@ -23,6 +24,7 @@ object MediaCardConfig {
         "theme" -> value.coerceIn(0, 2)
         "flow" -> value.coerceIn(0, 4)
         "blur" -> value.coerceIn(1, 20)
+        "height", "heightLandscape" -> value.coerceIn(85, 100)
         else -> value.coerceIn(0, 1)
     }
 
