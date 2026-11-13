@@ -219,7 +219,7 @@ final class VideoBackdropMesh extends View implements Choreographer.FrameCallbac
 
     static void refreshVisibility() {
         VideoBackdropMesh v = view;
-        if (v == null) return;
+        if (v == null) { NativeMediaBackdrop.refresh(); return; }
         if (!v.eligible()) { v.hide(); return; }
         int generation = CoverCardLayer.backdropGeneration();
         boolean changed = v.state.source() != generation;
@@ -235,6 +235,15 @@ final class VideoBackdropMesh extends View implements Choreographer.FrameCallbac
         }
         if (changed) v.invalidate();
         if (v.needsFrames()) v.schedule();
+        NativeMediaBackdrop.refresh();
+    }
+
+    /** Local pixels, not a requested setting, select the native card's sampling domain. */
+    static boolean samplingBackdropIn(View source) {
+        VideoBackdropMesh v = view;
+        return source != null && v != null && v.eligible() && v.isShown()
+                && v.getRootView() == source.getRootView() && v.state.revealed()
+                && v.state.drawn() == v.state.source() && v.renderAlpha > .001f;
     }
 
     private boolean needsFrames() {
@@ -282,6 +291,7 @@ final class VideoBackdropMesh extends View implements Choreographer.FrameCallbac
         lastVideoAlpha = Float.NaN;
         state.hide();
         if (getVisibility() != INVISIBLE) setVisibility(INVISIBLE);
+        NativeMediaBackdrop.refresh();
     }
 
     @Override public void doFrame(long now) {

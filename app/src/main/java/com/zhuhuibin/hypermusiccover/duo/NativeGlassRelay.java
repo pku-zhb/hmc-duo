@@ -60,6 +60,7 @@ final class NativeGlassRelay {
     static void install() {
         if (installed) return;
         installed = true;
+        NativeMediaBackdrop.install();
         try {
             renderNode = View.class.getDeclaredField("mRenderNode");
             renderNode.setAccessible(true);
@@ -306,13 +307,15 @@ final class NativeGlassRelay {
     static boolean bindNativePlayerBackground(View view, View owner) {
         Object parent = view == null ? null : view.getParent();
         Object ownerParent = owner == null ? null : owner.getParent();
-        if (!relaySceneNow()) return false;
+        if (!relaySceneNow()) { NativeMediaBackdrop.clear(); return false; }
         boolean sameSource = sourceBinding.isSource(view);
         boolean bound = sourceBinding.bind(view, parent, owner, ownerParent,
                 () -> nativePlayerBackground(view, owner));
         // Reparenting the same accepted background does not reset its RenderNode. Its
         // next identical setter can return false, so keep that source's committed state.
         if (!bound || !sameSource) clearSourceProfiles();
+        if (bound) NativeMediaBackdrop.bind(view, owner);
+        else NativeMediaBackdrop.clear();
         return bound;
     }
 
@@ -325,6 +328,7 @@ final class NativeGlassRelay {
             return bindNativePlayerBackground(view, owner);
         }
         sourceBinding.clear();
+        NativeMediaBackdrop.clear();
         clearSourceProfiles();
         return false;
     }
@@ -370,6 +374,7 @@ final class NativeGlassRelay {
                 + " profile=" + (profile != null) + " captures=" + captures
                 + " blurProfile=" + (blur != null) + " backgroundProfile=" + (background != null)
                 + " applications=" + applications + " blurApplications=" + blurApplications
-                + " ownedRefreshes=" + refreshes + " paletteRestores=" + paletteRestores + " targets=" + targets.size();
+                + " ownedRefreshes=" + refreshes + " paletteRestores=" + paletteRestores + " targets=" + targets.size()
+                + " mediaBackdrop=[" + NativeMediaBackdrop.describe() + "]";
     }
 }
