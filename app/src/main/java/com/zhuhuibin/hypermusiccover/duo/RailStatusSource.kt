@@ -1,5 +1,6 @@
 package com.zhuhuibin.hypermusiccover.duo
 
+import android.annotation.SuppressLint
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -101,6 +102,9 @@ internal class RailStatusSource(private val context: Context, private val change
         }
     }
 
+    // This listener runs only in SystemUI, using its native context/permissions.
+    // Every privileged read is inside attempt(), which handles SecurityException.
+    @SuppressLint("MissingPermission")
     fun start() {
         if (running) return
         running = true
@@ -171,6 +175,7 @@ internal class RailStatusSource(private val context: Context, private val change
         wifiLevels[network] = RailStatusValues.wifiLevel(true, rssi)
     }
     @Suppress("DEPRECATION")
+    @SuppressLint("MissingPermission")
     private fun refreshWifi() = attempt("wifi state") {
         wifiLevels.clear()
         if (wifi?.isWifiEnabled == true) for (network in connectivity?.allNetworks.orEmpty()) {
@@ -178,6 +183,7 @@ internal class RailStatusSource(private val context: Context, private val change
         }
     }
 
+    @SuppressLint("MissingPermission")
     private fun refreshSims() = attempt("SIM state") {
         val ids = subscriptions?.activeSubscriptionInfoList.orEmpty()
             .filter { it.simSlotIndex >= 0 }.sortedBy { it.simSlotIndex }.take(2).map { it.subscriptionId }
