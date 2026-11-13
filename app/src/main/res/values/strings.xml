@@ -326,7 +326,7 @@
     <string name="fp_sink_restart_hint">Restart System UI to apply this change.</string>
     <string name="fp_sink_restart_failed">Could not restart System UI. Check root access and try again.</string>
     <string name="credits_original_author">Original author of HyperMusicCover, who built the lock screen music interface and the module foundation this Enhanced version is based on.</string>
-    <string name="clock_size_summary">Only used with “Shrink in place”, up to 55% of the original clock size.</string>
+    <string name="clock_size_summary" formatted="false">Only used with “Shrink in place”, up to 55% of the original clock size.</string>
     <string name="lyrics_bpm_companion">Kaomoji companion</string>
     <string name="lyrics_bpm_companion_summary">When artwork and lyrics are closed, show a character moving to the beat in the player view. Tap the lyrics button to search.</string>
     <string name="lyrics_bpm_players">Players for the beat companion</string>
@@ -379,11 +379,11 @@
     <string name="cover_on_tap_summary">Playing music shows only the player over your wallpaper. Tap the artwork to open the cover.</string>
     <string name="media_appearance_tab">Appearance</string>
     <string name="cover_wallpaper_dim">Wallpaper dimming</string>
-    <string name="cover_wallpaper_dim_summary">0% adds no dimming. Higher values darken the background behind artwork or lyrics.</string>
+    <string name="cover_wallpaper_dim_summary" formatted="false">0% adds no dimming. Higher values darken the background behind artwork or lyrics.</string>
     <string name="mini_media_collapsed">Keep music artwork collapsed</string>
     <string name="mini_media_collapsed_summary">With the lock screen island enabled, music starts as a pill. Tap or swipe up to open it. Your selected cover or lyrics view stays the same.</string>
     <string name="lyrics_depth_blur">Inactive lyrics blur</string>
-    <string name="lyrics_depth_blur_summary">Adjust blur on past and upcoming lyrics. 100% keeps the original effect, 0% removes blur. Singing lines stay clear.</string>
+    <string name="lyrics_depth_blur_summary" formatted="false">Adjust blur on past and upcoming lyrics. 100% keeps the original effect, 0% removes blur. Singing lines stay clear.</string>
     <string name="cover_section">Cover</string>
     <string name="clock_section">Clock</string>
     <string name="fingerprint_section">Fingerprint</string>
