@@ -19,6 +19,18 @@ not automatically verified on every device, display or OS version.
 
 ## Current acceptance scope
 
+### 0.2.6 holder reuse, predictable reopening and native card geometry
+
+The owner accepted pull-down background separation and last-lockscreen retention
+in 0.2.5. This iteration repairs source lifecycle gaps in local artwork sampling
+and same-track lyric entry, synchronizes navigation/clock presentation before
+full-screen AOD capture, restores native inner card widths and composes swipe
+feathering into fresh material commits. Music reopening consistently uses the
+shared portrait or independent landscape page setting. Player height defaults to
+native and optionally compresses only safe vertical gaps. Settings/About gain
+clearer ownership, companion links and complete offline legal notices. See
+[the focused 0.2.6 record](releases/0.2.6.md); device work is explicitly deferred.
+
 ### 0.2.5 final candidate with owner-provided support image
 
 0.2.5 contains the complete 0.2.4 fixes, including last-lockscreen state recovery

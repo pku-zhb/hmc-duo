@@ -10,7 +10,13 @@ and [HyperMusicCover](https://github.com/zyl6932/HyperMusicCover).
 Device coverage is focused on the maintainer's foldable phone; compatibility with
 other devices is not established.
 
-Version 0.2.5 is the final candidate for this iteration. It includes all 0.2.4
+Version 0.2.6 repairs holder-reuse artwork sampling, same-track lyric reentry and
+navigation's AOD clock ordering. Music expansion follows the selected portrait
+or landscape page; native inner card widths are restored and height can be
+adjusted by compressing whitespace. About adds a companion link and complete
+offline legal notices. See the [0.2.6 record](docs/releases/0.2.6.md).
+
+Version 0.2.5 was the preceding candidate. It includes all 0.2.4
 fixes, including last-lockscreen state recovery after AMap, and adds the
 maintainer-provided WeChat support image with an original-image gallery export.
 The existing 0.2.4 archive remains unchanged. Settings are grouped by purpose,
