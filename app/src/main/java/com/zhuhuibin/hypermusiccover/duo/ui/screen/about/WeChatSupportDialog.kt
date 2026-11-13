@@ -64,17 +64,18 @@ internal fun WeChatSupportDialog(onDismiss: () -> Unit) {
                     Modifier.weight(1f), minHeight = 44.dp)
                 TextButton(stringResource(if (saving) R.string.support_image_saving else R.string.support_save_image),
                     onClick = {
-                        saving = true
-                        scope.launch {
-                            val success = try {
-                                withContext(Dispatchers.IO) { saveSupportImage(context.applicationContext) }
-                                true
-                            } catch (cancelled: CancellationException) {
-                                throw cancelled
-                            } catch (_: Exception) { false }
-                            saving = false
-                            Toast.makeText(context, if (success) R.string.support_image_saved
-                                else R.string.support_image_save_failed, Toast.LENGTH_SHORT).show()
+                        if (!saving) {
+                            saving = true
+                            scope.launch {
+                                try {
+                                    withContext(Dispatchers.IO) { saveSupportImage(context.applicationContext) }
+                                    Toast.makeText(context, R.string.support_image_saved, Toast.LENGTH_SHORT).show()
+                                } catch (cancelled: CancellationException) {
+                                    throw cancelled
+                                } catch (_: Exception) {
+                                    Toast.makeText(context, R.string.support_image_save_failed, Toast.LENGTH_SHORT).show()
+                                } finally { saving = false }
+                            }
                         }
                     }, modifier = Modifier.weight(1f), enabled = !saving, minHeight = 44.dp)
             }
