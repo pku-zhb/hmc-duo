@@ -129,13 +129,14 @@ fun SettingsPageView(
                             iconHidden = it
                         }
                     )
+                    val clipboardLabel = stringResource(R.string.hide_launcher_icon)
                     TextButton(text = stringResource(R.string.settings_copy_launcher_code),
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 8.dp),
                         minHeight = 44.dp,
                         onClick = {
                             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                             val code = "*#*#${LauncherIcon.SECRET_CODE}#*#*"
-                            clipboard.setPrimaryClip(ClipData.newPlainText(context.getString(R.string.hide_launcher_icon), code))
+                            clipboard.setPrimaryClip(ClipData.newPlainText(clipboardLabel, code))
                             Toast.makeText(context, R.string.settings_launcher_code_copied, Toast.LENGTH_SHORT).show()
                         })
                 }

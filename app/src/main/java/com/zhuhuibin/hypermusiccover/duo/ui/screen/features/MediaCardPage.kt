@@ -22,6 +22,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.zhuhuibin.hypermusiccover.duo.MediaCardConfig
@@ -34,6 +35,7 @@ import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.preference.WindowDropdownPreference
+import java.util.Locale
 
 @Composable
 internal fun MediaCardPageView(isBlurEnabled: Boolean, refreshKey: Int, onBack: () -> Unit) {
@@ -88,10 +90,13 @@ internal fun MediaCardPageView(isBlurEnabled: Boolean, refreshKey: Int, onBack: 
                 if (style > 0 || values.getValue("$scope.flow") in 1..3) MediaSwitch(scope, "animate",
                     R.string.media_background_animate, values, module.alive, push)
                 if (style == 2) {
+                    val labelTemplate = stringResource(R.string.media_background_amount_value)
+                    val locale = LocalConfiguration.current.locales[0] ?: Locale.getDefault()
                     ValueSlider(title = stringResource(R.string.media_background_amount),
                         summary = stringResource(R.string.media_background_amount_summary),
                         value = values.getValue("$scope.blur").toFloat(), valueRange = 1f..20f,
-                        enabled = module.alive, detent = 8f, label = { context.getString(R.string.media_background_amount_value, it.toInt()) },
+                        enabled = module.alive, detent = 8f,
+                        label = { String.format(locale, labelTemplate, it.toInt()) },
                         onValueChange = { push("$scope.blur", it.toInt()) })
                 }
                 if (style == 4) MediaSwitch(scope, "invert", R.string.media_background_invert, values, module.alive, push)
