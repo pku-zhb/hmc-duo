@@ -91,7 +91,7 @@ internal fun MediaCardPageView(isBlurEnabled: Boolean, refreshKey: Int, onBack: 
                     R.string.media_background_animate, values, module.alive, push)
                 if (style == 2) {
                     val labelTemplate = stringResource(R.string.media_background_amount_value)
-                    val locale = LocalConfiguration.current.locales[0] ?: Locale.getDefault()
+                    val locale = LocalConfiguration.current.locales[0] ?: Locale.ROOT
                     ValueSlider(title = stringResource(R.string.media_background_amount),
                         summary = stringResource(R.string.media_background_amount_summary),
                         value = values.getValue("$scope.blur").toFloat(), valueRange = 1f..20f,
