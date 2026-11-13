@@ -1,21 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="rail_status_offset_y">三合一纵向偏移</string>
-    <string name="rail_status_offset_y_summary">仅移动时间、电量和网络状态；锁屏与 AOD 共用，正值向下。滑杆微调 ±24 dp，点数值可输入 ±80 dp。</string>
+    <string name="rail_status_offset_y">右上状态区上下偏移</string>
+    <string name="rail_status_offset_y_summary">仅移动右上时间、电量和信号图标；锁屏与 AOD 共用，正值向下。滑杆微调 ±24 dp，点右侧数值可输入 ±80 dp。</string>
     <string name="rail_status_offset_y_reset">恢复默认</string>
     <string name="rail_status_offset_y_range">−80 … 80 dp</string>
     <string name="rail_status_offset_y_input">偏移（dp）</string>
     <string name="rail_status_offset_y_invalid">请输入 −80 到 80 之间的数值。</string>
     <string name="amap_navigation_map">锁屏导航地图（高德）</string>
-    <string name="amap_navigation_map_summary">步行或骑行导航时显示锁屏地图；关闭后保留导航通知、实时活动卡片和播放器。</string>
+    <string name="amap_navigation_map_summary">步行或骑行时，在锁屏显示导航地图。</string>
     <string name="lock_right_rail">右侧纵向胶囊</string>
-    <string name="lock_right_rail_summary">预览功能：固定右侧胶囊、手电筒和相机的位置，顶部显示时间、电量和网络状态；无需 MiDuo。</string>
-    <string name="lock_reflow_content">为右侧控件预留锁屏空间</string>
-    <string name="lock_reflow_content_summary">预览功能：日期、时间和通知按剩余区域重新排版，并在该区域内居中。</string>
+    <string name="lock_right_rail_summary">将胶囊、手电筒与相机放到右侧，上方显示状态信息。</string>
+    <string name="lock_reflow_content">锁屏内容避让右侧栏</string>
+    <string name="lock_reflow_content_summary">日期、时钟和通知在左侧剩余空间内居中，避开右侧快捷栏。</string>
     <string name="lock_follow_native_glass">跟随原生通知玻璃</string>
     <string name="lock_follow_native_glass_summary">预览功能：胶囊和快捷按钮底板跟随原生播放器最终使用的玻璃参数，包括 HyperLight 的调整。</string>
     <string name="cover_fold_columns">内屏横屏双栏</string>
-    <string name="cover_fold_columns_summary">预览功能：内屏横屏且空间足够时，左侧显示封面与播放控制，右侧显示歌词。折叠或转为竖屏后恢复常规布局。</string>
+    <string name="cover_fold_columns_summary">内屏横屏且空间足够时，左侧显示封面与播放控制，右侧显示歌词；竖屏恢复单栏。</string>
     <string name="app_name">hmc-duo</string>
     <string name="about_source_code_summary">https://github.com/pku-zhb/hmc-duo</string>
     <string name="about_feedback">反馈与建议</string>
@@ -62,7 +62,7 @@
     <string name="blur_enabled">背景模糊</string>
     <string name="blur_enabled_summary">启用导航栏和底栏的背景模糊效果</string>
     <string name="hide_launcher_icon">隐藏桌面图标</string>
-    <string name="hide_launcher_icon_summary">隐藏后可在拨号盘输入 *#*#95993926#*#* 或从 LSPosed 模块列表打开</string>
+    <string name="hide_launcher_icon_summary">隐藏后可在系统电话的拨号键盘输入 *#*#95993926#*#*，或从 LSPosed 模块列表打开；下方可复制暗码。</string>
     <string name="language_default">默认</string>
     <string name="language_zh_cn">简体中文</string>
     <string name="language_en">English</string>
@@ -159,14 +159,17 @@
     <string name="lyrics_align_center">居中</string>
     <string name="lyrics_align_right">居右</string>
     <string name="lyrics_hdr">HDR 高光歌词（实验性功能）</string>
-    <string name="lyrics_hdr_summary">可能引起掉帧</string>
+    <string name="lyrics_hdr_summary">为当前演唱的歌词增加高光泛亮；部分机型可能掉帧。</string>
     <string name="lyrics_keep_on">播放歌词时屏幕常亮</string>
+    <!-- Retired UI text retained as a resource; not exposed by current settings. -->
     <string name="hide_fingerprint">隐藏锁屏指纹图标</string>
+    <!-- Retired UI text retained as a resource; not exposed by current settings. -->
     <string name="fod_after_face">人脸解锁后移除指纹</string>
     <string name="fod_after_face_summary">识别到人脸并停留在锁屏时，指纹区域消失，可像屏幕其他位置一样触摸，通知随之下沉。上滑解锁。需将人脸解锁设为停留在锁屏界面</string>
     <!-- Sinking is the notification staying where the system put it. The module's own word for
          the other direction is avoidance - it is the OEM's, and it is what the hook overrides -
          so the "always sink" item is the module's fpavoid=1 and "never sink" is fpavoid=2. -->
+    <!-- Retired UI text retained as a resource; not exposed by current settings. -->
     <string name="fp_sink">通知下沉</string>
     <string name="fp_sink_system">跟随系统</string>
     <string name="fp_sink_always">始终下沉</string>
@@ -193,9 +196,9 @@
 
     <!-- The features page is a list of cards, each opening a page of its own. -->
     <string name="features_cover_title">锁屏音乐封面</string>
-    <string name="features_cover_summary">封面、时钟、媒体卡片</string>
+    <string name="features_cover_summary">大封面、时钟与右侧栏布局</string>
     <string name="features_mini_title">锁屏超级岛</string>
-    <string name="features_mini_summary">音乐、通知与胶囊布局</string>
+    <string name="features_mini_summary">胶囊样式、锁屏通知与初始状态</string>
 
 
 
@@ -205,22 +208,23 @@
     <string name="mini_list_without_player">打开通知时不显示播放器</string>
     <string name="mini_list_without_player_summary">上滑通知岛时，通知列表中不显示媒体播放器</string>
     <string name="mini_style">岛样式</string>
-    <string name="mini_style_summary">胶囊样式与多胶囊切换方式</string>
+    <string name="mini_style_summary">选择胶囊样式与滑动切换方式。</string>
     <string name="mini_coloros_full_size">全尺寸按钮</string>
     <string name="mini_coloros_full_size_summary">快捷按钮和胶囊内容恢复原始大小，右侧胶囊外框保持固定</string>
     <string name="mini_style_coloros">ColorOS · 一次一个，滑动切换</string>
-    <string name="mini_style_hyperos">HyperOS · 主胶囊与小胶囊</string>
+    <string name="mini_style_hyperos">HyperOS · 主胶囊与多个气泡</string>
+    <!-- Retired UI text retained as a resource; not exposed by current settings. -->
     <string name="mini_widen">快捷方式关闭时加宽</string>
     <string name="mini_widen_summary">手电筒或相机快捷方式关闭后占用空位</string>
     <string name="lyrics_roma">显示罗马音</string>
-    <string name="lyrics_on_device_transliteration">本地转写</string>
-    <string name="lyrics_on_device_transliteration_summary">下载词典以获得更清晰的本地罗马音。</string>
+    <string name="lyrics_on_device_transliteration">本地注音</string>
+    <string name="lyrics_on_device_transliteration_summary">下载词典后，离线生成歌词读音。</string>
     <string name="lyrics_on_device_transliteration_downloading">正在下载日语词典…</string>
     <string name="lyrics_on_device_transliteration_downloading_progress">正在下载日语词典：%1$d%%</string>
     <string name="lyrics_on_device_transliteration_ready">日语词典已下载。</string>
     <string name="lyrics_on_device_transliteration_failed">%1$s — 打开以重试。</string>
-    <string name="lyrics_dictionaries">词典</string>
-    <string name="lyrics_dictionaries_summary">管理可下载的本地读音词典。</string>
+    <string name="lyrics_dictionaries">管理离线注音词典</string>
+    <string name="lyrics_dictionaries_summary">下载日语、拼音等词典后，可离线为歌词注音。</string>
     <string name="lyrics_dictionaries_empty">尚未下载词典。请使用加号按钮添加。</string>
     <string name="lyrics_dictionary_add">添加词典</string>
     <string name="lyrics_dictionary_japanese">日语</string>
@@ -238,8 +242,8 @@
     <string name="lyrics_dictionary_ready">已下载</string>
     <string name="lyrics_dictionary_error">下载失败</string>
     <string name="lyrics_dictionary_delete">删除词典</string>
-    <string name="lyrics_groups">舒缓歌词</string>
-    <string name="lyrics_groups_summary">将快速切换的歌词分组显示，每组最多四行，让每一句都更从容易读。</string>
+    <string name="lyrics_groups">快速歌词合并显示</string>
+    <string name="lyrics_groups_summary">将连续快节奏歌词合并成最多 4 行停留展示，减少频繁跳动。</string>
     <string name="lyrics_close_without_lyrics">歌词不可用时关闭封面</string>
     <string name="lyrics_close_without_lyrics_summary">启用后，播放没有歌词的歌曲时，点按封面会退出封面模式。</string>
     <string name="settings_debug">调试</string>
@@ -305,12 +309,12 @@
     <string name="extras_section">歌词设置</string>
     <string name="lyrics_offline_cache">保留歌词以供离线播放</string>
     <string name="lyrics_offline_cache_summary">将歌词和在线翻译保存在此设备上。网络信号较差或不稳定时很有用。找到更好的歌词时会更新缓存。关闭此选项将清除缓存。</string>
-    <string name="extras_summary">歌词显示、翻译、动效与来源设置</string>
+    <string name="extras_summary">歌词来源、注音、翻译与动效</string>
     <string name="features_tweaks_title">更多功能</string>
-    <string name="features_tweaks_summary">音乐锁屏以外的系统调整</string>
+    <string name="features_tweaks_summary">隐藏状态栏、充电提示与壁纸景深</string>
     <string name="tweaks_lock_screen">锁屏</string>
     <string name="depth_open">去除景深限制</string>
-    <string name="depth_open_summary">任意锁屏壁纸（包括第三方壁纸）均可使用景深效果，时钟遮挡主体时也保留景深</string>
+    <string name="depth_open_summary">任意锁屏壁纸均可使用景深；修改后需重启系统界面与锁屏编辑器。</string>
     <string name="depth_open_restart_hint">请重启系统界面和锁屏编辑器以应用此更改。</string>
     <string name="lyrics_search_section">歌词搜索</string>
     <string name="lyrics_search_mode">搜索模式</string>
@@ -330,16 +334,16 @@
     <string name="fp_sink_restart_hint">请重启系统界面以应用此更改。</string>
     <string name="fp_sink_restart_failed">无法重启系统界面，请检查 Root 权限后重试。</string>
     <string name="credits_original_author">HyperMusicCover 原作者，为这个 Enhanced 版本提供了最初的锁屏音乐界面和模块基础。</string>
-    <string name="clock_size_summary">用于未启用日期同行时间的布局，最高为原始时钟的 55%。</string>
+    <string name="clock_size_summary">仅用于“原位缩小”；最高为原时钟的 55%。</string>
     <string name="lyrics_bpm_players">节拍媒体播放器</string>
     <string name="lyrics_bpm_players_summary">选择哪些媒体播放器可以驱动节拍伴侣。全部取消选择则允许所有播放器。</string>
     <string name="lyrics_bpm_players_all">所有媒体播放器</string>
     <string name="lyrics_bpm_players_empty">暂未找到兼容的媒体播放器。启动播放器后重新打开此菜单。</string>
     <string name="lyrics_bpm_players_done">完成</string>
     <string name="lyrics_bpm_companion">歌词伙伴颜文字</string>
-    <string name="lyrics_bpm_companion_summary">歌词和大封面都未显示时，显示随节拍反应的颜文字。歌词按钮用于搜索歌词。</string>
+    <string name="lyrics_bpm_companion_summary">大封面和歌词均关闭时，播放界面显示随节拍跳动的颜文字；点击歌词按钮可搜索歌词。</string>
     <string name="media_customization_title">媒体播放器自定义</string>
-    <string name="media_customization_summary">自定义通知与超级岛展开态播放器的封面、背景和动态效果</string>
+    <string name="media_customization_summary">通知栏与锁屏播放器的外观</string>
     <string name="media_scope_notification">通知与锁屏播放器</string>
     <string name="media_scope_island">超级岛展开态播放器</string>
     <string name="media_style_cover">封面样式</string>
@@ -347,12 +351,12 @@
     <string name="media_style_circle">圆形</string>
     <string name="media_style_rotating">旋转圆形</string>
     <string name="media_style_hidden">隐藏</string>
-    <string name="media_scroll_text">滚动歌曲信息</string>
-    <string name="media_scroll_text_summary">自动滚动显示过长的歌曲名和歌手名，息屏显示时暂停滚动。</string>
+    <string name="media_scroll_text">过长歌名与歌手自动滚动</string>
+    <string name="media_scroll_text_summary">歌曲名或歌手名过长时自动横向滚动，息屏时暂停。</string>
     <string name="media_hide_source">隐藏封面来源图标</string>
     <string name="media_hide_device">隐藏音频输出切换按钮</string>
     <string name="media_background_style">播放器背景</string>
-    <string name="media_native_material_summary">背景、动态效果均为默认，主题跟随系统时，音乐卡片保留系统或其他模块提供的当前材质；封面、歌词和控件设置仍独立生效。自定义背景时，请关闭其他模块的音乐材质接管。</string>
+    <string name="media_native_material_summary">背景和动态均为“默认”、主题跟随系统时，沿用系统或其他模块材质；自定义背景时请关闭其他模块的音乐材质修改。</string>
     <string name="media_background_mosaic">拼贴封面</string>
     <string name="media_background_blur">模糊封面</string>
     <string name="media_background_radial">径向渐变</string>
@@ -383,7 +387,7 @@
     <string name="cover_on_tap_summary">播放音乐时只显示播放器和原壁纸，点按封面缩略图才展开封面</string>
     <string name="media_appearance_tab">外观</string>
     <string name="cover_wallpaper_dim">壁纸暗度</string>
-    <string name="cover_wallpaper_dim_summary">显示悬浮封面或歌词时使壁纸变暗，提高可读性。</string>
+    <string name="cover_wallpaper_dim_summary">0% 不额外压暗；显示封面或歌词时，数值越大背景越暗。</string>
     <string name="mini_media_collapsed">播放音乐时不自动展开封面</string>
     <string name="mini_media_collapsed_summary">启用锁屏岛时，开始播放先显示音乐胶囊，点击或上滑后再展开，保留已选择的封面或歌词状态。</string>
     <string name="lyrics_depth_blur">非当前歌词模糊</string>
@@ -396,17 +400,18 @@
     <string name="mini_background_section">背景</string>
     <string name="fold_material_section">材质</string>
     <string name="fold_material">胶囊和快捷按钮材质</string>
-    <string name="fold_material_summary">仅胶囊和快捷按钮背景跟随原生播放器当前的最终材质，不修改播放器。</string>
-    <string name="fold_material_native">原生柔光玻璃</string>
-    <string name="fold_material_follow">跟随系统最终材质</string>
+    <string name="fold_material_summary">仅调整胶囊与快捷按钮；可使用系统原始材质，或同步播放器当前材质，不修改播放器。</string>
+    <string name="fold_material_native">独立原生材质</string>
+    <string name="fold_material_follow">同步当前播放器材质</string>
     <string name="lock_hide_charging_hint">隐藏锁屏充电提示</string>
     <string name="lock_hide_charging_hint_summary">隐藏锁屏底部的充电状态文字。</string>
     <string name="fold_updates_paused">更新功能已暂停</string>
     <string name="credits_fold_upstream">上游 Enhanced 增强版及其维护者。本 Fold 版本基于其封面、歌词、锁屏和息屏适配工作继续开发。</string>
     <string name="credits_group_upstream">上游项目</string>
+    <!-- Historical label, not a fixed runtime material contract. -->
     <string name="fold_island_glass_fixed">柔光玻璃</string>
     <string name="fold_layout_section">布局</string>
-    <string name="fold_force_notification_floor">强制通知下沉</string>
+    <string name="fold_force_notification_floor">通知列表下延至底部</string>
     <string name="fold_startup_mode">锁屏初始状态</string>
     <string name="fold_startup_mode_summary">进入新的锁屏时使用的默认布局。</string>
     <string name="fold_start_collapsed">全部收到胶囊</string>
@@ -425,12 +430,12 @@
     <string name="about_releases">版本发布</string>
     <string name="about_duo_summary">为折叠屏打造的独立锁屏音乐、歌词与布局。</string>
     <string name="duo_vertical_text">竖排文字</string>
-    <string name="duo_vertical_text_summary">汉字直立，英文词组侧转，短数字横排；长内容展开后阅读。</string>
+    <string name="duo_vertical_text_summary">排版说明：汉字直立、英文侧转、短数字横排；展开后横向阅读长内容。</string>
     <string name="fold_keep_last">保持上次锁屏状态</string>
-    <string name="fold_keep_last_summary">记住内容的展开状态和音乐界面。开启后，下方自定义初始状态不生效。</string>
-    <string name="fold_collapsed_categories">锁屏时收进胶囊（可多选）</string>
-    <string name="fold_landscape_collapsed">内屏横屏时收进胶囊（可多选）</string>
-    <string name="fold_collapsed_categories_summary">选中的类别收进胶囊；不选则全部展开，全选则全部收起。</string>
+    <string name="fold_keep_last_summary">记住上次的展开状态与音乐界面；关闭后可自定义初始状态。</string>
+    <string name="fold_collapsed_categories">锁屏时收进胶囊</string>
+    <string name="fold_landscape_collapsed">内屏横屏时收进胶囊</string>
+    <string name="fold_collapsed_categories_summary">勾选的类别收进胶囊；全不选则全部展开，全选则全部收起。</string>
     <string name="fold_live_cards">实时卡片</string>
     <string name="fold_notifications">普通通知</string>
     <string name="duo_notification_section">锁屏通知</string>
@@ -438,21 +443,21 @@
     <string name="duo_notification_show_all_summary">显示被应用锁屏显示规则隐藏的通知；仍遵循系统隐私设置。</string>
     <string name="duo_notification_retain">锁屏保留通知</string>
     <string name="duo_notification_retain_summary">解锁后再次锁屏，仍显示尚未清除的通知。</string>
-    <string name="duo_notification_other_module">在 Duo 使用这些功能时，请关闭 HyperLight 中对应的选项。</string>
-    <string name="cover_style_content_area">封面使用主内容区域，为日期和右侧快捷栏留出空间。</string>
+    <string name="duo_notification_other_module">若其他模块也接管锁屏通知，请关闭其中相同的功能。</string>
+    <string name="cover_style_content_area">全屏封面融入背景，方形封面以独立卡片显示。</string>
     <string name="cover_background_mode">锁屏背景</string>
-    <string name="cover_background_mode_summary">背景与前景封面形状独立设置。</string>
+    <string name="cover_background_mode_summary">只改变大封面和歌词后方的背景。</string>
     <string name="cover_background_native">系统壁纸</string>
     <string name="cover_background_artwork">封面背景</string>
     <string name="cover_background_dynamic">动态封面色彩</string>
     <string name="cover_background_blur">背景模糊</string>
     <string name="clock_artwork_destination">展开封面／歌词时的时间位置</string>
-    <string name="clock_artwork_destination_summary">适用于外屏和内屏横屏；全屏 AOD 保持所选布局。</string>
+    <string name="clock_artwork_destination_summary">展开封面、歌词或导航地图时生效；外屏与内屏横竖屏共用，全屏 AOD 保持所选位置。</string>
     <string name="clock_artwork_shrink">原位缩小</string>
-    <string name="clock_artwork_date">收到日期行</string>
-    <string name="clock_artwork_status">显示在右上状态图标</string>
+    <string name="clock_artwork_date">缩进日期同一行</string>
+    <string name="clock_artwork_status">并入右上状态区小时间</string>
     <string name="clock_artwork_row">时间收进日期行</string>
-    <string name="clock_artwork_row_summary">外屏和内屏横屏展开封面或歌词时，将大时钟缩入日期行；全屏 AOD 保持此布局。</string>
+    <string name="clock_artwork_row_summary">外屏与内屏横竖屏展开封面或歌词时，将大时钟缩入日期行；全屏 AOD 保持此布局。</string>
     <string name="clock_artwork_row_side">小时间位置</string>
     <string name="clock_artwork_row_left">日期左侧</string>
     <string name="clock_artwork_row_right">日期右侧</string>
@@ -460,4 +465,15 @@
     <string name="lock_hide_status_bar_summary">隐藏锁屏顶部的系统状态栏，桌面与控制中心保持系统显示。</string>
     <string name="about_support_duo">支持 Duo</string>
     <string name="about_support_duo_pending">维护者稍后添加微信与支付宝收款方式。</string>
+    <string name="cover_display_section">封面与背景显示</string>
+    <string name="rail_layout_section">右侧快捷栏与锁屏布局</string>
+    <string name="lock_cleanup_section">锁屏界面精简</string>
+    <string name="wallpaper_depth_section">壁纸景深</string>
+    <string name="fold_force_notification_floor_summary">快捷按钮移至右侧后，让通知用满底部空间。</string>
+    <string name="fold_startup_music_view_summary">仅在音乐未收进胶囊时使用。</string>
+    <string name="media_scope_note">本页调整通知栏与原生锁屏播放器；胶囊和快捷按钮材质在“锁屏超级岛”中设置。</string>
+    <string name="media_background_amount_summary">数值越大，封面背景越模糊。</string>
+    <string name="media_background_amount_value">%1$d 级</string>
+    <string name="settings_copy_launcher_code">复制打开暗码</string>
+    <string name="settings_launcher_code_copied">已复制打开暗码</string>
 </resources>

@@ -22,10 +22,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.zhuhuibin.hypermusiccover.duo.ui.theme.AppTheme
+import com.zhuhuibin.hypermusiccover.duo.ui.util.SettingsNote
 import com.zhuhuibin.hypermusiccover.duo.ui.util.PageScaffold
 import org.json.JSONObject
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.SmallTitle
+import top.yukonga.miuix.kmp.preference.CheckboxPreference
 import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.preference.WindowDropdownPreference
 import top.yukonga.miuix.kmp.theme.ColorSchemeMode
@@ -77,70 +79,104 @@ private fun MiniPlayerPage(blur: Boolean, refreshKey: Int, onBack: () -> Unit) {
         ModuleBridge.setMiniConfig(context, configText)
     }
 
+    val enabled = config.optBoolean(MiniPlayerConfig.ENABLED)
     PageScaffold(title = stringResource(R.string.mini_page_title), isBlurEnabled = blur,
         onBack = onBack) {
         item {
-            // What the row does, drawn with the module's own island geometry, before the switches.
-            Card(Modifier.padding(horizontal = 12.dp).padding(top = 12.dp)) {
-                IslandDemo(MiniPlayerConfig.colorOs(config))
+            Column {
+                Card(Modifier.padding(horizontal = 12.dp, vertical = 12.dp)) {
+                    SwitchPreference(title = stringResource(R.string.mini_enabled),
+                        summary = if (alive) null else stringResource(R.string.mini_enabled_waiting),
+                        checked = enabled, enabled = alive,
+                        onCheckedChange = { push(MiniPlayerConfig.ENABLED, it) })
+                }
+                if (enabled) {
+                    Card(Modifier.padding(horizontal = 12.dp).padding(bottom = 12.dp)) {
+                        IslandDemo(MiniPlayerConfig.colorOs(config))
+                    }
+                    SmallTitle(text = stringResource(R.string.mini_general_section))
+                    Card(Modifier.padding(horizontal = 12.dp)) {
+                        WindowDropdownPreference(title = stringResource(R.string.mini_style),
+                            summary = stringResource(R.string.mini_style_summary),
+                            items = listOf(stringResource(R.string.mini_style_coloros),
+                                stringResource(R.string.mini_style_hyperos)),
+                            selectedIndex = config.optInt(MiniPlayerConfig.PILL_STYLE,
+                                MiniPlayerConfig.STYLE_COLOROS).coerceIn(0, 1),
+                            enabled = alive,
+                            onSelectedIndexChange = { push(MiniPlayerConfig.PILL_STYLE, it) })
+                    }
+                    SettingsNote(stringResource(R.string.duo_vertical_text_summary),
+                        Modifier.padding(horizontal = 12.dp).padding(bottom = 4.dp))
+
+                    LockScreenEntryControls(config, alive, ::push)
+
+                    SmallTitle(text = stringResource(R.string.duo_notification_section))
+                    Card(Modifier.padding(horizontal = 12.dp)) {
+                        SwitchPreference(title = stringResource(R.string.duo_notification_show_all),
+                            summary = stringResource(R.string.duo_notification_show_all_summary),
+                            checked = config.optBoolean(MiniPlayerConfig.SHOW_ALL_LOCKSCREEN_NOTIFICATIONS),
+                            enabled = alive,
+                            onCheckedChange = { push(MiniPlayerConfig.SHOW_ALL_LOCKSCREEN_NOTIFICATIONS, it) })
+                        SwitchPreference(title = stringResource(R.string.duo_notification_retain),
+                            summary = stringResource(R.string.duo_notification_retain_summary),
+                            checked = config.optBoolean(MiniPlayerConfig.RETAIN_LOCKSCREEN_NOTIFICATIONS),
+                            enabled = alive,
+                            onCheckedChange = { push(MiniPlayerConfig.RETAIN_LOCKSCREEN_NOTIFICATIONS, it) })
+                    }
+                    SettingsNote(stringResource(R.string.duo_notification_other_module),
+                        Modifier.padding(horizontal = 12.dp).padding(bottom = 4.dp))
+                    SmallTitle(text = stringResource(R.string.fold_material_section))
+                    Card(Modifier.padding(horizontal = 12.dp).padding(bottom = 12.dp)) {
+                        WindowDropdownPreference(title = stringResource(R.string.fold_material),
+                            summary = stringResource(R.string.fold_material_summary),
+                            items = listOf(stringResource(R.string.fold_material_native),
+                                stringResource(R.string.fold_material_follow)),
+                            selectedIndex = if (followNativeMaterial) 1 else 0,
+                            enabled = alive,
+                            onSelectedIndexChange = {
+                                followNativeMaterial = it == 1
+                                ModuleBridge.setRailSetting(context, "followNativeMaterial", it == 1)
+                            })
+                    }
+                }
             }
         }
-        item {
-            // Only controls supported by the dedicated Fold layout are exposed.
-            Column {
-                SmallTitle(text = stringResource(R.string.mini_general_section))
-                Card(Modifier.padding(horizontal = 12.dp).padding(bottom = 12.dp)) {
-                    // The one line the switch still carries, and only while the module is away:
-                    // a switch that cannot be moved and does not say why reads as the switch
-                    // being broken. Nothing here describes the feature itself any more.
-                    SwitchPreference(title = stringResource(R.string.mini_enabled),
-                        summary = if (alive) null
-                                  else stringResource(R.string.mini_enabled_waiting),
-                        checked = config.optBoolean(MiniPlayerConfig.ENABLED), enabled = alive,
-                        onCheckedChange = { push(MiniPlayerConfig.ENABLED, it) })
-                    // ColorOS first: it is the default, and the order is the stored value.
-                    WindowDropdownPreference(title = stringResource(R.string.mini_style),
-                        summary = stringResource(R.string.mini_style_summary),
-                        items = listOf(stringResource(R.string.mini_style_coloros),
-                            stringResource(R.string.mini_style_hyperos)),
-                        selectedIndex = config.optInt(MiniPlayerConfig.PILL_STYLE,
-                            MiniPlayerConfig.STYLE_COLOROS).coerceIn(0, 1),
-                        enabled = alive && config.optBoolean(MiniPlayerConfig.ENABLED),
-                        onSelectedIndexChange = { push(MiniPlayerConfig.PILL_STYLE, it) })
-                    top.yukonga.miuix.kmp.basic.BasicComponent(
-                        title = stringResource(R.string.duo_vertical_text),
-                        summary = stringResource(R.string.duo_vertical_text_summary))
+    }
+}
 
-                }
-                SmallTitle(text = stringResource(R.string.duo_notification_section))
-                Card(Modifier.padding(horizontal = 12.dp).padding(bottom = 12.dp)) {
-                    SwitchPreference(title = stringResource(R.string.duo_notification_show_all),
-                        summary = stringResource(R.string.duo_notification_show_all_summary),
-                        checked = config.optBoolean(MiniPlayerConfig.SHOW_ALL_LOCKSCREEN_NOTIFICATIONS),
-                        enabled = alive,
-                        onCheckedChange = { push(MiniPlayerConfig.SHOW_ALL_LOCKSCREEN_NOTIFICATIONS, it) })
-                    SwitchPreference(title = stringResource(R.string.duo_notification_retain),
-                        summary = stringResource(R.string.duo_notification_retain_summary),
-                        checked = config.optBoolean(MiniPlayerConfig.RETAIN_LOCKSCREEN_NOTIFICATIONS),
-                        enabled = alive,
-                        onCheckedChange = { push(MiniPlayerConfig.RETAIN_LOCKSCREEN_NOTIFICATIONS, it) })
-                    top.yukonga.miuix.kmp.basic.BasicComponent(
-                        title = stringResource(R.string.duo_notification_other_module))
-                }
-                SmallTitle(text = stringResource(R.string.fold_material_section))
-                Card(Modifier.padding(horizontal = 12.dp).padding(bottom = 12.dp)) {
-                    WindowDropdownPreference(title = stringResource(R.string.fold_material),
-                        summary = stringResource(R.string.fold_material_summary),
-                        items = listOf(stringResource(R.string.fold_material_native),
-                            stringResource(R.string.fold_material_follow)),
-                        selectedIndex = if (followNativeMaterial) 1 else 0,
-                        enabled = alive,
-                        onSelectedIndexChange = {
-                            followNativeMaterial = it == 1
-                            ModuleBridge.setRailSetting(context, "followNativeMaterial", it == 1)
-                        })
-                }
-            }
+@Composable
+private fun LockScreenEntryControls(config: JSONObject, enabled: Boolean, push: (String, Any) -> Unit) {
+    val keepLast = MiniPlayerConfig.keepLastLockscreen(config)
+    SmallTitle(text = stringResource(R.string.fold_startup_mode))
+    Card(Modifier.padding(horizontal = 12.dp).padding(bottom = 12.dp)) {
+        SwitchPreference(title = stringResource(R.string.fold_keep_last),
+            summary = stringResource(R.string.fold_keep_last_summary),
+            checked = keepLast, enabled = enabled,
+            onCheckedChange = { push(MiniPlayerConfig.KEEP_LAST_LOCKSCREEN, it) })
+    }
+    if (!keepLast) for (landscape in listOf(false, true)) {
+        val mask = MiniPlayerConfig.collapsedCategories(config, landscape)
+        SmallTitle(text = stringResource(if (landscape) R.string.fold_landscape_collapsed
+            else R.string.fold_collapsed_categories))
+        Card(Modifier.padding(horizontal = 12.dp).padding(bottom = 12.dp)) {
+            SettingsNote(stringResource(R.string.fold_collapsed_categories_summary))
+            val categories = listOf(MiniPlayerConfig.COLLAPSE_MUSIC to R.string.fold_music_player,
+                MiniPlayerConfig.COLLAPSE_LIVE to R.string.fold_live_cards,
+                MiniPlayerConfig.COLLAPSE_NOTIFICATIONS to R.string.fold_notifications)
+            for ((bit, label) in categories) CheckboxPreference(title = stringResource(label),
+                checked = mask and bit != 0, enabled = enabled,
+                onCheckedChange = { checked ->
+                    push(if (landscape) MiniPlayerConfig.LANDSCAPE_COLLAPSED_CATEGORIES else MiniPlayerConfig.COLLAPSED_CATEGORIES,
+                        if (checked) mask or bit else mask and bit.inv())
+                })
+            if (mask and MiniPlayerConfig.COLLAPSE_MUSIC == 0) WindowDropdownPreference(
+                title = stringResource(if (landscape) R.string.fold_landscape_music_view else R.string.fold_startup_music_view),
+                summary = stringResource(R.string.fold_startup_music_view_summary),
+                items = listOf(stringResource(R.string.fold_music_player), stringResource(R.string.fold_music_artwork),
+                    stringResource(R.string.fold_music_lyrics)) +
+                    if (landscape) listOf(stringResource(R.string.fold_music_artwork_and_lyrics)) else emptyList(),
+                selectedIndex = MiniPlayerConfig.startupMusicView(config, landscape), enabled = enabled,
+                onSelectedIndexChange = { push(if (landscape) MiniPlayerConfig.LANDSCAPE_MUSIC_VIEW else MiniPlayerConfig.STARTUP_MUSIC_VIEW, it) })
         }
     }
 }

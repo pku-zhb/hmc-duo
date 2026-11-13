@@ -1,7 +1,6 @@
 package com.zhuhuibin.hypermusiccover.duo.ui.screen.features
 
 import org.json.JSONObject
-import com.zhuhuibin.hypermusiccover.duo.MiniPlayerConfig
 import android.content.Intent
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -56,7 +55,6 @@ import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.preference.ArrowPreference
-import top.yukonga.miuix.kmp.preference.CheckboxPreference
 import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.preference.WindowDropdownPreference
 import top.yukonga.miuix.kmp.theme.LocalDismissState
@@ -133,6 +131,7 @@ private fun FeatureList(
                     ArrowPreference(
                         insideMargin = featurePreferenceMargin,
                         title = stringResource(R.string.features_mini_title),
+                        summary = stringResource(R.string.features_mini_summary),
                         onClick = { onOpen(MiniPlayerActivity::class.java) },
                     )
                 }
@@ -142,6 +141,7 @@ private fun FeatureList(
                     ArrowPreference(
                         insideMargin = featurePreferenceMargin,
                         title = stringResource(R.string.features_cover_title),
+                        summary = stringResource(R.string.features_cover_summary),
                         onClick = { onOpen(CoverActivity::class.java) },
                     )
                 }
@@ -149,6 +149,7 @@ private fun FeatureList(
                     ArrowPreference(
                         insideMargin = featurePreferenceMargin,
                         title = stringResource(R.string.media_customization_title),
+                        summary = stringResource(R.string.media_customization_summary),
                         onClick = { onOpen(MediaCardActivity::class.java) },
                     )
                 }
@@ -156,6 +157,7 @@ private fun FeatureList(
                     SwitchPreference(
                         insideMargin = featurePreferenceMargin,
                         title = stringResource(R.string.amap_navigation_map),
+                        summary = stringResource(R.string.amap_navigation_map_summary),
                         checked = module.amapNavigationMap,
                         enabled = module.alive,
                         onCheckedChange = onAmapMapChange,
@@ -167,6 +169,7 @@ private fun FeatureList(
                     ArrowPreference(
                         insideMargin = featurePreferenceMargin,
                         title = stringResource(R.string.extras_section),
+                        summary = stringResource(R.string.extras_summary),
                         onClick = { onOpen(ExtrasActivity::class.java) },
                     )
                 }
@@ -176,6 +179,7 @@ private fun FeatureList(
                     ArrowPreference(
                         insideMargin = featurePreferenceMargin,
                         title = stringResource(R.string.features_tweaks_title),
+                        summary = stringResource(R.string.features_tweaks_summary),
                         onClick = { onOpen(TweaksActivity::class.java) },
                     )
                 }
@@ -213,6 +217,7 @@ internal fun TweaksPageView(
     ) {
         item {
             Column {
+                SmallTitle(stringResource(R.string.lock_cleanup_section))
                 Card(Modifier.padding(horizontal = 12.dp).padding(bottom = 12.dp)) {
                     SwitchPreference(
                         insideMargin = featurePreferenceMargin,
@@ -223,6 +228,19 @@ internal fun TweaksPageView(
                             ModuleBridge.setRailSetting(context, "hideLockStatusBar", it)
                         },
                     )
+                    SwitchPreference(
+                        insideMargin = featurePreferenceMargin,
+                        title = stringResource(R.string.lock_hide_charging_hint),
+                        summary = stringResource(R.string.lock_hide_charging_hint_summary),
+                        checked = module.hideChargingHint, enabled = module.alive,
+                        onCheckedChange = {
+                            module = module.copy(hideChargingHint = it)
+                            ModuleBridge.setRailSetting(context, "hideChargingHint", it)
+                        },
+                    )
+                }
+                SmallTitle(stringResource(R.string.wallpaper_depth_section))
+                Card(Modifier.padding(horizontal = 12.dp).padding(bottom = 12.dp)) {
                     SwitchPreference(
                         insideMargin = featurePreferenceMargin,
                         title = stringResource(R.string.depth_open),
@@ -268,14 +286,6 @@ internal fun TweaksPageView(
                             )
                         }
                     }
-                }
-                Card(Modifier.padding(horizontal = 12.dp).padding(bottom = 12.dp)) {
-                    SwitchPreference(insideMargin = featurePreferenceMargin, title = stringResource(R.string.fold_force_notification_floor),
-                        checked = module.forceNotificationFloor, enabled = module.alive,
-                        onCheckedChange = {
-                            module = module.copy(forceNotificationFloor = it)
-                            ModuleBridge.setRailSetting(context, "forceNotificationFloor", it)
-                        })
                 }
             }
         }
@@ -347,12 +357,19 @@ internal fun CoverPageView(
     ) {
         item {
             Column {
+                SmallTitle(stringResource(R.string.cover_display_section))
                 Card(Modifier.padding(horizontal = 12.dp).padding(bottom = 12.dp)) {
                     CoverGroup(enabled, module) { module = it }
                 }
+                SmallTitle(stringResource(R.string.clock_section))
                 Card(Modifier.padding(horizontal = 12.dp).padding(bottom = 12.dp)) {
                     ClockGroup(enabled, module) { module = it }
                 }
+                SmallTitle(stringResource(R.string.rail_layout_section))
+                Card(Modifier.padding(horizontal = 12.dp).padding(bottom = 12.dp)) {
+                    RailLayoutGroup(enabled, module) { module = it }
+                }
+                SmallTitle(stringResource(R.string.media_scope_notification))
                 Card(Modifier.padding(horizontal = 12.dp).padding(bottom = 12.dp)) {
                     CardGroup(enabled, module) { module = it }
                 }
@@ -430,6 +447,7 @@ private fun CoverGroup(
         WindowDropdownPreference(
             insideMargin = featurePreferenceMargin,
             title = stringResource(R.string.cover_style),
+            summary = stringResource(R.string.cover_style_content_area),
             items = listOf(stringResource(R.string.cover_style_full),
                 stringResource(R.string.cover_style_card)),
             selectedIndex = module.coverStyle.coerceIn(0, 1),
@@ -442,6 +460,7 @@ private fun CoverGroup(
         SwitchPreference(
             insideMargin = featurePreferenceMargin,
             title = stringResource(R.string.cover_fold_columns),
+            summary = stringResource(R.string.cover_fold_columns_summary),
             checked = module.foldMusicLayout,
             enabled = enabled,
             onCheckedChange = {
@@ -449,42 +468,11 @@ private fun CoverGroup(
                 ModuleBridge.setFoldMusicLayout(context, it)
             },
         )
-        SwitchPreference(
-            insideMargin = featurePreferenceMargin,
-            title = stringResource(R.string.lock_right_rail),
-            checked = module.rightRail, enabled = enabled,
-            onCheckedChange = {
-                onChange(module.copy(rightRail = it))
-                ModuleBridge.setRailSetting(context, "rightRail", it)
-            },
-        )
-        RailStatusOffsetSetting(enabled && module.rightRail, module.railStatusOffsetYDp) { value ->
-            onChange(module.copy(railStatusOffsetYDp = value))
-            if (value == 0f) ModuleBridge.resetRailStatusOffsetY(context)
-            else ModuleBridge.setRailStatusOffsetY(context, value)
-        }
-        SwitchPreference(
-            insideMargin = featurePreferenceMargin,
-            title = stringResource(R.string.lock_reflow_content),
-            checked = module.reflowLockContent, enabled = enabled && module.rightRail,
-            onCheckedChange = {
-                onChange(module.copy(reflowLockContent = it))
-                ModuleBridge.setRailSetting(context, "reflowLockContent", it)
-            },
-        )
-        SwitchPreference(
-            insideMargin = featurePreferenceMargin,
-            title = stringResource(R.string.lock_hide_charging_hint),
-            checked = module.hideChargingHint, enabled = module.alive,
-            onCheckedChange = {
-                onChange(module.copy(hideChargingHint = it))
-                ModuleBridge.setRailSetting(context, "hideChargingHint", it)
-            },
-        )
         val backgroundMode = if (module.hidePlayerBackground) 0 else if (module.meshBackdrop) 2 else 1
         WindowDropdownPreference(
             insideMargin = featurePreferenceMargin,
             title = stringResource(R.string.cover_background_mode),
+            summary = stringResource(R.string.cover_background_mode_summary),
             items = listOf(stringResource(R.string.cover_background_native),
                 stringResource(R.string.cover_background_artwork), stringResource(R.string.cover_background_dynamic)),
             selectedIndex = backgroundMode, enabled = enabled,
@@ -504,6 +492,7 @@ private fun CoverGroup(
         )
         ValueSlider(
             title = stringResource(R.string.cover_wallpaper_dim),
+            summary = stringResource(R.string.cover_wallpaper_dim_summary),
             value = module.wallpaperDim.toFloat(), valueRange = 0f..100f, detent = 0f,
             enabled = enabled, label = { "${it.roundToInt()}%" },
             onValueChange = {
@@ -521,41 +510,54 @@ private fun CoverGroup(
                 ModuleBridge.setCoverFlip(context, it)
             },
         )
-        val miniConfig = JSONObject(module.miniConfig)
-        fun entrySetting(key: String, value: Any) {
-            val next = MiniPlayerConfig.normalizedJson(JSONObject(module.miniConfig).put(key, value).toString())
-            onChange(module.copy(miniConfig = next))
-            ModuleBridge.setMiniConfig(context, next)
-        }
-        val entryEnabled = enabled && miniConfig.optBoolean(MiniPlayerConfig.ENABLED)
-        val keepLast = MiniPlayerConfig.keepLastLockscreen(miniConfig)
-        SwitchPreference(insideMargin = featurePreferenceMargin, title = stringResource(R.string.fold_keep_last),
-            checked = keepLast, enabled = entryEnabled,
-            onCheckedChange = { entrySetting(MiniPlayerConfig.KEEP_LAST_LOCKSCREEN, it) })
-        for (landscape in listOf(false, true)) {
-            val mask = MiniPlayerConfig.collapsedCategories(miniConfig, landscape)
-            BasicComponent(insideMargin = featurePreferenceMargin, title = stringResource(if (landscape) R.string.fold_landscape_collapsed else R.string.fold_collapsed_categories))
-            val categories = listOf(MiniPlayerConfig.COLLAPSE_MUSIC to R.string.fold_music_player,
-                MiniPlayerConfig.COLLAPSE_LIVE to R.string.fold_live_cards,
-                MiniPlayerConfig.COLLAPSE_NOTIFICATIONS to R.string.fold_notifications)
-            for ((bit, label) in categories) CheckboxPreference(insideMargin = featurePreferenceMargin, title = stringResource(label),
-                checked = mask and bit != 0, enabled = entryEnabled && !keepLast,
-                onCheckedChange = { checked ->
-                    entrySetting(if (landscape) MiniPlayerConfig.LANDSCAPE_COLLAPSED_CATEGORIES else MiniPlayerConfig.COLLAPSED_CATEGORIES,
-                        if (checked) mask or bit else mask and bit.inv())
-                })
-            if (mask and MiniPlayerConfig.COLLAPSE_MUSIC == 0) WindowDropdownPreference(
+    }
+}
+
+@Composable
+private fun RailLayoutGroup(
+    enabled: Boolean,
+    module: ModuleBridge.State,
+    onChange: (ModuleBridge.State) -> Unit,
+) {
+    val context = LocalContext.current
+    Column {
+        SwitchPreference(
+            insideMargin = featurePreferenceMargin,
+            title = stringResource(R.string.lock_right_rail),
+            summary = stringResource(R.string.lock_right_rail_summary),
+            checked = module.rightRail, enabled = enabled,
+            onCheckedChange = {
+                onChange(module.copy(rightRail = it))
+                ModuleBridge.setRailSetting(context, "rightRail", it)
+            },
+        )
+        if (module.rightRail) {
+            RailStatusOffsetSetting(enabled && module.rightRail, module.railStatusOffsetYDp) { value ->
+                onChange(module.copy(railStatusOffsetYDp = value))
+                if (value == 0f) ModuleBridge.resetRailStatusOffsetY(context)
+                else ModuleBridge.setRailStatusOffsetY(context, value)
+            }
+            SwitchPreference(
                 insideMargin = featurePreferenceMargin,
-                title = stringResource(if (landscape) R.string.fold_landscape_music_view else R.string.fold_startup_music_view),
-                items = listOf(stringResource(R.string.fold_music_player), stringResource(R.string.fold_music_artwork),
-                    stringResource(R.string.fold_music_lyrics)) +
-                    if (landscape) listOf(stringResource(R.string.fold_music_artwork_and_lyrics)) else emptyList(),
-                selectedIndex = MiniPlayerConfig.startupMusicView(miniConfig, landscape),
-                enabled = entryEnabled && !keepLast,
-                onSelectedIndexChange = { entrySetting(if (landscape) MiniPlayerConfig.LANDSCAPE_MUSIC_VIEW else MiniPlayerConfig.STARTUP_MUSIC_VIEW, it) })
+                title = stringResource(R.string.lock_reflow_content),
+                summary = stringResource(R.string.lock_reflow_content_summary),
+                checked = module.reflowLockContent, enabled = enabled && module.rightRail,
+                onCheckedChange = {
+                    onChange(module.copy(reflowLockContent = it))
+                    ModuleBridge.setRailSetting(context, "reflowLockContent", it)
+                },
+            )
+            if (module.reflowLockContent) SwitchPreference(
+                insideMargin = featurePreferenceMargin,
+                title = stringResource(R.string.fold_force_notification_floor),
+                summary = stringResource(R.string.fold_force_notification_floor_summary),
+                checked = module.forceNotificationFloor, enabled = enabled,
+                onCheckedChange = {
+                    onChange(module.copy(forceNotificationFloor = it))
+                    ModuleBridge.setRailSetting(context, "forceNotificationFloor", it)
+                },
+            )
         }
-
-
     }
 }
 
@@ -570,6 +572,7 @@ private fun ClockGroup(
         WindowDropdownPreference(
             insideMargin = featurePreferenceMargin,
             title = stringResource(R.string.clock_artwork_destination),
+            summary = stringResource(R.string.clock_artwork_destination_summary),
             items = listOf(stringResource(R.string.clock_artwork_shrink),
                 stringResource(R.string.clock_artwork_date), stringResource(R.string.clock_artwork_status)),
             selectedIndex = module.artworkClockDestination, enabled = enabled,
@@ -592,6 +595,7 @@ private fun ClockGroup(
         // Cap the collapsed clock at 55% to leave enough space for the big artwork.
         if (module.artworkClockDestination == 0) ValueSlider(
             title = stringResource(R.string.clock_size),
+            summary = stringResource(R.string.clock_size_summary),
             value = (if (module.clockSize > 0f) module.clockSize else DEFAULT_CLOCK_SIZE)
                 .coerceIn(CLOCK_SIZE_MIN, 0.55f),
             valueRange = CLOCK_SIZE_MIN..0.55f,
