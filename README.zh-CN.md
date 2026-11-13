@@ -53,7 +53,7 @@ Duo 与 Enhanced、旧 Fold 包分别安装，Android 不会自动转移应用�
 ## 构建
 
 版本号采用 `X.Y.Z`，版本码为
-`(major * 10000 + minor * 100 + patch) * 1000`；`0.2.1` 对应 `201000`。
+`(major * 10000 + minor * 100 + patch) * 1000`；`0.2.2` 对应 `202000`。
 发布安装包使用 `hmc-duo-X.Y.Z.apk`。
 
 需要 JDK 21+、Android SDK 37 和 build-tools 37.0.0。
