@@ -3,9 +3,6 @@ package com.zhuhuibin.hypermusiccover.duo;
 /** An absolute horizontal slot, independent of any native view's current width or position. */
 final class RailContentFrame {
     static final float CARD_INSET_DP = 11.25f;
-    // Stable Duo specification: the clean OEM inner-landscape stack measured 1246 px at
-    // density 2.75. Read once during diagnosis, never learned from animated view bounds.
-    static final float INNER_LANDSCAPE_WIDTH_DP = 453f;
     final int left, width;
 
     RailContentFrame(int left, int width) {
@@ -23,18 +20,14 @@ final class RailContentFrame {
 
     static RailContentFrame inWindow(FoldMusicLayout.Box content, float density, int parentLeft,
                                      float windowWidth, float windowHeight, boolean combined) {
-        RailContentFrame full = in(content, density, parentLeft);
-        if (full == null || !FoldArtworkLayout.innerLandscape(windowWidth, windowHeight, density))
-            return full;
-        int width = Math.min(full.width, Math.round(INNER_LANDSCAPE_WIDTH_DP * density));
-        if (combined) {
-            // Retain a useful lyric column on smaller inner screens without resizing per frame.
-            int room = full.width - Math.round((FoldMusicLayout.GAP_DP + FoldMusicLayout.MIN_LYRIC_DP
-                    + FoldMusicLayout.GAP_DP - CARD_INSET_DP) * density);
-            if (room >= Math.round(FoldMusicLayout.MIN_PLAYER_DP * density)) width = Math.min(width, room);
-            return new RailContentFrame(full.left, width);
-        }
-        return new RailContentFrame(full.left + (full.width - width) / 2, width);
+        // Both inner orientations retain the OEM card column. Artwork and lyrics
+        // can use their own measured rooms without resizing the native stack.
+        return ownsNativeBounds(windowWidth, windowHeight, density) ? in(content, density, parentLeft) : null;
+    }
+
+    static boolean ownsNativeBounds(float width, float height, float density) {
+        return FoldMusicLayout.finite(width, height, density) && width > 0f && height > 0f && density > 0f
+                && Math.min(width, height) / density < 600f;
     }
 
     int right() { return left + width; }
