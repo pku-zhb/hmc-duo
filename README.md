@@ -18,8 +18,9 @@ other devices is not established.
 - Duo-owned card geometry and a right-hand flashlight/camera column. Enlarged touch
   targets use the same coordinates as the animations; the system retains secure launch
   and cancellation. MiDuo and MiDuo Notification are not required.
+- An independently switchable AMap walking/cycling lockscreen navigation map.
 - A display-only battery/network cluster and an independent lock-screen status-bar
-  switch. Outer-screen artwork and lyrics offer three clock destinations: shrink,
+  switch and a common lockscreen/AOD vertical offset. Outer-screen artwork and lyrics offer three clock destinations: shrink,
   join the date row, or fade into the status cluster. The date-row time can sit on
   either side of the date. Ordinary AOD retains the native presentation; full-screen
   AOD can retain the selected compact time.
@@ -72,7 +73,7 @@ See [release procedure](docs/releasing.md).
 ## Build and check
 
 Release versions use `X.Y.Z` with version code
-`(major * 10000 + minor * 100 + patch) * 1000`; `0.2.1` uses `201000`.
+`(major * 10000 + minor * 100 + patch) * 1000`; `0.2.2` uses `202000`.
 Published APKs are named `hmc-duo-X.Y.Z.apk`.
 
 Requires JDK 21+, Android SDK 37 and build tools 37.0.0.

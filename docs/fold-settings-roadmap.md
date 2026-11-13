@@ -19,6 +19,16 @@ not automatically verified on every device, display or OS version.
 
 ## Current acceptance scope
 
+### 0.2.2 independent controls and notification edge
+
+The current source adds a separate AMap navigation-map switch, a common
+lockscreen/AOD vertical status offset, and row-scoped progressive blur/fade at
+the right notification boundary. The shared launcher artwork is now native
+vector art. See the [0.2.2 release record](releases/0.2.2.md) for causes,
+ownership boundaries, host checks and the focused device acceptance list.
+Historical preview sections below retain their original validation state.
+
+
 ### Preview 17 AOD performance
 
 The owner reported severe AOD and native-island animation slowdown with the
