@@ -1,65 +1,59 @@
 package com.zhuhuibin.hypermusiccover.duo;
 
-/** A local safety edge: keep the content slot, soften only pixels approaching its right side. */
+/** Symmetric alpha feather inside the actual native clipping boundary. */
 final class RailNotificationEdge {
     static final float WIDTH_DP = 24f;
-    static final float BLUR_DP = 8f;
-    static final int STRENGTH_STEPS = 64;
+    static final int MAX_FEATHER_PX = 192;
+    final int width, height, maxWidth;
 
-    final int right, width, radius, sourceLeft;
-
-    private RailNotificationEdge(int right, int width, int radius) {
-        this.right = right;
-        this.width = width;
-        this.radius = radius;
-        // The GPU input includes the neighbouring sharp pixels that the edge samples.
-        sourceLeft = Math.max(0, right - width - radius);
+    private RailNotificationEdge(int width, int height, int maxWidth) {
+        this.width = width; this.height = height; this.maxWidth = maxWidth;
     }
 
     static RailNotificationEdge resolve(int width, int height, float density) {
         if (width <= 0 || height <= 0 || !Float.isFinite(density) || density <= 0f) return null;
-        int band = Math.min(width / 4, Math.max(1, Math.round(WIDTH_DP * density)));
-        if (band <= 0) return null;
-        int radius = Math.min(band / 2, Math.max(1, Math.round(BLUR_DP * density)));
-        return new RailNotificationEdge(width, band, radius);
+        int band = Math.min(MAX_FEATHER_PX, Math.min(width / 4, Math.max(1, Math.round(WIDTH_DP * density))));
+        return band > 0 ? new RailNotificationEdge(width, height, band) : null;
     }
 
-    int start() { return right - width; }
-    int sourceWidth() { return right - sourceLeft; }
-
-    /** The shader uses the same smoothstep: exact original at the start, zero at the boundary. */
-    float progress(float x) {
-        float t = Math.max(0f, Math.min(1f, (x - start()) / width));
-        return t * t * (3f - 2f * t);
+    /** A small swipe narrows the band; it must never leave a nonzero alpha at the hard cut. */
+    int featherWidth(float translation) {
+        if (!Float.isFinite(translation) || translation == 0f) return 0;
+        return Math.max(1, Math.min(maxWidth, Math.round(Math.abs(translation))));
     }
 
-    float opacity(float x) { return 1f - progress(x); }
-    float blur(float x) { return radius * progress(x); }
-
-    float strength(float translation) {
-        if (!Float.isFinite(translation) || translation <= 0f) return 0f;
-        float t = Math.min(1f, translation / width);
-        return t * t * (3f - 2f * t);
+    Region region(float rowLeft, float rowTop, float rowRight, float rowBottom,
+                  int clipLeft, int clipTop, int clipRight, int clipBottom, float translation) {
+        int band = featherWidth(translation);
+        if (band == 0 || !Float.isFinite(rowLeft) || !Float.isFinite(rowTop)
+                || !Float.isFinite(rowRight) || !Float.isFinite(rowBottom)
+                || rowRight <= rowLeft || rowBottom <= rowTop) return null;
+        int left = Math.max(Math.max(0, clipLeft), (int) Math.floor(rowLeft));
+        int right = Math.min(Math.min(width, clipRight), (int) Math.ceil(rowRight));
+        int top = Math.max(Math.max(0, clipTop), (int) Math.floor(rowTop));
+        int bottom = Math.min(Math.min(height, clipBottom), (int) Math.ceil(rowBottom));
+        if (right <= left || bottom <= top) return null;
+        band = Math.min(band, right - left);
+        return translation < 0f ? new Region(left, top, left + band, bottom, true, clipLeft, left + band)
+                : new Region(right - band, top, right, bottom, false, right - band, clipRight);
     }
 
-    Region region(float rowY, int clipTop, int clipBottom, int stackHeight, float translation) {
-        int level = Math.round(strength(translation) * STRENGTH_STEPS);
-        float strength = (float) level / STRENGTH_STEPS;
-        if (strength <= 0f || !Float.isFinite(rowY) || clipBottom <= clipTop) return null;
-        int top = Math.max(0, (int) Math.floor(rowY + clipTop));
-        int bottom = Math.min(stackHeight, (int) Math.ceil(rowY + clipBottom));
-        return bottom > top ? new Region(top, bottom, strength, level) : null;
+    static float opacity(float x, int width, boolean left) {
+        if (width <= 0 || !Float.isFinite(x)) return 0f;
+        float t = Math.max(0f, Math.min(1f, x / width));
+        float p = t * t * (3f - 2f * t);
+        return left ? p : 1f - p;
     }
 
     static final class Region {
-        final int top, bottom;
-        final float strength;
-        final int level;
-        Region(int top, int bottom, float strength, int level) {
-            this.top = top; this.bottom = bottom; this.strength = strength;
-            this.level = level;
+        final int left, top, right, bottom;
+        final int clearLeft, clearRight;
+        final boolean leftSide;
+        Region(int left, int top, int right, int bottom, boolean leftSide, int clearLeft, int clearRight) {
+            this.left = left; this.top = top; this.right = right; this.bottom = bottom;
+            this.leftSide = leftSide;
+            this.clearLeft = clearLeft; this.clearRight = clearRight;
         }
+        int width() { return right - left; }
     }
-
-    private RailNotificationEdge() { throw new AssertionError(); }
 }

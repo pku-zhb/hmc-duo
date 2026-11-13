@@ -23,7 +23,7 @@ internal object RailStatusRuntime {
 
     @JvmStatic fun update(window: View, plan: RightRailLayout.Plan) {
         runCatching {
-            val id = window.resources.getIdentifier("keyguard_root_view", "id", "com.android.systemui")
+            val id = ResourceIds.id(window.resources, "keyguard_root_view")
             val container = if (id == 0) null else window.findViewById<View>(id) as? ViewGroup
             if (container == null) { hide(); error = "keyguard parent unavailable"; return@runCatching }
             val density = window.resources.displayMetrics.density
