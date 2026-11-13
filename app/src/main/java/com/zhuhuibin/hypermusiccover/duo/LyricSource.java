@@ -861,7 +861,7 @@ final class LyricSource {
         final boolean extended = LockLyrics.sSearchMode == LockLyrics.SEARCH_EXTENDED;
         // Spicy Lyrics is a Spotify-only endpoint. A coincidentally 22-character media id from
         // another player must never send that player's metadata or request through this route.
-        final String spicyId = extended && "com.spotify.music".equals(c.getPackageName())
+        final String spicyId = extended && "com.spotify.music".equals(pkg)
                 ? SpicyLyrics.spotifyId(c) : null;
         // An id is only worth having when there is a directory it belongs to; without one it
         // cannot be looked up anywhere, and pretending otherwise is how a lookup lands in the
@@ -882,7 +882,7 @@ final class LyricSource {
             onMainFinished(gen, cb, true);
             return;
         }
-        new Thread(new Runnable() {
+        Thread lookup = new Thread(new Runnable() {
             @Override
             public void run() {
                 if (extended) {
@@ -1030,7 +1030,16 @@ final class LyricSource {
                     onMainFinished(gen, cb, r.lines.isEmpty());
                 }
             }
-        }, "MCLyricSource").start();
+        }, "MCLyricSource");
+        lookup.setUncaughtExceptionHandler((thread, error) -> {
+            // A failed provider must finish this attempt rather than leave the
+            // loading page pending until its watchdog, especially across relocks.
+            Xp.w("[MCLyric] lookup failed: " + error.getClass().getSimpleName());
+            onMainCurrent(gen, cb, java.util.Collections.<LyricLine>emptyList(),
+                    "lyric lookup failed", SRC_NONE);
+            onMainFinished(gen, cb, true);
+        });
+        lookup.start();
     }
 
     /**

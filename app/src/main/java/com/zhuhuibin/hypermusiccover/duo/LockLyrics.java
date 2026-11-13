@@ -70,6 +70,7 @@ final class LockLyrics {
     private static int sVersion;
     /** Bumped per lookup, so an answer overtaken by the next song is dropped. */
     private static int sGen;
+    private static final LyricPageRecovery sPageRecovery = new LyricPageRecovery();
     private static String sWhy = "";
 
     private static LyricView sView;
@@ -1548,7 +1549,7 @@ final class LockLyrics {
 
     /** How many times one song may be re-read because the session published something new. */
     private static final int MAX_INFO_TRIES = 3;
-    private static final long LOOKUP_TIMEOUT_MS = 25000L;
+    private static final long LOOKUP_TIMEOUT_MS = LyricPageRecovery.PIPELINE_TIMEOUT_MS;
     /** The payload the lookup for sKey was started against, so the next one can be recognised. */
     private static String sInfoSeen;
     /** How much of MAX_INFO_TRIES this song has spent. */
@@ -1565,6 +1566,7 @@ final class LockLyrics {
      */
     private static void lookup(final String want, MediaController c, final boolean keepCurrent) {
         final int gen = ++sGen;
+        sPageRecovery.lookupStarted(want, SystemClock.uptimeMillis());
         sLoading = true;
         Main.main().removeCallbacks(LOOKUP_WATCHDOG);
         Main.main().postDelayed(LOOKUP_WATCHDOG, LOOKUP_TIMEOUT_MS);
@@ -1615,6 +1617,7 @@ final class LockLyrics {
 
             @Override public void onFinished(boolean empty) {
                 if (gen != sGen || !want.equals(sKey) || sDemo) return;
+                sPageRecovery.lookupFinished();
                 NextLyrics.onLyricsFinal();
             }
         });
@@ -1979,8 +1982,27 @@ final class LockLyrics {
             if (FoldMusicRuntime.combinedRequested()) sArtworkPage.preferCover();
             else sArtworkPage.preferCompact();
             if (key != null && !key.isEmpty()) onTrack(key, controller);
+            recoverSelectedLyrics();
         } else sArtworkPage.preferCover();
         refresh();
+    }
+
+    /** Same-track entry does not emit new metadata, but can follow a hidden or failed lookup. */
+    private static void recoverSelectedLyrics() {
+        if (!sEnabled || sDemo) return;
+        Cached hit = CACHE.get(sKey);
+        int action = sPageRecovery.onPageSelected(sKey, SystemClock.uptimeMillis(), sLoading,
+                !sLines.isEmpty(), hit != null && !hit.lines.isEmpty());
+        if (action == LyricPageRecovery.RESTORE) {
+            sSource = hit.source;
+            setLines(hit.lines, "cached on lyric page entry");
+            translateAsync(sKey, hit.lines, sGen);
+        } else if (action == LyricPageRecovery.RETRY && sController != null) {
+            // A miss is still unavailable. Only another explicit page choice retries it,
+            // at most once per interval; metadata callbacks never restart the network.
+            sInfoSeen = LyricSource.infoFor(sController);
+            lookup(sKey, sController, false);
+        }
     }
 
     /** The app's switch. The setting: it is written to the state file and the app reads it back. */
