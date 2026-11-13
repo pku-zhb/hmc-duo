@@ -11,5 +11,5 @@ dependencyResolutionManagement {
         mavenCentral()
     }
 }
-rootProject.name = "hypermusiccover-duo"
+rootProject.name = "hmc-duo"
 include(":app")

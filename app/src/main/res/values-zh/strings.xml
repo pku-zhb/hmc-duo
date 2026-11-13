@@ -8,10 +8,10 @@
     <string name="lock_follow_native_glass_summary">预览功能：胶囊和快捷按钮底板跟随原生播放器最终使用的玻璃参数，包括 HyperLight 的调整。</string>
     <string name="cover_fold_columns">内屏横屏双栏</string>
     <string name="cover_fold_columns_summary">预览功能：内屏横屏且空间足够时，左侧显示封面与播放控制，右侧显示歌词。折叠或转为竖屏后恢复常规布局。</string>
-    <string name="app_name">hypermusiccover-duo</string>
-    <string name="about_source_code_summary">https://github.com/pku-zhb/hypermusiccover-duo</string>
+    <string name="app_name">hmc-duo</string>
+    <string name="about_source_code_summary">https://github.com/pku-zhb/hmc-duo</string>
     <string name="about_feedback">反馈与建议</string>
-    <string name="about_feedback_summary">https://github.com/pku-zhb/hypermusiccover-duo/issues</string>
+    <string name="about_feedback_summary">https://github.com/pku-zhb/hmc-duo/issues</string>
     <string name="cover_bias">封面纵向位置</string>
     <string name="cover_full_blur">背景模糊度</string>
     <string name="cover_full_blur_summary">封面后方专辑图的模糊程度</string>

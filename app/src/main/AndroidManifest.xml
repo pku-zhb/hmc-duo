@@ -44,6 +44,8 @@
         android:enableOnBackInvokedCallback="true"
         android:supportsRtl="true"
         android:theme="@style/Theme.HyperMusicCoverDuo">
+        <meta-data android:name="com.zhuhuibin.hypermusiccover.duo.SOURCE_REVISION"
+            android:value="${hmcSourceRevision}" />
 
         <activity
             android:name=".MainActivity"
@@ -164,7 +166,7 @@
         -->
         <meta-data android:name="xposedmodule" android:value="true" />
         <meta-data android:name="xposeddescription"
-            android:value="hypermusiccover-duo - lock screen music artwork and lyrics for Xiaomi 18 Fold. Based on HyperMusicCover by zyl6932 and the Enhanced fork by Lewewe." />
+            android:value="hmc-duo - lock screen music artwork and lyrics for Xiaomi 18 Fold. Based on HyperMusicCover by zyl6932 and the Enhanced fork by Lewewe." />
         <meta-data android:name="xposedminversion" android:value="102" />
         <meta-data android:name="xposedscope" android:resource="@array/xposedscope" />
 

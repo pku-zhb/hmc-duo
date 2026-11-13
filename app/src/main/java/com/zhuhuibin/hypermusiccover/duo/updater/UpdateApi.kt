@@ -26,7 +26,7 @@ import java.security.MessageDigest
  * treats a question the module did not answer.
  */
 
-private const val REPO = "pku-zhb/hypermusiccover-duo"
+private const val REPO = "pku-zhb/hmc-duo"
 private const val RELEASES_LIST = "https://api.github.com/repos/$REPO/releases"
 
 /**
@@ -291,7 +291,7 @@ object UpdateApi {
 
     /** Match the fork's published asset name without selecting an upstream APK by accident. */
     internal fun releaseApk(release: GithubRelease): GithubAsset? =
-        release.assets.firstOrNull { it.name == "hypermusiccover-duo-${release.tagName}.apk" }
+        release.assets.firstOrNull { it.name == "hmc-duo-${release.tagName.removePrefix("v")}.apk" }
 
 
     /**

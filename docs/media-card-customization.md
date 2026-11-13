@@ -1,6 +1,6 @@
 # Media card customization
 
-Adapted for HyperMusicCover Duo through HyperMusicCover-Enhanced from [juren233/HyperLyrics-Enhanced](https://github.com/juren233/HyperLyrics-Enhanced), revision `912df58`.
+Adapted for hmc-duo through HyperMusicCover-Enhanced from [juren233/HyperLyrics-Enhanced](https://github.com/juren233/HyperLyrics-Enhanced), revision `912df58`.
 
 The background renderers, crossfade, soft-flow shader and palette extractor retain their upstream algorithms. The notification/island hook adapter, settings bridge, persistence and lifecycle integration are specific to this fork. No lyric hooks, audio capture, wake locks or screen keep-alive logic are imported.
 

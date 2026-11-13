@@ -52,8 +52,8 @@ import top.yukonga.miuix.kmp.window.WindowDialog
 private const val POLL_MS = 200L
 
 /** Manual updates and feedback belong to the Enhanced fork. */
-private const val RELEASES_PAGE = "https://github.com/pku-zhb/hypermusiccover-duo/releases"
-private const val FEEDBACK_PAGE = "https://github.com/pku-zhb/hypermusiccover-duo/issues"
+private const val RELEASES_PAGE = "https://github.com/pku-zhb/hmc-duo/releases"
+private const val FEEDBACK_PAGE = "https://github.com/pku-zhb/hmc-duo/issues"
 
 /**
  * Every piece of state the updater needs.
@@ -115,7 +115,7 @@ class UpdateController internal constructor(internal val states: UpdateStates) {
         UpdateInstaller.start(
             context,
             target.apkUrl,
-            "hypermusiccover-duo-v${target.versionName}.apk",
+            "hmc-duo-${target.versionName}.apk",
         )
     }
 

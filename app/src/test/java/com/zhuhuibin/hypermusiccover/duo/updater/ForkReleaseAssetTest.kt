@@ -6,21 +6,21 @@ import org.junit.Test
 class ForkReleaseAssetTest {
     private fun release(vararg names: String) = GithubRelease(
         tagName = "v0.1.0", prerelease = false, body = "",
-        htmlUrl = "https://github.com/pku-zhb/hypermusiccover-duo/releases/tag/v0.1.0",
+        htmlUrl = "https://github.com/pku-zhb/hmc-duo/releases/tag/v0.1.0",
         assets = names.map { GithubAsset(it, "https://example.com/$it") },
     )
 
     @Test fun selectsPublishedDuoAssetEvenWhenAnUpstreamApkComesFirst() {
         val selected = UpdateApi.releaseApk(release(
-            "HyperMusicCover-v0.1.0.apk", "hypermusiccover-duo-v0.1.0.apk",
+            "HyperMusicCover-v0.1.0.apk", "hmc-duo-0.1.0.apk",
         ))
-        assertEquals("hypermusiccover-duo-v0.1.0.apk", selected?.name)
+        assertEquals("hmc-duo-0.1.0.apk", selected?.name)
     }
 
     @Test fun upstreamAssetsAndNonApkAttachmentsDoNotBecomeForkUpdates() {
         assertNull(UpdateApi.releaseApk(release("HyperMusicCover-v0.1.0.apk")))
         assertNull(UpdateApi.releaseApk(release("HyperMusicCover-Enhanced-v0.1.0.apk")))
-        assertNull(UpdateApi.releaseApk(release("hypermusiccover-duo-v0.1.0.apk.sha256")))
+        assertNull(UpdateApi.releaseApk(release("hmc-duo-0.1.0.apk.sha256")))
         assertNull(UpdateApi.releaseApk(release()))
     }
 
@@ -44,25 +44,32 @@ class ForkReleaseAssetTest {
 
     @Test fun smallUpdateTagsMatchTheirOwnAsset() {
         val small = GithubRelease("v1.1.0-1", false, "", "", listOf(
-            GithubAsset("hypermusiccover-duo-v1.1.0.apk", "a"),
-            GithubAsset("hypermusiccover-duo-v1.1.0-1.apk", "b"),
+            GithubAsset("hmc-duo-1.1.0.apk", "a"),
+            GithubAsset("hmc-duo-1.1.0-1.apk", "b"),
         ))
         assertEquals("b", UpdateApi.releaseApk(small)?.url)
     }
 
     @Test fun matchingTagTakesPrecedenceOverFallbackAssets() {
         val selected = UpdateApi.releaseApk(release(
-            "hypermusiccover-duo-v0.0.9.apk", "hypermusiccover-duo-v0.1.0.apk",
+            "hmc-duo-0.0.9.apk", "hmc-duo-0.1.0.apk",
         ))
-        assertEquals("hypermusiccover-duo-v0.1.0.apk", selected?.name)
+        assertEquals("hmc-duo-0.1.0.apk", selected?.name)
     }
     @Test fun aStableReleaseReplacesItsPreview() {
         assertEquals(true, isNewerVersion("0.3.0", "0.3.0-preview.1"))
         assertEquals(false, isNewerVersion("0.3.0-preview.1", "0.3.0"))
     }
 
+    @Test fun legacyPrefixedPreviewAndCommitAssetsAreNotStableUpdates() {
+        assertNull(UpdateApi.releaseApk(release("hypermusiccover-duo-v0.1.0.apk")))
+        assertNull(UpdateApi.releaseApk(release("hmc-duo-v0.1.0.apk")))
+        assertNull(UpdateApi.releaseApk(release("hmc-duo-0.1.0-preview.1.apk")))
+        assertNull(UpdateApi.releaseApk(release("hmc-duo-0.1.0-abc1234.apk")))
+    }
+
     @Test fun aDifferentVersionAssetIsNeverUsedAsFallback() {
-        assertNull(UpdateApi.releaseApk(release("hypermusiccover-duo-v0.0.9.apk")))
+        assertNull(UpdateApi.releaseApk(release("hmc-duo-0.0.9.apk")))
     }
     @Test fun signedSuccessorsAreAcceptedButOldKeysAndAdditionalSignersAreRejected() {
         assertTrue(acceptsSigningLineage(listOf("old"), listOf("old"), emptyList()))

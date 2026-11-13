@@ -7,7 +7,7 @@ if [[ ! -d "$volume" || ! -w "$volume" ]]; then
     echo 'DEV_VOLUME must be an existing, writable directory.' >&2
     exit 1
 fi
-cache="$volume/hypermusiccover-duo"
+cache="$volume/hmc-duo"
 # Reuse installed tools, without retaining another source tree.
 existing_tools="${DEV_TOOLS_DIR:-$volume/tools}"
 export ANDROID_HOME="${ANDROID_HOME:-$existing_tools/android-sdk}"

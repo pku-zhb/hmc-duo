@@ -191,7 +191,7 @@ fun SettingsPageView(
                         ArrowPreference(
                             title = stringResource(R.string.export_settings),
                             summary = stringResource(R.string.export_settings_summary),
-                            onClick = { exportLauncher.launch("HyperMusicCover_settings.json") }
+                            onClick = { exportLauncher.launch("hmc-duo-settings.json") }
                         )
                         ArrowPreference(
                             title = stringResource(R.string.import_settings),

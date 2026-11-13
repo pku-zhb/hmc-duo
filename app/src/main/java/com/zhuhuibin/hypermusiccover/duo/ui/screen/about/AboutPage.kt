@@ -299,16 +299,16 @@ private fun AboutContent(
                         )
                         ArrowPreference(
                             title = stringResource(R.string.about_source_code),
-                            summary = "pku-zhb/hypermusiccover-duo",
-                            onClick = { uriHandler.openUri("https://github.com/pku-zhb/hypermusiccover-duo") },
+                            summary = "pku-zhb/hmc-duo",
+                            onClick = { uriHandler.openUri("https://github.com/pku-zhb/hmc-duo") },
                         )
                         ArrowPreference(
                             title = stringResource(R.string.about_feedback),
-                            onClick = { uriHandler.openUri("https://github.com/pku-zhb/hypermusiccover-duo/issues") },
+                            onClick = { uriHandler.openUri("https://github.com/pku-zhb/hmc-duo/issues") },
                         )
                         ArrowPreference(
                             title = stringResource(R.string.about_releases),
-                            onClick = { uriHandler.openUri("https://github.com/pku-zhb/hypermusiccover-duo/releases") },
+                            onClick = { uriHandler.openUri("https://github.com/pku-zhb/hmc-duo/releases") },
                         )
                         ArrowPreference(
                             title = stringResource(R.string.about_support_duo),

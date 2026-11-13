@@ -29,7 +29,7 @@ fi
 python3 tools/verify-release.py "$apk" --version "$version" --code "$version_code" \
     --certificate "$SIGNING_CERT_SHA256"
 mkdir -p releases/local
-destination="releases/local/hypermusiccover-duo-v$version.apk"
+destination="releases/local/hmc-duo-$version.apk"
 [[ ! -e "$destination" ]] || { echo 'Release already exists; use a new version.' >&2; exit 1; }
 cp "$apk" "$destination"
 shasum -a 256 "$destination" > "$destination.sha256"
