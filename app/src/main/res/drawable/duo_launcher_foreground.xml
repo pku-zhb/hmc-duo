@@ -1,5 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Keep the complete outer-display artwork within the adaptive icon's visible viewport. -->
-<inset xmlns:android="http://schemas.android.com/apk/res/android"
-    android:inset="16.666667%"
-    android:drawable="@drawable/duo_launcher_artwork" />
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+<!-- HyperChanger-derived orange device family, with original music geometry; see design/ICON_FAMILY.md. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+    <path android:fillColor="#FF7700" android:pathData="M41,27H60Q68,27 68,35V73Q68,81 60,81H41Q33,81 33,73V35Q33,27 41,27ZM78,38Q82,38 82,42V66Q82,70 78,70Q74,70 74,66V42Q74,38 78,38Z" />
+    <path android:fillColor="#FFFDF9" android:pathData="M47,33H53Q54,33 54,34Q54,35 53,35H47Q46,35 46,34Q46,33 47,33ZM47,74H53Q54,74 54,75Q54,76 53,76H47Q46,76 46,75Q46,74 47,74ZM61,51A10.5,10.5 0,1 1,40,51A10.5,10.5 0,1 1,61,51ZM80,46A2,2 0,1 1,76,46A2,2 0,1 1,80,46ZM76.5,57L80,60L76.5,63Z" />
+    <path android:fillColor="#FF7700" android:pathData="M47.5,45.5L56.5,51L47.5,56.5Z" />
+</vector>
