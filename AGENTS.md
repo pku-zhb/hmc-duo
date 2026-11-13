@@ -64,3 +64,10 @@ Use Obsidian's local vault trash, never permanent deletion. The CLI delete comma
 currently selects system trash; for explicit local trash use the official CLI
 `eval` entry with `app.vault.trash(file, false)`. Verify source absence and retained
 file hashes; on interruption inspect the actual result before retrying.
+
+## Latest owner delivery preferences
+
+Archive APKs locally and copy to the reachable phone Download directory. Do not
+send APK attachments through cc-connect. Do not create Markdown notes in the
+personal Miduo archive; put requested reading/acceptance documents in 00 Temp.
+Phone installation and scope reload require current explicit owner authorization.

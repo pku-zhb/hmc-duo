@@ -2,8 +2,10 @@ package com.zhuhuibin.hypermusiccover.duo.ui.screen.features
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.Composable
@@ -36,8 +38,8 @@ internal fun RailStatusOffsetSetting(enabled: Boolean, value: Float, onChange: (
     val label = value.toString().removeSuffix(".0")
     Column {
         BasicComponent(
+            insideMargin = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
             title = stringResource(R.string.rail_status_offset_y),
-            summary = stringResource(R.string.rail_status_offset_y_summary),
             enabled = enabled,
             endActions = {
                 TextButton(text = "$label dp", enabled = enabled, minWidth = 44.dp, minHeight = 44.dp,
@@ -46,14 +48,11 @@ internal fun RailStatusOffsetSetting(enabled: Boolean, value: Float, onChange: (
         )
         Slider(
             value = value.coerceIn(-24f, 24f), valueRange = -24f..24f, enabled = enabled,
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+            modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp).padding(horizontal = 16.dp),
             onValueChange = { onChange(it.roundToInt().toFloat()) },
             hapticEffect = SliderDefaults.SliderHapticEffect.Step,
             keyPoints = listOf(0f), showKeyPoints = true, magnetThreshold = 0f,
         )
-        TextButton(text = stringResource(R.string.rail_status_offset_y_reset), enabled = enabled,
-            modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
-            minHeight = 44.dp, onClick = { onChange(0f) })
     }
     WindowDialog(show = showInput, title = stringResource(R.string.rail_status_offset_y),
         summary = stringResource(R.string.rail_status_offset_y_range), onDismissRequest = { showInput = false }) {
@@ -72,6 +71,9 @@ internal fun RailStatusOffsetSetting(enabled: Boolean, value: Float, onChange: (
                     else { onChange(next); showInput = false }
                 }, Modifier.weight(1f), enabled = enabled, minHeight = 44.dp)
             }
+            TextButton(text = stringResource(R.string.rail_status_offset_y_reset), enabled = enabled,
+                modifier = Modifier.fillMaxWidth(), minHeight = 44.dp,
+                onClick = { onChange(0f); showInput = false })
         }
     }
 }

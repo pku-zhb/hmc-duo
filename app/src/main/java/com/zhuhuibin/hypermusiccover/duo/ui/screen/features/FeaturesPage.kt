@@ -8,6 +8,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -130,8 +131,8 @@ private fun FeatureList(
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp)
                 ) {
                     ArrowPreference(
+                        insideMargin = featurePreferenceMargin,
                         title = stringResource(R.string.features_mini_title),
-                        summary = stringResource(R.string.features_mini_summary),
                         onClick = { onOpen(MiniPlayerActivity::class.java) },
                     )
                 }
@@ -139,22 +140,22 @@ private fun FeatureList(
                     modifier = Modifier.padding(horizontal = 12.dp).padding(bottom = 12.dp)
                 ) {
                     ArrowPreference(
+                        insideMargin = featurePreferenceMargin,
                         title = stringResource(R.string.features_cover_title),
-                        summary = stringResource(R.string.features_cover_summary),
                         onClick = { onOpen(CoverActivity::class.java) },
                     )
                 }
                 Card(Modifier.padding(horizontal = 12.dp).padding(bottom = 12.dp)) {
                     ArrowPreference(
+                        insideMargin = featurePreferenceMargin,
                         title = stringResource(R.string.media_customization_title),
-                        summary = stringResource(R.string.media_customization_summary),
                         onClick = { onOpen(MediaCardActivity::class.java) },
                     )
                 }
                 Card(Modifier.padding(horizontal = 12.dp).padding(bottom = 12.dp)) {
                     SwitchPreference(
+                        insideMargin = featurePreferenceMargin,
                         title = stringResource(R.string.amap_navigation_map),
-                        summary = stringResource(R.string.amap_navigation_map_summary),
                         checked = module.amapNavigationMap,
                         enabled = module.alive,
                         onCheckedChange = onAmapMapChange,
@@ -164,8 +165,8 @@ private fun FeatureList(
                     modifier = Modifier.padding(horizontal = 12.dp).padding(bottom = 12.dp)
                 ) {
                     ArrowPreference(
+                        insideMargin = featurePreferenceMargin,
                         title = stringResource(R.string.extras_section),
-                        summary = stringResource(R.string.extras_summary),
                         onClick = { onOpen(ExtrasActivity::class.java) },
                     )
                 }
@@ -173,8 +174,8 @@ private fun FeatureList(
                     modifier = Modifier.padding(horizontal = 12.dp).padding(bottom = 12.dp)
                 ) {
                     ArrowPreference(
+                        insideMargin = featurePreferenceMargin,
                         title = stringResource(R.string.features_tweaks_title),
-                        summary = stringResource(R.string.features_tweaks_summary),
                         onClick = { onOpen(TweaksActivity::class.java) },
                     )
                 }
@@ -212,11 +213,10 @@ internal fun TweaksPageView(
     ) {
         item {
             Column {
-                SmallTitle(text = stringResource(R.string.tweaks_lock_screen))
                 Card(Modifier.padding(horizontal = 12.dp).padding(bottom = 12.dp)) {
                     SwitchPreference(
+                        insideMargin = featurePreferenceMargin,
                         title = stringResource(R.string.lock_hide_status_bar),
-                        summary = stringResource(R.string.lock_hide_status_bar_summary),
                         checked = module.hideLockStatusBar, enabled = module.alive,
                         onCheckedChange = {
                             module = module.copy(hideLockStatusBar = it)
@@ -224,6 +224,7 @@ internal fun TweaksPageView(
                         },
                     )
                     SwitchPreference(
+                        insideMargin = featurePreferenceMargin,
                         title = stringResource(R.string.depth_open),
                         summary = stringResource(R.string.depth_open_summary),
                         checked = module.depthOpen,
@@ -268,9 +269,8 @@ internal fun TweaksPageView(
                         }
                     }
                 }
-                SmallTitle(text = stringResource(R.string.fold_layout_section))
                 Card(Modifier.padding(horizontal = 12.dp).padding(bottom = 12.dp)) {
-                    SwitchPreference(title = stringResource(R.string.fold_force_notification_floor),
+                    SwitchPreference(insideMargin = featurePreferenceMargin, title = stringResource(R.string.fold_force_notification_floor),
                         checked = module.forceNotificationFloor, enabled = module.alive,
                         onCheckedChange = {
                             module = module.copy(forceNotificationFloor = it)
@@ -347,15 +347,12 @@ internal fun CoverPageView(
     ) {
         item {
             Column {
-                SmallTitle(text = stringResource(R.string.cover_section))
                 Card(Modifier.padding(horizontal = 12.dp).padding(bottom = 12.dp)) {
                     CoverGroup(enabled, module) { module = it }
                 }
-                SmallTitle(text = stringResource(R.string.clock_section))
                 Card(Modifier.padding(horizontal = 12.dp).padding(bottom = 12.dp)) {
                     ClockGroup(enabled, module) { module = it }
                 }
-                SmallTitle(text = stringResource(R.string.card_section))
                 Card(Modifier.padding(horizontal = 12.dp).padding(bottom = 12.dp)) {
                     CardGroup(enabled, module) { module = it }
                 }
@@ -431,10 +428,10 @@ private fun CoverGroup(
     val context = LocalContext.current
     Column {
         WindowDropdownPreference(
+            insideMargin = featurePreferenceMargin,
             title = stringResource(R.string.cover_style),
             items = listOf(stringResource(R.string.cover_style_full),
                 stringResource(R.string.cover_style_card)),
-            summary = stringResource(R.string.cover_style_content_area),
             selectedIndex = module.coverStyle.coerceIn(0, 1),
             enabled = enabled,
             onSelectedIndexChange = {
@@ -443,8 +440,8 @@ private fun CoverGroup(
             },
         )
         SwitchPreference(
+            insideMargin = featurePreferenceMargin,
             title = stringResource(R.string.cover_fold_columns),
-            summary = stringResource(R.string.cover_fold_columns_summary),
             checked = module.foldMusicLayout,
             enabled = enabled,
             onCheckedChange = {
@@ -453,8 +450,8 @@ private fun CoverGroup(
             },
         )
         SwitchPreference(
+            insideMargin = featurePreferenceMargin,
             title = stringResource(R.string.lock_right_rail),
-            summary = stringResource(R.string.lock_right_rail_summary),
             checked = module.rightRail, enabled = enabled,
             onCheckedChange = {
                 onChange(module.copy(rightRail = it))
@@ -467,8 +464,8 @@ private fun CoverGroup(
             else ModuleBridge.setRailStatusOffsetY(context, value)
         }
         SwitchPreference(
+            insideMargin = featurePreferenceMargin,
             title = stringResource(R.string.lock_reflow_content),
-            summary = stringResource(R.string.lock_reflow_content_summary),
             checked = module.reflowLockContent, enabled = enabled && module.rightRail,
             onCheckedChange = {
                 onChange(module.copy(reflowLockContent = it))
@@ -476,8 +473,8 @@ private fun CoverGroup(
             },
         )
         SwitchPreference(
+            insideMargin = featurePreferenceMargin,
             title = stringResource(R.string.lock_hide_charging_hint),
-            summary = stringResource(R.string.lock_hide_charging_hint_summary),
             checked = module.hideChargingHint, enabled = module.alive,
             onCheckedChange = {
                 onChange(module.copy(hideChargingHint = it))
@@ -486,8 +483,8 @@ private fun CoverGroup(
         )
         val backgroundMode = if (module.hidePlayerBackground) 0 else if (module.meshBackdrop) 2 else 1
         WindowDropdownPreference(
+            insideMargin = featurePreferenceMargin,
             title = stringResource(R.string.cover_background_mode),
-            summary = stringResource(R.string.cover_background_mode_summary),
             items = listOf(stringResource(R.string.cover_background_native),
                 stringResource(R.string.cover_background_artwork), stringResource(R.string.cover_background_dynamic)),
             selectedIndex = backgroundMode, enabled = enabled,
@@ -507,7 +504,6 @@ private fun CoverGroup(
         )
         ValueSlider(
             title = stringResource(R.string.cover_wallpaper_dim),
-            summary = stringResource(R.string.cover_wallpaper_dim_summary),
             value = module.wallpaperDim.toFloat(), valueRange = 0f..100f, detent = 0f,
             enabled = enabled, label = { "${it.roundToInt()}%" },
             onValueChange = {
@@ -516,8 +512,8 @@ private fun CoverGroup(
             },
         )
         SwitchPreference(
+            insideMargin = featurePreferenceMargin,
             title = stringResource(R.string.cover_flip),
-            summary = stringResource(R.string.cover_flip_summary),
             checked = module.coverFlip,
             enabled = enabled,
             onCheckedChange = {
@@ -533,24 +529,23 @@ private fun CoverGroup(
         }
         val entryEnabled = enabled && miniConfig.optBoolean(MiniPlayerConfig.ENABLED)
         val keepLast = MiniPlayerConfig.keepLastLockscreen(miniConfig)
-        SwitchPreference(title = stringResource(R.string.fold_keep_last),
-            summary = stringResource(R.string.fold_keep_last_summary),
+        SwitchPreference(insideMargin = featurePreferenceMargin, title = stringResource(R.string.fold_keep_last),
             checked = keepLast, enabled = entryEnabled,
             onCheckedChange = { entrySetting(MiniPlayerConfig.KEEP_LAST_LOCKSCREEN, it) })
         for (landscape in listOf(false, true)) {
             val mask = MiniPlayerConfig.collapsedCategories(miniConfig, landscape)
-            BasicComponent(title = stringResource(if (landscape) R.string.fold_landscape_collapsed else R.string.fold_collapsed_categories),
-                summary = stringResource(R.string.fold_collapsed_categories_summary))
+            BasicComponent(insideMargin = featurePreferenceMargin, title = stringResource(if (landscape) R.string.fold_landscape_collapsed else R.string.fold_collapsed_categories))
             val categories = listOf(MiniPlayerConfig.COLLAPSE_MUSIC to R.string.fold_music_player,
                 MiniPlayerConfig.COLLAPSE_LIVE to R.string.fold_live_cards,
                 MiniPlayerConfig.COLLAPSE_NOTIFICATIONS to R.string.fold_notifications)
-            for ((bit, label) in categories) CheckboxPreference(title = stringResource(label),
+            for ((bit, label) in categories) CheckboxPreference(insideMargin = featurePreferenceMargin, title = stringResource(label),
                 checked = mask and bit != 0, enabled = entryEnabled && !keepLast,
                 onCheckedChange = { checked ->
                     entrySetting(if (landscape) MiniPlayerConfig.LANDSCAPE_COLLAPSED_CATEGORIES else MiniPlayerConfig.COLLAPSED_CATEGORIES,
                         if (checked) mask or bit else mask and bit.inv())
                 })
             if (mask and MiniPlayerConfig.COLLAPSE_MUSIC == 0) WindowDropdownPreference(
+                insideMargin = featurePreferenceMargin,
                 title = stringResource(if (landscape) R.string.fold_landscape_music_view else R.string.fold_startup_music_view),
                 items = listOf(stringResource(R.string.fold_music_player), stringResource(R.string.fold_music_artwork),
                     stringResource(R.string.fold_music_lyrics)) +
@@ -573,8 +568,8 @@ private fun ClockGroup(
     val context = LocalContext.current
     Column {
         WindowDropdownPreference(
+            insideMargin = featurePreferenceMargin,
             title = stringResource(R.string.clock_artwork_destination),
-            summary = stringResource(R.string.clock_artwork_destination_summary),
             items = listOf(stringResource(R.string.clock_artwork_shrink),
                 stringResource(R.string.clock_artwork_date), stringResource(R.string.clock_artwork_status)),
             selectedIndex = module.artworkClockDestination, enabled = enabled,
@@ -585,6 +580,7 @@ private fun ClockGroup(
             },
         )
         if (module.artworkClockDestination == 1) WindowDropdownPreference(
+            insideMargin = featurePreferenceMargin,
             title = stringResource(R.string.clock_artwork_row_side),
             items = listOf(stringResource(R.string.clock_artwork_row_left), stringResource(R.string.clock_artwork_row_right)),
             selectedIndex = if (module.artworkClockBeforeDate) 0 else 1, enabled = enabled,
@@ -596,7 +592,6 @@ private fun ClockGroup(
         // Cap the collapsed clock at 55% to leave enough space for the big artwork.
         if (module.artworkClockDestination == 0) ValueSlider(
             title = stringResource(R.string.clock_size),
-            summary = stringResource(R.string.clock_size_summary),
             value = (if (module.clockSize > 0f) module.clockSize else DEFAULT_CLOCK_SIZE)
                 .coerceIn(CLOCK_SIZE_MIN, 0.55f),
             valueRange = CLOCK_SIZE_MIN..0.55f,
@@ -625,6 +620,7 @@ private fun ClockGroup(
         // The summary is the switch's own caveat, asked for by the user: the hook is on the
         // clock's isColonShow, so it can only speak for a style that has a colon to show.
         SwitchPreference(
+            insideMargin = featurePreferenceMargin,
             title = stringResource(R.string.clock_force_colon),
             summary = stringResource(R.string.clock_force_colon_summary),
             checked = module.forceColon,
@@ -726,6 +722,7 @@ private fun LyricSourceStatus(module: ModuleBridge.State, onBack: () -> Unit) {
         // dismissed, which is what makes it useful on the visit after the notice was flicked
         // away - or on a phone where the module had not answered yet when the notice was due.
         BasicComponent(
+            insideMargin = featurePreferenceMargin,
             title = title,
             titleColor = BasicComponentDefaults.titleColor(
                 color = if (missingModule) MiuixTheme.colorScheme.error
@@ -749,6 +746,7 @@ private fun LyricDisplayControls(
             stringResource(R.string.lyrics_align_right),
         )
         WindowDropdownPreference(
+            insideMargin = featurePreferenceMargin,
             title = stringResource(R.string.lyrics_align),
             items = alignModes,
             selectedIndex = module.lyricsAlign.coerceIn(0, alignModes.lastIndex),
@@ -759,6 +757,7 @@ private fun LyricDisplayControls(
             },
         )
         SwitchPreference(
+            insideMargin = featurePreferenceMargin,
             title = stringResource(R.string.lyrics_trans),
             checked = module.lyricsTrans,
             enabled = enabled,
@@ -768,6 +767,7 @@ private fun LyricDisplayControls(
             },
         )
         SwitchPreference(
+            insideMargin = featurePreferenceMargin,
             title = stringResource(R.string.lyrics_roma),
             checked = module.lyricsRoma,
             enabled = enabled,
@@ -778,6 +778,7 @@ private fun LyricDisplayControls(
         )
         if (module.lyricsRoma) {
             SwitchPreference(
+                insideMargin = featurePreferenceMargin,
                 title = stringResource(R.string.lyrics_on_device_transliteration),
                 summary = stringResource(R.string.lyrics_on_device_transliteration_summary),
                 checked = module.onDeviceTransliteration,
@@ -788,6 +789,7 @@ private fun LyricDisplayControls(
                 },
             )
             if (module.onDeviceTransliteration) ArrowPreference(
+                insideMargin = featurePreferenceMargin,
                 title = stringResource(R.string.lyrics_dictionaries),
                 summary = stringResource(R.string.lyrics_dictionaries_summary),
                 enabled = enabled,
@@ -814,6 +816,7 @@ private fun OnlineTranslationControls(
             stringResource(R.string.lyrics_online_mode_dual),
         )
         WindowDropdownPreference(
+            insideMargin = featurePreferenceMargin,
             title = stringResource(R.string.lyrics_online_mode),
             summary = stringResource(R.string.lyrics_online_mode_summary),
             items = modes,
@@ -838,6 +841,7 @@ private fun OnlineTranslationControls(
                 TranslationProvider.DEEPL_PRO,
             )
             WindowDropdownPreference(
+                insideMargin = featurePreferenceMargin,
                 title = stringResource(R.string.lyrics_online_backend),
                 summary = stringResource(R.string.lyrics_online_provider_summary),
                 items = listOf(
@@ -863,6 +867,7 @@ private fun OnlineTranslationControls(
                 },
             )
             ArrowPreference(
+                insideMargin = featurePreferenceMargin,
                 title = stringResource(R.string.lyrics_online_credentials),
                 summary = stringResource(
                     if ((module.lyricTranslateProvider == TranslationProvider.CUSTOM &&
@@ -984,6 +989,7 @@ private fun LyricSearchControls(
         Card(Modifier.padding(horizontal = 12.dp).padding(bottom = 12.dp)) {
             LyricSourceStatus(module, onBack)
             WindowDropdownPreference(
+                insideMargin = featurePreferenceMargin,
                 title = stringResource(R.string.lyrics_search_mode),
                 summary = stringResource(if (module.lyricsSearchMode == 1)
                     R.string.lyrics_search_extended_summary else R.string.lyrics_search_original_summary),
@@ -1010,6 +1016,7 @@ private fun LyricSearchControls(
             SmallTitle(text = stringResource(R.string.extras_lyric_providers))
             Card(Modifier.padding(horizontal = 12.dp).padding(bottom = 12.dp)) {
             SwitchPreference(
+                insideMargin = featurePreferenceMargin,
                 title = stringResource(R.string.extras_spicy_lyrics),
                 summary = stringResource(R.string.extras_spicy_lyrics_summary),
                 checked = module.spicyLyricsEnabled,
@@ -1021,6 +1028,7 @@ private fun LyricSearchControls(
             )
             if (module.spicyLyricsEnabled) {
                 ArrowPreference(
+                    insideMargin = featurePreferenceMargin,
                     title = stringResource(R.string.extras_spicy_lyrics_key),
                     summary = stringResource(
                         if (module.spicyLyricsApiKey.isBlank()) R.string.extras_spicy_lyrics_unset
@@ -1031,6 +1039,7 @@ private fun LyricSearchControls(
                 )
             }
             SwitchPreference(
+                insideMargin = featurePreferenceMargin,
                 title = stringResource(R.string.extras_provider_variants),
                 summary = stringResource(R.string.extras_provider_variants_summary),
                 checked = module.providerVariants,
@@ -1044,6 +1053,7 @@ private fun LyricSearchControls(
             @Composable
             fun providerPreference(titleId: Int, checked: Boolean, update: (Boolean) -> ModuleBridge.State) {
                 SwitchPreference(
+                    insideMargin = featurePreferenceMargin,
                     title = stringResource(titleId),
                     checked = checked,
                     enabled = enabled,
@@ -1092,6 +1102,7 @@ private fun LyricEffectsControls(
                 stringResource(R.string.lyrics_alive_eye_candy),
             )
             WindowDropdownPreference(
+                insideMargin = featurePreferenceMargin,
                 title = stringResource(R.string.lyrics_alive),
                 summary = stringResource(
                     when (module.lyricsAliveFx.coerceIn(0, 3)) {
@@ -1122,6 +1133,7 @@ private fun LyricEffectsControls(
                 },
             )
             SwitchPreference(
+                insideMargin = featurePreferenceMargin,
                 title = stringResource(R.string.lyrics_groups),
                 summary = stringResource(R.string.lyrics_groups_summary),
                 checked = module.lyricsGroups,
@@ -1132,6 +1144,7 @@ private fun LyricEffectsControls(
                 },
             )
             SwitchPreference(
+                insideMargin = featurePreferenceMargin,
                 title = stringResource(R.string.lyrics_hdr),
                 summary = stringResource(R.string.lyrics_hdr_summary),
                 checked = module.lyricsHdr,
@@ -1142,6 +1155,7 @@ private fun LyricEffectsControls(
                 },
             )
             SwitchPreference(
+                insideMargin = featurePreferenceMargin,
                 title = stringResource(R.string.lyrics_bpm_companion),
                 summary = stringResource(R.string.lyrics_bpm_companion_summary),
                 checked = module.bpmEnabled,
@@ -1154,6 +1168,7 @@ private fun LyricEffectsControls(
             )
             if (module.bpmEnabled) {
                 ArrowPreference(
+                    insideMargin = featurePreferenceMargin,
                     title = stringResource(R.string.lyrics_bpm_players),
                     summary = if (module.bpmPlayers.isEmpty()) {
                         stringResource(R.string.lyrics_bpm_players_all)
@@ -1201,6 +1216,7 @@ private fun BpmPlayerSelectionDialog(
         } else {
             module.bpmPlayerOptions.forEach { player ->
                 SwitchPreference(
+                    insideMargin = featurePreferenceMargin,
                     title = player.label,
                     summary = player.packageName,
                     checked = selected.contains(player.packageName),
@@ -1233,6 +1249,7 @@ private fun LyricBehaviorControls(
     SmallTitle(text = stringResource(R.string.lyrics_behavior_section))
     Card(Modifier.padding(horizontal = 12.dp).padding(bottom = 12.dp)) {
         SwitchPreference(
+            insideMargin = featurePreferenceMargin,
             title = stringResource(R.string.lyrics_offline_cache),
             summary = stringResource(R.string.lyrics_offline_cache_summary),
             checked = module.lyricOfflineCache,
@@ -1243,6 +1260,7 @@ private fun LyricBehaviorControls(
             },
         )
         SwitchPreference(
+            insideMargin = featurePreferenceMargin,
             title = stringResource(R.string.lyrics_keep_on),
             checked = module.lyricsKeepOn,
             enabled = enabled,
@@ -1252,6 +1270,7 @@ private fun LyricBehaviorControls(
             },
         )
         SwitchPreference(
+            insideMargin = featurePreferenceMargin,
             title = stringResource(R.string.lyrics_close_without_lyrics),
             summary = stringResource(R.string.lyrics_close_without_lyrics_summary),
             checked = module.closeLyriclessCover,
@@ -1327,6 +1346,7 @@ private fun CardGroup(
         // the fingerprint sensor, so a thumb aiming for it unlocks the phone instead. The title
         // is the one part of the card that is both big and far from the sensor.
         SwitchPreference(
+            insideMargin = featurePreferenceMargin,
             title = stringResource(R.string.card_title_tap),
             checked = module.mcTitleTap,
             enabled = enabled,
@@ -1338,6 +1358,7 @@ private fun CardGroup(
         // The progress bar's glow, the island's look on the card's own bar (#49). Not tied to
         // cover mode either: it is the OEM's card in every mode.
         SwitchPreference(
+            insideMargin = featurePreferenceMargin,
             title = stringResource(R.string.media_bar_glow),
             checked = module.mediaBarGlow,
             enabled = enabled,
@@ -1369,6 +1390,7 @@ internal fun ValueSlider(
 ) {
     Column(Modifier.fillMaxWidth()) {
         BasicComponent(
+            insideMargin = featurePreferenceMargin,
             title = title,
             summary = summary,
             enabled = enabled,
@@ -1483,3 +1505,5 @@ private object LyricsNotice {
             .edit { putBoolean(KEY_SEEN, true) }
     }
 }
+
+private val featurePreferenceMargin = PaddingValues(horizontal = 16.dp, vertical = 6.dp)
