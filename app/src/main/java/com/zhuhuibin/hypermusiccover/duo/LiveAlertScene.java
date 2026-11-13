@@ -77,7 +77,7 @@ class LiveAlertScene implements ImmersiveScene {
     private final String mService;
     private final String mCardId;
 
-    private boolean mArmed;
+    private final ImmersiveSceneAvailability mAvailability = new ImmersiveSceneAvailability();
     private Context mCtx;
     private SurfaceView mSurface;
     private Messenger mServer;
@@ -112,18 +112,27 @@ class LiveAlertScene implements ImmersiveScene {
 
     @Override
     public boolean serves(String pkg, boolean focus) {
-        return focus && mPkg.equals(pkg);
+        return enabled() && focus && mPkg.equals(pkg);
+    }
+
+    @Override
+    public boolean enabled() {
+        return mAvailability.enabled();
     }
 
     @Override
     public boolean ready() {
-        return mArmed;
+        return mAvailability.ready();
+    }
+
+    void setEnabled(boolean enabled) {
+        if (!mAvailability.setEnabled(enabled)) return;
+        ImmersiveHost.readyChanged(this);
     }
 
     /** The app says its page can be drawn, or can no longer be. */
     void setArmed(boolean armed) {
-        if (mArmed == armed) return;
-        mArmed = armed;
+        if (!mAvailability.setArmed(armed)) return;
         ImmersiveHost.readyChanged(this);
     }
 
@@ -388,7 +397,7 @@ class LiveAlertScene implements ImmersiveScene {
 
     @Override
     public String describe() {
-        return "armed=" + mArmed + " connected=" + (mServer != null) + " bindSent=" + mBindSent
+        return "enabled=" + enabled() + " armed=" + mAvailability.armed() + " connected=" + (mServer != null) + " bindSent=" + mBindSent
                 + " replies=" + mReplies + " shown=" + mShown
                 + (mSurface == null ? "" : " size=" + mSurface.getWidth() + "x" + mSurface.getHeight());
     }

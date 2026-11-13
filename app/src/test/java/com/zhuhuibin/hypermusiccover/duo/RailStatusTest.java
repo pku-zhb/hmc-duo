@@ -35,6 +35,76 @@ public class RailStatusTest {
         assertNull(RailStatusLayout.place(1000, 126, 0));
     }
 
+    @Test public void zeroUserOffsetRetainsTheExistingReferenceAtEveryDensity() {
+        for (float density : new float[]{1f, 1.5f, 2.75f, 3f}) {
+            FoldMusicLayout.Box original = RailStatusLayout.place(386f * density, 46f * density, density);
+            FoldMusicLayout.Box explicit = RailStatusLayout.place(386f * density, 46f * density, density, 0f);
+            assertEquals(original.left, explicit.left, 0f);
+            assertEquals(original.top, explicit.top, 0f);
+            assertEquals(original.right, explicit.right, 0f);
+            assertEquals(original.bottom, explicit.bottom, 0f);
+        }
+    }
+
+    @Test public void offsetMovesOnlyStatusYInCanonicalDpWithPhysicalPixelRounding() {
+        for (float density : new float[]{1f, 1.5f, 2.75f, 3f}) {
+            FoldMusicLayout.Box baseline = RailStatusLayout.place(386f * density, 46f * density, density);
+            for (float offset : new float[]{-80f, -24f, -0.5f, 0f, 19f, 24f, 80f}) {
+                FoldMusicLayout.Box moved = RailStatusLayout.place(386f * density, 46f * density, density, offset);
+                assertEquals(Math.round(46f * density + (RailStatusLayout.TOP_DP + offset) * density), moved.top, 0f);
+                assertEquals(baseline.left, moved.left, 0f);
+                assertEquals(baseline.right, moved.right, 0f);
+                assertEquals(baseline.height(), moved.height(), .0001f);
+            }
+        }
+    }
+
+    @Test public void repeatedFramesAndDensityRoundTripsCannotAccumulateOffset() {
+        for (float density : new float[]{2.75f, 1.5f, 3f, 2.75f}) {
+            FoldMusicLayout.Box baseline = RailStatusLayout.place(1061f, 126f, density);
+            float expected = Math.round(126f + (RailStatusLayout.TOP_DP + 17f) * density);
+            for (int frame = 0; frame < 100; frame++) {
+                assertEquals(expected, RailStatusLayout.place(1061f, 126f, density, 17f).top, 0f);
+            }
+            // Closing, reopening and reset all start from the retained canonical baseline.
+            assertEquals(baseline.top, RailStatusLayout.place(1061f, 126f, density, 0f).top, 0f);
+        }
+    }
+
+    @Test public void lockscreenAndAodUseTheSameOffsetWhileXPinPreservesNativeVerticalTransforms() {
+        FoldMusicLayout.Box baseline = RailStatusLayout.place(1061f, 126f, 2.75f);
+        FoldMusicLayout.Box moved = RailStatusLayout.place(1061f, 126f, 2.75f, 20f);
+        float canonicalX = baseline.left + RailStatusLayout.CENTER_X;
+        for (float scale : new float[]{.85f, .95f, 1f}) {
+            float a = scale, b = .08f, c = -.03f, d = scale;
+            float[] nativeY = new float[2];
+            int index = 0;
+            for (FoldMusicLayout.Box bounds : new FoldMusicLayout.Box[]{baseline, moved}) {
+                float canonicalY = bounds.top + bounds.height() / 2f;
+                float x = 25f + a * canonicalX + b * canonicalY;
+                float y = 41f + c * canonicalX + d * canonicalY;
+                RailStatusLayout.Offset correction = RailStatusLayout.pinX(canonicalX, x, a, b, c, d);
+                assertNotNull(correction);
+                assertEquals(canonicalX, x + a * correction.x + b * correction.y, .001f);
+                assertEquals(y, y + c * correction.x + d * correction.y, .001f);
+                nativeY[index++] = y;
+            }
+            assertEquals((moved.top - baseline.top) * d, nativeY[1] - nativeY[0], .001f);
+        }
+    }
+
+    @Test public void invalidOffsetsCannotProduceNonFiniteGeometryOrEscapeTheLegalRange() {
+        assertEquals(0f, RailStatusLayout.normalizeOffsetY(Float.NaN), 0f);
+        assertEquals(0f, RailStatusLayout.normalizeOffsetY(Float.POSITIVE_INFINITY), 0f);
+        assertEquals(0f, RailStatusLayout.normalizeOffsetY(Float.NEGATIVE_INFINITY), 0f);
+        assertEquals(-80f, RailStatusLayout.normalizeOffsetY(-100f), 0f);
+        assertEquals(80f, RailStatusLayout.normalizeOffsetY(100f), 0f);
+        assertEquals(.5f, RailStatusLayout.normalizeOffsetY(.5f), 0f);
+        FoldMusicLayout.Box original = RailStatusLayout.place(1061f, 126f, 2.75f);
+        assertEquals(original.top, RailStatusLayout.place(1061f, 126f, 2.75f, Float.NaN).top, 0f);
+        assertEquals(original.top, RailStatusLayout.place(1061f, 126f, 2.75f, 0f).top, 0f);
+    }
+
     @Test public void statusRingSharesThePinnedCapsuleCenterAcrossAodAndWakeScales() {
         FoldMusicLayout.Box box = RailStatusLayout.place(1061, 126, 2.75f);
         float inkCenter = box.left + RailStatusLayout.CENTER_X;

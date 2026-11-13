@@ -46,6 +46,8 @@ object ModuleBridge {
         val coverStyle: Int = 1,
         val foldMusicLayout: Boolean = false,
         val rightRail: Boolean = false,
+        /** Three-in-one status only; shared canonical dp offset for lock screen and AOD. */
+        val railStatusOffsetYDp: Float = 0f,
         val reflowLockContent: Boolean = false,
         val followNativeMaterial: Boolean = false,
         val hideLockStatusBar: Boolean = true,
@@ -136,6 +138,8 @@ object ModuleBridge {
         val forceColon: Boolean = false,
         /** The depth effect's limits lifted (Extras). On by default. See HyperTweaks.depthOpen. */
         val depthOpen: Boolean = true,
+        /** Only the full-screen Amap lock-screen map; navigation notifications stay native. */
+        val amapNavigationMap: Boolean = true,
         /** Light the media card's progress bar the way the island's is lit (#49). On by default. */
         val mediaBarGlow: Boolean = true,
         /**
@@ -459,6 +463,14 @@ object ModuleBridge {
     fun setRailSetting(context: Context, key: String, on: Boolean) =
         send(context, "railsetting") { putExtra("key", key); putExtra("on", on) }
 
+    internal val railStatusOffsetYMinDp: Float get() = RailStatusLayout.OFFSET_Y_MIN_DP
+    internal val railStatusOffsetYMaxDp: Float get() = RailStatusLayout.OFFSET_Y_MAX_DP
+
+    fun setRailStatusOffsetY(context: Context, dp: Float) =
+        send(context, "railstatusy") { putExtra("v", RailStatusLayout.normalizeOffsetY(dp)) }
+
+    fun resetRailStatusOffsetY(context: Context) = setRailStatusOffsetY(context, 0f)
+
     fun setArtworkClockDestination(context: Context, value: Int) =
         send(context, "railsetting") {
             putExtra("key", "artworkClockDestination")
@@ -532,6 +544,11 @@ object ModuleBridge {
 
     fun setDepthOpen(context: Context, on: Boolean) =
         send(context, "depthopen") { putExtra("on", on) }
+
+    fun setAmapNavigationMap(context: Context, on: Boolean) =
+        send(context, "amapmap") { putExtra("on", on) }
+
+    fun resetAmapNavigationMap(context: Context) = setAmapNavigationMap(context, true)
 
     fun setMediaCardStyle(context: Context, key: String, value: Int) =
         send(context, "mediastyle") { putExtra("key", key); putExtra("v", value) }
@@ -905,6 +922,7 @@ object ModuleBridge {
             coverStyle = b.getInt("coverstyle", 1),
             foldMusicLayout = b.getBoolean("foldmusiclayout", false),
             rightRail = b.getBoolean("rightRail", false),
+            railStatusOffsetYDp = RailStatusLayout.normalizeOffsetY(b.getFloat("railstatusy", 0f)),
             reflowLockContent = b.getBoolean("reflowLockContent", false),
             followNativeMaterial = b.getBoolean("followNativeMaterial", false),
             hideLockStatusBar = b.getBoolean("hideLockStatusBar", true),
@@ -940,6 +958,7 @@ object ModuleBridge {
             aodSmall = b.getBoolean("aodsmall", true),
             forceColon = b.getBoolean("colon", false),
             depthOpen = b.getBoolean("depthopen", true),
+            amapNavigationMap = b.getBoolean("amapmap", true),
             mediaBarGlow = b.getBoolean("seekglow", true),
             lyrics = b.getBoolean("lyrics", true),
             lyricsKeepOn = b.getBoolean("lyrickeep", false),

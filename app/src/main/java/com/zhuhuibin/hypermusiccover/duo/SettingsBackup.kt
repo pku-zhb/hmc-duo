@@ -31,6 +31,8 @@ object SettingsBackup {
     private const val KEY_GLOW_DRIFT = "glowDrift"
     private const val KEY_MESH_BACKDROP = "meshBackdrop"
     private const val KEY_DEPTH_OPEN = "depthLimitRemoved"
+    private const val KEY_AMAP_MAP = "amapNavigationMap"
+    private const val KEY_RAIL_STATUS_Y = "railStatusOffsetYDp"
     private const val KEY_FORCE_COLON = "forceClockColon"
     private const val KEY_MEDIA_BAR_GLOW = "mediaBarGlow"
     private const val KEY_LYRICS_KEEP_ON = "lyricsKeepOn"
@@ -83,6 +85,24 @@ object SettingsBackup {
         else -> null
     }
 
+    internal fun readAmapNavigationMap(json: JSONObject): Boolean? = json.opt(KEY_AMAP_MAP) as? Boolean
+
+    internal fun writeAmapNavigationMap(json: JSONObject, module: ModuleBridge.State) {
+        json.put(KEY_AMAP_MAP, module.amapNavigationMap)
+    }
+
+    /** A partial/older backup cannot reset the current status position; reject malformed inputs. */
+    internal fun readRailStatusOffsetY(json: JSONObject): Float? {
+        val number = json.opt(KEY_RAIL_STATUS_Y) as? Number ?: return null
+        val value = number.toDouble()
+        return value.takeIf { it.isFinite() && it >= RailStatusLayout.OFFSET_Y_MIN_DP &&
+            it <= RailStatusLayout.OFFSET_Y_MAX_DP }?.toFloat()
+    }
+
+    internal fun writeRailStatusOffsetY(json: JSONObject, module: ModuleBridge.State) {
+        json.put(KEY_RAIL_STATUS_Y, RailStatusLayout.normalizeOffsetY(module.railStatusOffsetYDp).toDouble())
+    }
+
     /** Older Fold backups stored inactive backdrop switches; importing them must stay native. */
     internal fun readBackdropSettings(json: JSONObject): Map<String, Boolean> {
         val keys = listOf(KEY_HIDE_PLAYER_BACKGROUND, KEY_GLOW_DRIFT, KEY_MESH_BACKDROP)
@@ -125,6 +145,7 @@ object SettingsBackup {
             json.put(KEY_HIDE_PLAYER_BACKGROUND, module.hidePlayerBackground)
             json.put("foldMusicLayout", module.foldMusicLayout)
             json.put("rightRail", module.rightRail)
+            writeRailStatusOffsetY(json, module)
             json.put("reflowLockContent", module.reflowLockContent)
             json.put("followNativeMaterial", module.followNativeMaterial)
             json.put("hideChargingHint", module.hideChargingHint)
@@ -141,6 +162,7 @@ object SettingsBackup {
             json.put(KEY_MESH_BACKDROP, module.meshBackdrop)
             json.put(KEY_FORCE_COLON, module.forceColon)
             json.put(KEY_DEPTH_OPEN, module.depthOpen)
+            writeAmapNavigationMap(json, module)
             json.put(KEY_MEDIA_BAR_GLOW, module.mediaBarGlow)
             json.put(KEY_LYRICS_KEEP_ON, module.lyricsKeepOn)
             json.put(KEY_LYRICS_HDR, module.lyricsHdr)
@@ -188,6 +210,7 @@ object SettingsBackup {
                 "forceNotificationFloor", "hideLockStatusBar", "artworkClockBeforeDate")) {
                 if (obj.has(key)) ModuleBridge.setRailSetting(context, key, obj.getBoolean(key))
             }
+            readRailStatusOffsetY(obj)?.let { ModuleBridge.setRailStatusOffsetY(context, it) }
             readArtworkClockDestination(obj)?.let { ModuleBridge.setArtworkClockDestination(context, it) }
             if (obj.has(KEY_COVER_STYLE)) {
                 ModuleBridge.setCoverStyle(context, "mode",
@@ -208,6 +231,7 @@ object SettingsBackup {
             if (obj.has(KEY_DEPTH_OPEN)) {
                 ModuleBridge.setDepthOpen(context, obj.getBoolean(KEY_DEPTH_OPEN))
             }
+            readAmapNavigationMap(obj)?.let { ModuleBridge.setAmapNavigationMap(context, it) }
             if (obj.has(KEY_MEDIA_BAR_GLOW)) {
                 ModuleBridge.setMediaBarGlow(context, obj.getBoolean(KEY_MEDIA_BAR_GLOW))
             }

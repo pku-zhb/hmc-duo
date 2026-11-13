@@ -70,6 +70,7 @@ final class AmapNavScene extends LiveAlertScene {
 
     @Override
     public void onRowTap() {
+        if (!enabled()) return;
         mOverview = !mOverview;
         flushOverview();
     }
@@ -97,9 +98,21 @@ final class AmapNavScene extends LiveAlertScene {
         super.setArmed(armed);
     }
 
+    /** Disable only this map page, releasing its remote surface and lock-screen hold now. */
+    void setMapEnabled(boolean enabled) {
+        if (!enabled) {
+            mMain.removeCallbacks(mFlush);
+            mOverview = false;
+            mSentOverview = false;
+            mSentAt = 0L;
+        }
+        super.setEnabled(enabled);
+    }
+
     /** Tells 高德 what the taps asked for, once its camera has had the time to finish the last. */
     private void flushOverview() {
         mMain.removeCallbacks(mFlush);
+        if (!enabled()) return;
         if (mOverview == mSentOverview) return;
         long wait = mSentAt + OVERVIEW_SETTLE_MS - SystemClock.uptimeMillis();
         if (wait > 0) {
