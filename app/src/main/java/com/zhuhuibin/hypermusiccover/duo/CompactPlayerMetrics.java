@@ -49,6 +49,30 @@ final class CompactPlayerMetrics {
         return new Plan(nativeHeight - reduction, artwork - headerSaving, gaps);
     }
 
+    /** Budget only the two visible AOD rows; the hidden seek row owns no residual space. */
+    static int aodHeight(int nativeHeight, Plan normal, int artwork, int top, int action,
+                         int actionHeight, int padding, float density) {
+        if (normal == null || density <= 0f || nativeHeight <= 0 || actionHeight <= 0)
+            return nativeHeight;
+        int nativeBottom = nativeHeight - padding - top - artwork - action - actionHeight;
+        if (nativeBottom < 0 || normal.artwork <= 0 || normal.top < 0 || normal.action < 0)
+            return nativeHeight;
+        // Derive the existing AOD breathing room instead of subtracting a normal seek row
+        // from the OEM's already seek-free 138dp endpoint a second time.
+        float edgeRatio = top > 0 ? Math.min(1f, normal.top / (float) top) : 1f;
+        int bottomFloor = Math.min(nativeBottom, Math.round(4f * density));
+        int bottom = Math.max(bottomFloor, Math.round(nativeBottom * edgeRatio));
+        int height = padding + normal.top + normal.artwork + normal.action + actionHeight + bottom;
+        return Math.min(nativeHeight, height);
+    }
+
+    /** Move seek pixels inside their unchanged touch row without scaling the track or thumb. */
+    static int seekContentShift(int percent, int paddingTop, float density) {
+        if (percent >= 100 || density <= 0f || paddingTop <= 0) return 0;
+        float amount = (100 - Math.max(75, percent)) / 25f;
+        return Math.min(paddingTop, Math.round(6f * density * amount));
+    }
+
     private static void take(int[] gaps, int[] capacity, int first, int second, int total) {
         int room = capacity[first] + capacity[second];
         int a = room == 0 ? 0 : Math.min(capacity[first], Math.round((float) total * capacity[first] / room));

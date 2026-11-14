@@ -9,7 +9,7 @@ final class CompactPlayerRuntime {
     private static View card;
     private static final IdentityHashMap<View, Lease> owned = new IdentityHashMap<>();
     private static View background, album, image, title, artist, seamless, action, seek;
-    private static int nativeNormal, nativeAod;
+    private static int nativeNormal, nativeAod, compactAod;
     private static CompactPlayerMetrics.Plan currentPlan;
     private static boolean installed, animating, fullAod;
     private static int animatedHeight;
@@ -28,6 +28,18 @@ final class CompactPlayerRuntime {
             if (view.getAlpha() != written) view.setAlpha(written);
         }
         void restore(View view) { if (view.getAlpha() == written) view.setAlpha(base); }
+    }
+    private static final IdentityHashMap<View, Integer> seekDrawShifts = new IdentityHashMap<>();
+    private static final IdentityHashMap<View, Offset> seekLabelOffsets = new IdentityHashMap<>();
+    private static final class Offset {
+        float base, written;
+        Offset(View view) { base = written = view.getTranslationY(); }
+        void apply(View view, int shift) {
+            if (view.getTranslationY() != written) base = view.getTranslationY();
+            written = base - shift;
+            if (view.getTranslationY() != written) view.setTranslationY(written);
+        }
+        void restore(View view) { if (view.getTranslationY() == written) view.setTranslationY(base); }
     }
     private static int appliedPercent = 100;
 
@@ -148,8 +160,10 @@ final class CompactPlayerRuntime {
                     art.top, controls.top, track.top, track.bottom, controlHeight, art.height, density);
             currentPlan = plan;
         }
-        applyHeaderMinimum(plan.height);
-        int shell = animating && animatedHeight > 0 ? animatedHeight : fullAod ? nativeAod : plan.height;
+        compactAod = CompactPlayerMetrics.aodHeight(nativeAod, plan, art.height, art.top,
+                controls.top, controls.height, card.getPaddingTop() + card.getPaddingBottom(), density);
+        applyHeaderMinimum(fullAod ? compactAod : plan.height);
+        int shell = animating && animatedHeight > 0 ? animatedHeight : fullAod ? compactAod : plan.height;
         bg.apply(background, shell, bg.top, bg.bottom, bg.minimum);
         art.apply(album, plan.artwork, plan.top, art.bottom, Math.min(art.minimum, plan.artwork));
         art.width(album, art.width > 0 ? Math.min(art.width, plan.artwork) : art.width);
@@ -161,6 +175,7 @@ final class CompactPlayerRuntime {
         }
         controls.apply(action, controls.height, plan.action, controls.bottom, controls.minimum);
         track.apply(seek, track.height, plan.seekTop, plan.seekBottom, track.minimum);
+        compactSeekPixels(percent, density);
         alignHeader(title, plan.top + Math.max(0, (plan.artwork - headerFloor) / 2));
         if (ready(seamless)) alignHeader(seamless, plan.top + Math.max(0,
                 (plan.artwork - Math.max(0, seamless.getLayoutParams().height > 0 ? seamless.getLayoutParams().height : seamless.getMeasuredHeight())) / 2));
@@ -225,6 +240,26 @@ final class CompactPlayerRuntime {
         heightHeader = null;
     }
 
+    private static void compactSeekPixels(int percent, float density) {
+        if (!ready(seek)) return;
+        int shift = CompactPlayerMetrics.seekContentShift(percent, seek.getPaddingTop(), density);
+        Integer previous = seekDrawShifts.put(seek, shift);
+        if (previous == null || previous != shift) seek.invalidate();
+        for (String name : new String[]{"media_elapsed_time", "media_total_time"}) {
+            View label = named(card, name);
+            if (label == null) continue;
+            Offset offset = seekLabelOffsets.get(label);
+            if (offset == null) { offset = new Offset(label); seekLabelOffsets.put(label, offset); }
+            offset.apply(label, shift);
+        }
+    }
+
+    private static void restoreSeekPixels() {
+        for (View view : seekDrawShifts.keySet()) view.invalidate();
+        for (java.util.Map.Entry<View, Offset> e : seekLabelOffsets.entrySet()) e.getValue().restore(e.getKey());
+        seekDrawShifts.clear(); seekLabelOffsets.clear();
+    }
+
     private static void applySeekAlpha(float factor) {
         if (card == null) return;
         for (String name : new String[]{"media_progress_bar", "media_elapsed_time", "media_total_time"}) {
@@ -249,6 +284,7 @@ final class CompactPlayerRuntime {
         animateHeader = null;
         restoreHeaderMinimum();
         restoreSeekAlpha();
+        restoreSeekPixels();
         currentPlan = null;
         animating = false; animatedHeight = 0;
         for (java.util.Map.Entry<View, Lease> entry : owned.entrySet()) entry.getValue().restore(entry.getKey());
@@ -285,9 +321,9 @@ final class CompactPlayerRuntime {
                 // the compact outline starts clipping it; waking reveals it as room returns.
                 applySeekAlpha(0f);
                 try { animatedHeight = (Integer) Xp.callMethod(view, "getActualHeight"); }
-                catch (Throwable ignored) { animatedHeight = fullAod ? currentPlan.height : nativeAod; }
+                catch (Throwable ignored) { animatedHeight = fullAod ? currentPlan.height : compactAod; }
                 int target = CompactPlayerMetrics.transitionHeight(requested, nativeNormal, nativeAod,
-                        currentPlan.height, nativeAod);
+                        currentPlan.height, compactAod);
                 // Preserve the original request if our scope exits before native completion.
                 animateHeader = target != requested ? view : null;
                 nativeTarget = requested; writtenTarget = target;
@@ -304,7 +340,7 @@ final class CompactPlayerRuntime {
                         bg.apply(background, animatedHeight, bg.top, bg.bottom, bg.minimum);
                     }
                     float fraction = Math.max(0f, Math.min(1f,
-                            (animatedHeight - nativeAod) / (float) Math.max(1, currentPlan.height - nativeAod)));
+                            (animatedHeight - compactAod) / (float) Math.max(1, currentPlan.height - compactAod)));
                     applySeekAlpha(fullAod ? 0f : Math.max(0f, Math.min(1f, 3f * fraction - 2f)));
                 }
                 return result;
@@ -333,6 +369,20 @@ final class CompactPlayerRuntime {
                     if (card != null) update(card.getRootView(), card);
                 }
                 return result;
+            });
+            Class<?> seekType = Xp.findClass("miuix.miuixbasewidget.widget.HyperProgressSeekBar", loader);
+            Xp.hookAll(seekType, "onDraw", chain -> {
+                View view = (View) chain.getThisObject();
+                Integer shift = seekDrawShifts.get(view);
+                if (shift == null || shift <= 0 || !eligible(view)) return chain.proceed();
+                // The high-end native shader ignores vertical padding. Move only its draw
+                // coordinates, retaining the original seek size, thumb and touch rectangle.
+                android.graphics.Canvas canvas = (android.graphics.Canvas) chain.getArg(0);
+                int save = canvas.save();
+                try {
+                    canvas.translate(0f, -shift);
+                    return chain.proceed();
+                } finally { canvas.restoreToCount(save); }
             });
             installed = true;
         } catch (Throwable error) { Xp.w(Main.TAG + "compact player transition unavailable: " + error); }
