@@ -16,7 +16,7 @@ import android.widget.ImageView
  * toward the diagonals: thinner there, and the cut is the frame's outline clip, jagged (#7, #21).
  * So the outline is [shape], whoever sets it.
  */
-internal class MaterialElement(context: Context) : ImageView(context) {
+internal class MaterialElement(context: Context) : ImageView(context), NativeMaterialTarget {
     /** The only outline this element takes; null lets any be set, as a plain ImageView. */
     var shape: ViewOutlineProvider? = null
         set(value) {

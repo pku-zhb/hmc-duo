@@ -63,9 +63,15 @@ public class NativeMaterialCommitScopeTest {
     }
 
     @Test public void aNativeViewCannotBeRegisteredAsAnOwnedDestination() {
-        assertTrue(NativeMaterialSource.ownedClass("com.zhuhuibin.hypermusiccover.duo.MaterialElement"));
-        assertTrue(NativeMaterialSource.ownedClass("com.zhuhuibin.hypermusiccover.duo.ShortcutDisc"));
-        assertFalse(NativeMaterialSource.ownedClass("android.widget.ImageView"));
-        assertFalse(NativeMaterialSource.ownedClass("com.android.systemui.MediaHeader"));
+        assertFalse(NativeMaterialSource.ownedTarget(new Object()));
+        assertFalse(NativeMaterialSource.ownedTarget("com.zhuhuibin.hypermusiccover.duo.MaterialElement"));
+        assertFalse(NativeMaterialSource.ownedTarget(null));
+    }
+
+    private static final class a implements NativeMaterialTarget {}
+
+    @Test public void aRepackagedViewKeepsItsExplicitDestinationIdentity() {
+        assertFalse(a.class.getSimpleName().startsWith("Material"));
+        assertTrue(NativeMaterialSource.ownedTarget(new a()));
     }
 }
