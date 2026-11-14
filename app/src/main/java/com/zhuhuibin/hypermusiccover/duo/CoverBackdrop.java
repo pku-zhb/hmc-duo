@@ -31,7 +31,9 @@ final class CoverBackdrop {
     }
 
     static boolean hidden() {
-        return Main.sHidePlayerBackground || Main.coverOnTapResting();
+        return Main.sHidePlayerBackground || Main.coverOnTapResting()
+                || NotificationArtworkPolicy.nativeBackdrop(LockLyrics.notificationCompact(),
+                    LockLyrics.requestedLyricsPage(), LockLyrics.playerChosen());
     }
 
     static boolean nativeForRailCard() {

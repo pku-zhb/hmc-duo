@@ -4,6 +4,20 @@ import org.junit.Test;
 import static org.junit.Assert.*;
 
 public class NotificationArtworkPolicyTest {
+    @Test public void openingNotificationsReleasesBackdropAndReopeningArtworkRestoresIt() {
+        assertFalse(NotificationArtworkPolicy.nativeBackdrop(false, false, false));
+        assertTrue(NotificationArtworkPolicy.nativeBackdrop(true, false, false));
+        // Explicit cover selection clears the temporary notification compaction.
+        assertFalse(NotificationArtworkPolicy.nativeBackdrop(false, false, false));
+    }
+
+    @Test public void independentLyricsAndPlayerPagesKeepTheirChosenBackground() {
+        assertFalse(NotificationArtworkPolicy.nativeBackdrop(true, true, false));
+        assertFalse(NotificationArtworkPolicy.nativeBackdrop(true, false, true));
+        assertFalse(NotificationArtworkPolicy.nativeBackdrop(true, true, true));
+        assertFalse(NotificationArtworkPolicy.nativeBackdrop(false, true, false));
+    }
+
     @Test public void pilePullDownAndOvershootingReboundKeepTheBigArtwork() {
         NotificationArtworkPolicy navigation = new NotificationArtworkPolicy();
         ArtworkGestureDirection gesture = new ArtworkGestureDirection();

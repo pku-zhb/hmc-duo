@@ -139,3 +139,27 @@ including a full-AOD scene with no dependency on a custom foreground-clock pose.
 Visual background persistence, GPU sampling and dimming still require owner
 acceptance. First-frame flashes, transient old clock positions and lyric drift
 are explicitly deferred by the owner; this change does not claim to resolve them.
+
+## Notification-driven cover closure
+
+Opening a multi-notification list can temporarily compact the artwork while
+retaining the user's logical artwork page. Previously `CoverBackdrop.hidden`
+considered only the saved native-background choice and cover-on-tap player page,
+so that temporary closure left the blurred artwork behind. A read-only owner
+reproduction confirmed notification compaction with the artwork page selected,
+while the background still reported visible ownership.
+
+A notification-only artwork closure now yields background ownership to native
+wallpaper. It does not rewrite saved background options or the chosen page.
+Explicit cover/lyric selection already clears temporary notification compaction;
+when artwork returns its chosen background returns as well. Requested lyric
+pages and independently chosen player pages retain their existing background
+behavior. The common hidden decision reaches the local mesh, static AOD source
+and ordered wallpaper-process messages. A remaining full-screen foreground band
+is not itself permission for local media sampling after the background is hidden;
+the sampler now tests that ownership decision separately from submitted pixels.
+
+Two new policy regressions cover notification closure/reopening and independent
+lyrics/player choices; the focused notification suite passes 19 tests. They do
+not establish native renderer appearance. Clock/lyric drift and all transient
+sampling flashes remain explicitly deferred.
