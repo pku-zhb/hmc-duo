@@ -55,8 +55,7 @@ final class ClockCollapse {
     private static long sMeasuredRevision = -1L;
     private static boolean sMeasuredAnchored;
     private static float sCommittedTop = Float.NaN, sCommittedUnit, sCommittedDate;
-    private static java.lang.ref.WeakReference<View> sCommittedWindow = new java.lang.ref.WeakReference<>(null);
-    private static long sCommittedRevision = -1L;
+    private static final ClockPoseSource COMMITTED_SOURCE = new ClockPoseSource();
     private static int sCommittedPage = -1, sCommittedDestination = -1;
     private static boolean sCommittedNavigation;
     /** This EXIT is the fall into the AOD, and lands in AOD rather than OFF. */
@@ -146,10 +145,16 @@ final class ClockCollapse {
         SCENE.update(page.epoch, page.window, page.geometryRevision, page.page, requested);
     }
 
+    private static boolean poseSourceCurrent(ClockPoseSource source) {
+        View date = Main.visibleDate();
+        if (date == null) date = retainedDate();
+        return source.matches(SCENE.window, SCENE.revision, firstTarget(), date);
+    }
+
     private static boolean committedPoseCurrent() {
         CoverBackdrop.Snapshot page = sceneSnapshot();
-        return SCENE.window != null && Float.isFinite(sCommittedTop) && sCommittedUnit > 0f
-                && SCENE.window == sCommittedWindow.get() && SCENE.revision == sCommittedRevision
+        return Float.isFinite(sCommittedTop) && sCommittedUnit > 0f
+                && poseSourceCurrent(COMMITTED_SOURCE)
                 && SCENE.page == sCommittedPage && page.navigation == sCommittedNavigation
                 && sceneSnapshot().clockDestination == sCommittedDestination;
     }
@@ -169,8 +174,7 @@ final class ClockCollapse {
     private static boolean sRowAvailable;
     private static CompactClockRowRuntime.Plan sRowPlan;
 
-    private static float sStatusFrom, sStatusProgress;
-    private static boolean sStatusTarget;
+    private static final ClockReplacementState STATUS = new ClockReplacementState();
     private static ArtworkClockMotion.Pose sNativePose, sFlightFrom, sFlightCover, sManualRest;
     private static java.lang.ref.WeakReference<View> sNativeClock = new java.lang.ref.WeakReference<>(null);
     private static java.lang.ref.WeakReference<View> sNativeDate = new java.lang.ref.WeakReference<>(null);
@@ -181,7 +185,9 @@ final class ClockCollapse {
     private static boolean sManualMotion;
 
     private static boolean statusClockAvailable() {
-        return CompactClockRowRuntime.supportsDisplay() && RailStatusRuntime.timeAvailable()
+        View window = sceneSnapshot().window;
+        return window != null && window == RailStatusRuntime.timeWindow()
+                && CompactClockRowRuntime.supportsDisplay() && RailStatusRuntime.timeAvailable()
                 && CompactClockRowRuntime.statusSupported()
                 && Main.keyguardLocked() && !Main.bouncerShown() && !Main.controlCenterShown()
                 && !MiniPlayerScene.INSTANCE.getKeyguardGoingAway()
@@ -190,7 +196,8 @@ final class ClockCollapse {
     }
 
     static boolean statusClockRequested() {
-        return statusClockIntended() && statusClockAvailable();
+        // A destination becoming visible is readiness, never a change of page intent.
+        return statusClockIntended();
     }
 
     private static boolean statusClockIntended() {
@@ -199,13 +206,32 @@ final class ClockCollapse {
                 && page.pageClockRequested && (!ImmersiveHost.holdsClock() || page.navigation);
     }
 
-    static boolean statusClockMoving() { return sStatusProgress > 0f || sStatusTarget; }
+    static boolean statusClockMoving() { return STATUS.moving(); }
 
-    /** The overlay consumes one scene-owned fade, including the reverse after cover mode ends. */
+    private static boolean statusSurfaceAllowed() {
+        CoverBackdrop.Snapshot page = sceneSnapshot();
+        return sPhase != Phase.OFF && (sPhase != Phase.AOD || SCENE.requested)
+                && (page.surface == CoverBackdrop.SURFACE_LIT
+                || page.surface == CoverBackdrop.SURFACE_FULL_AOD);
+    }
+
+    private static float statusPresentationAlpha() {
+        CoverBackdrop.Snapshot page = sceneSnapshot();
+        return STATUS.candidate(statusSurfaceAllowed(), statusClockAvailable(), page.window,
+                RailStatusRuntime.timeWindow());
+    }
+
+    /** The overlay reads the alpha committed together with the native clock, never raw readiness. */
     static float statusTimeAlpha() {
-        if (!(sStatusProgress > 0f) || sPhase == Phase.OFF || !statusClockAvailable()
-                || (!Main.screenOnCached() || sPhase == Phase.AOD) && !Main.fullAodOn()) return 0f;
-        return ArtworkClockDestination.fade(sStatusProgress);
+        CoverBackdrop.Snapshot page = sceneSnapshot();
+        return statusSurfaceAllowed() && statusClockAvailable()
+                ? STATUS.presented(page.window, page.geometryRevision) : 0f;
+    }
+
+    /** Resource arrival schedules the existing commit point, including held full-screen AOD. */
+    static void statusDestinationChanged() {
+        sGlyphGeometryDirty = true;
+        invalidate();
     }
 
     private static void captureNativePose(float natural) {
@@ -612,8 +638,7 @@ final class ClockCollapse {
             sRowTarget = CompactClockRowRuntime.requested()
                     && compactRowPlan(Main.visibleDate()) != null;
             sRowProgress = sRowFrom = sRowTarget ? 1f : 0f;
-            sStatusTarget = statusClockRequested();
-            sStatusProgress = sStatusFrom = sStatusTarget ? 1f : 0f;
+            STATUS.settle(statusClockIntended());
             hold(targetY(floor, natural));
             Main.setCardProgressFrom(1f);
             sGlassP = 1f;
@@ -1152,15 +1177,14 @@ final class ClockCollapse {
     private static final String[] sPoseLog = new String[8];
     private static int sPoseN;
     private static float sCoverRestTop = Float.NaN, sCoverRestUnit, sCoverRestDate;
-    private static java.lang.ref.WeakReference<View> sCoverRestWindow = new java.lang.ref.WeakReference<>(null);
-    private static long sCoverRestRevision = -1L;
+    private static final ClockPoseSource COVER_REST_SOURCE = new ClockPoseSource();
     private static int sCoverRestDestination = -1;
     private static boolean sCoverRestNavigation;
 
     private static boolean coverRestCurrent() {
         CoverBackdrop.Snapshot page = sceneSnapshot();
-        return SCENE.window != null && Float.isFinite(sCoverRestTop) && SCENE.window == sCoverRestWindow.get()
-                && SCENE.revision == sCoverRestRevision && page.navigation == sCoverRestNavigation
+        return Float.isFinite(sCoverRestTop) && poseSourceCurrent(COVER_REST_SOURCE)
+                && page.navigation == sCoverRestNavigation
                 && sceneSnapshot().clockDestination == sCoverRestDestination;
     }
     private static float sPoseTop = Float.NaN, sPoseUnit = Float.NaN, sPoseDate = Float.NaN;
@@ -1182,8 +1206,7 @@ final class ClockCollapse {
             sCoverRestTop = top;
             sCoverRestUnit = unit;
             sCoverRestDate = date;
-            sCoverRestWindow = new java.lang.ref.WeakReference<>((View) SCENE.window);
-            sCoverRestRevision = SCENE.revision;
+            COVER_REST_SOURCE.capture(SCENE.window, SCENE.revision, firstTarget(), m.date);
             sCoverRestNavigation = sceneSnapshot().navigation;
             sCoverRestDestination = sceneSnapshot().clockDestination;
         }
@@ -1324,7 +1347,9 @@ final class ClockCollapse {
                 + " scale own=" + Main.r3(sAodOwnScale) + " chain=" + Main.r3(sAodChainScale)
                 + " size " + ClockPageSize.describe()
                 + " destination=" + sceneSnapshot().clockDestination
-                + " statusTime=" + Main.r2(statusTimeAlpha()) + " manual=" + sManualMotion
+                + " statusTime=" + Main.r2(statusTimeAlpha()) + " statusTarget=" + STATUS.target()
+                + " statusProgress=" + Main.r2(STATUS.progress()) + " statusReady=" + statusClockAvailable()
+                + " manual=" + sManualMotion
                 + " row " + CompactClockRowRuntime.describe()
                 + " scene={" + SCENE.describe() + " poseOwners=" + poseOwners()
                 + " glyphDirty=" + sGlyphGeometryDirty + "}"
@@ -1927,8 +1952,7 @@ final class ClockCollapse {
                 + " | layout: " + layoutNow();
         sPhase = p;
         sRowFrom = sRowProgress;
-        sStatusFrom = sStatusProgress;
-        sStatusTarget = p == Phase.ENTER && statusClockRequested();
+        STATUS.begin(p == Phase.ENTER && statusClockIntended());
         sFlightCover = null;
         sRowTarget = p == Phase.ENTER && CompactClockRowRuntime.requested()
                 && compactRowPlan(Main.visibleDate()) != null;
@@ -2119,8 +2143,7 @@ final class ClockCollapse {
         sRowTarget = false;
         sRowAvailable = false;
         sRowPlan = null;
-        sStatusFrom = sStatusProgress = 0f;
-        sStatusTarget = false;
+        STATUS.clear();
         sManualMotion = false;
         sFlightFrom = sFlightCover = null;
         forgetManualEndpoints();
@@ -2211,6 +2234,7 @@ final class ClockCollapse {
         POSE_LEASES.clear();
         clearCompanions();
         SCENE.released();
+        STATUS.releasePresentation();
         RailStatusRuntime.refreshTime();
     }
 
@@ -2943,8 +2967,7 @@ final class ClockCollapse {
             // Invalid display bounds keep the native clock until a usable snapshot arrives.
             sRowFrom = sRowProgress = 0f;
             sRowTarget = false;
-            sStatusFrom = sStatusProgress = 0f;
-            sStatusTarget = false;
+            STATUS.clear();
             sRowPlan = null;
             CompactClockRowRuntime.clear();
             if (phase == Phase.AOD) {
@@ -2960,16 +2983,17 @@ final class ClockCollapse {
         wantsRow &= sRowPlan != null;
         // A player-to-artwork page change may keep the cover owner. Reuse its pose spring so
         // the big clock, date and new time cannot finish on separate timelines.
-        if (phase == Phase.ON && (wantsRow != sRowTarget || statusClockRequested() != sStatusTarget)) {
+        if (phase == Phase.ON && (wantsRow != sRowTarget || statusClockIntended() != STATUS.target())) {
             enter(true, false, "artwork-clock-row");
             phase = sPhase;
         }
         if (phase != Phase.AOD) {
             sRowProgress = phase == Phase.ON ? (sRowTarget ? 1f : 0f)
                     : CompactClockRowLayout.progress(sRowFrom, sRowTarget, sT);
-            sStatusProgress = phase == Phase.ON ? (sStatusTarget ? 1f : 0f)
-                    : ArtworkClockDestination.progress(sStatusFrom, sStatusTarget, sT);
+            STATUS.advance(phase == Phase.ON, sT);
         }
+        if (phase == Phase.AOD && !sWaking)
+            STATUS.hold(SCENE.requested && CompactClockRowRuntime.supportsDisplay() && statusClockIntended());
         refreshArtworkSize();
 
         if (phase == Phase.AOD) {
@@ -3410,8 +3434,15 @@ final class ClockCollapse {
             float sty = sInkBottom + s.gap - s.top;
             poseProperty(s.v, TY, sty);
         }
-        if (statusClockMoving()) CompactClockRowRuntime.applyStatus(statusTimeAlpha());
-        else CompactClockRowRuntime.apply(sRowPlan, sRowProgress);
+        if (statusClockMoving()) {
+            float alpha = statusPresentationAlpha();
+            CompactClockRowRuntime.applyStatus(alpha);
+            CoverBackdrop.Snapshot page = sceneSnapshot();
+            STATUS.present(page.window, page.geometryRevision, alpha);
+        } else {
+            CompactClockRowRuntime.apply(sRowPlan, sRowProgress);
+            STATUS.releasePresentation();
+        }
         RailStatusRuntime.refreshTime();
         if (sRowPlan != null && sRowProgress > 0f) {
             // Include the date's descent, not the old multi-line native face's empty box.
@@ -3422,8 +3453,8 @@ final class ClockCollapse {
         SCENE.committed();
         if (Float.isFinite(top) && unit > 0f) {
             sCommittedTop = top; sCommittedUnit = unit; sCommittedDate = date;
-            sCommittedWindow = new java.lang.ref.WeakReference<>((View) SCENE.window);
-            sCommittedRevision = SCENE.revision; sCommittedPage = SCENE.page;
+            COMMITTED_SOURCE.capture(SCENE.window, SCENE.revision, firstTarget(), m.date);
+            sCommittedPage = SCENE.page;
             sCommittedNavigation = sceneSnapshot().navigation;
             sCommittedDestination = sceneSnapshot().clockDestination;
         }
