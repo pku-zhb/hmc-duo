@@ -485,7 +485,7 @@
     <string name="about_friend_link">友情链接</string>
     <string name="media_height_portrait">播放器高度 · 竖屏</string>
     <string name="media_height_landscape">播放器高度 · 横屏</string>
-    <string name="media_height_summary" formatted="false">仅压缩留白；100% 跟随系统</string>
+    <string name="media_height_summary" formatted="false">压缩间距与顶行图标；100% 跟随系统</string>
     <string name="credits_hyperlight_behavior">锁屏通知交互的行为参考。</string>
     <string name="credits_libxposed">模块接口及与模块管理器的通信。</string>
     <string name="license_bundled_title">随应用提供的许可</string>

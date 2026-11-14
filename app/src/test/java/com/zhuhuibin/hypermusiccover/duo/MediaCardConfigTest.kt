@@ -17,7 +17,7 @@ class MediaCardConfigTest {
         assertEquals(values, MediaCardConfig.parse(MediaCardConfig.encode(values)))
         assertTrue(MediaCardConfig.followsNativeMaterial(values))
         val bounded = MediaCardConfig.parse("""{"notification.height":1,"notification.heightLandscape":999}""")
-        assertEquals(85, bounded.getValue("notification.height"))
+        assertEquals(75, bounded.getValue("notification.height"))
         assertEquals(100, bounded.getValue("notification.heightLandscape"))
     }
     @Test fun nativeMaterialIsIndependentOfContentAndGeometryChoices() {

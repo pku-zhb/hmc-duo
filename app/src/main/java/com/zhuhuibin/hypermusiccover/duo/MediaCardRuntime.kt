@@ -86,6 +86,7 @@ object MediaCardRuntime {
     private fun on(scope: String, name: String) = setting(scope, name) != 0
 
     @JvmStatic fun install(loader: ClassLoader) {
+        CompactPlayerRuntime.install(loader)
         for ((name, scope) in listOf(NOTIFICATION to "notification", ISLAND to "island")) {
             val clazz = runCatching { Xp.findClass(name, loader) }.getOrNull() ?: continue
             for (method in listOf("attach", "bindMediaData", "setAlbumImage", "setMusicBgShader", "updateForegroundColors", "setSeamless")) {
@@ -119,7 +120,10 @@ object MediaCardRuntime {
                     safely("layout") { configureLayout(owner) }
                 }
                 val result = chain.proceed()
-                if (!applying) chain.thisObject?.let { owner -> safely("layout") { configureLayout(owner) } }
+                if (!applying) chain.thisObject?.let { owner -> safely("layout") {
+                    configureLayout(owner)
+                    CompactPlayerRuntime.nativeLayoutApplied(owner)
+                } }
                 result
             }
         }

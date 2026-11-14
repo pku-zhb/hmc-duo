@@ -477,7 +477,7 @@
     <string name="about_friend_link">Friends</string>
     <string name="media_height_portrait">Player height · Portrait</string>
     <string name="media_height_landscape">Player height · Landscape</string>
-    <string name="media_height_summary" formatted="false">Compress empty space only; 100% follows the system</string>
+    <string name="media_height_summary" formatted="false">Compact spacing and header icons; 100% follows the system</string>
     <string name="credits_hyperlight_behavior">Behavioral reference for lock-screen notification interactions.</string>
     <string name="credits_libxposed">Module API and communication with the module manager.</string>
     <string name="license_bundled_title">Bundled license texts</string>

@@ -70,7 +70,7 @@ internal fun MediaCardPageView(isBlurEnabled: Boolean, refreshKey: Int, onBack: 
                     "heightLandscape" to R.string.media_height_landscape)) {
                     ValueSlider(title = stringResource(title),
                         summary = stringResource(R.string.media_height_summary),
-                        value = values.getValue("notification.$name").toFloat(), valueRange = 85f..100f,
+                        value = values.getValue("notification.$name").toFloat(), valueRange = 75f..100f,
                         enabled = module.alive, detent = 100f, label = { "${it.toInt()}%" },
                         onValueChange = { push("notification.$name", it.toInt()) })
                 }
