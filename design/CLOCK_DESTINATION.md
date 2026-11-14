@@ -20,6 +20,12 @@ an eligible scene owner, supported display, valid native measurement and a ready
 overlay in the same SystemUI window. Native/custom AOD and empty-lyric pages with no clock
 owner retain native time.
 
+A date-row destination additionally needs coordinates. It does not latch a cold AOD endpoint
+until a valid row plan exists. If a native pose was already held while that plan was missing,
+the first ready row is committed through the same pre-draw entry and AOD-latch path. Plan
+preparation is not presentation proof: the current date/overlay pose must actually have been
+applied. An already presented lit row remains held without re-entering each frame.
+
 ## One presentation commit
 
 Readiness arrival invalidates the existing clock pre-draw listener. It does not enter the
@@ -40,7 +46,7 @@ not evidence that the observed direct-AOD failure actually replaced its native n
 Pure JVM regression tests exercise direct entry followed by late readiness without another
 entry, parity with lit entry, a held native pose with no replacement commit, unfinished lit
 entry followed by held AOD, atomic inverse-alpha publication, no-owner/custom-AOD fallback,
-reverse transitions and window/revision/native-node replacement. Production Kotlin and Java
+reverse transitions, cold/warm/late date-row destinations and window/revision/native-node replacement. Production Kotlin and Java
 are compiled together against the module interfaces before the full release build.
 
 The device pass should compare lit lock-screen to full AOD and desktop to full AOD with a

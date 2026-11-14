@@ -225,6 +225,12 @@ final class CompactClockRowRuntime {
         }
     }
 
+    /** A prepared plan alone cannot stand in for the native/date/overlay pose actually applied. */
+    static boolean presented() {
+        return current(lastPlan) && drawnProgress >= .995f && time != null
+                && time.getVisibility() == View.VISIBLE;
+    }
+
     static boolean ownsPose() { return !clocks.isEmpty() || !dates.isEmpty(); }
 
     static void clear() {

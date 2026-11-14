@@ -49,4 +49,58 @@ public class ClockSceneStateTest {
         state.update(3, window, 4, 2, true); state.released();
         assertFalse(state.retainLease());
     }
+    @Test public void aColdDateRowWaitsForItsOwnPlanBeforeLatchingAnyAodEndpoint() {
+        ClockSceneState state = new ClockSceneState();
+        state.update(1, new Object(), 4, 2, true);
+        assertFalse(state.needsAodDestinationCommit(true, false, false, true, false, false));
+        assertTrue(state.needsAodDestinationCommit(true, false, false, true, true, false));
+    }
+
+    @Test public void aHeldNativePoseDoesNotConsumeALateDateRowDestination() {
+        ClockSceneState state = new ClockSceneState();
+        state.update(1, new Object(), 4, 2, true);
+        state.committed();
+        assertFalse(state.needsAodDestinationCommit(true, false, true, true, false, false));
+        assertTrue(state.needsAodDestinationCommit(true, false, true, true, true, false));
+        // After the full row endpoint was applied, later pre-draws do not enter again.
+        assertFalse(state.needsAodDestinationCommit(true, false, true, true, true, true));
+    }
+
+    @Test public void aWarmLitDateRowNeedsNoSecondEntryDuringFullAod() {
+        ClockSceneState state = new ClockSceneState();
+        state.update(1, new Object(), 4, 2, true);
+        state.committed();
+        assertFalse(state.needsAodDestinationCommit(true, false, true, true, true, true));
+    }
+
+    @Test public void newWindowOrRevisionCannotReuseAnEarlierRowsPresentationProof() {
+        Object window = new Object();
+        ClockSceneState state = new ClockSceneState();
+        state.update(1, window, 4, 2, true); state.committed();
+        state.update(2, window, 5, 2, true);
+        assertTrue(state.needsAodDestinationCommit(true, false, true, true, true, true));
+        state.committed();
+        state.update(3, new Object(), 5, 2, true);
+        assertFalse(state.needsAodDestinationCommit(true, false, true, true, false, false));
+        assertTrue(state.needsAodDestinationCommit(true, false, true, true, true, true));
+    }
+
+    @Test public void statusDoesNotDependOnDateRowCoordinatesOrReenterWhenAlreadyHeld() {
+        ClockSceneState state = new ClockSceneState();
+        state.update(1, new Object(), 4, 2, true);
+        assertTrue(state.needsAodDestinationCommit(true, false, false, false, false, false));
+        assertFalse(state.needsAodDestinationCommit(true, false, true, false, false, false));
+    }
+
+    @Test public void wakeNativeAndMissingWindowCannotAcquireAnAodDestination() {
+        ClockSceneState state = new ClockSceneState();
+        Object window = new Object();
+        state.update(1, window, 4, 2, false);
+        assertFalse(state.needsAodDestinationCommit(true, false, false, true, true, false));
+        state.update(2, window, 4, 2, true);
+        assertFalse(state.needsAodDestinationCommit(false, false, false, true, true, false));
+        assertFalse(state.needsAodDestinationCommit(true, true, false, true, true, false));
+        state.update(3, null, 4, 2, true);
+        assertFalse(state.needsAodDestinationCommit(true, false, false, true, true, false));
+    }
 }
