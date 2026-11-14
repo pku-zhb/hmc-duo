@@ -792,7 +792,7 @@ final class LyricView extends View {
             // First lines of a song go straight to their place - there is nothing on screen for
             // them to travel from. A seek travels: see the spring picked for it below.
             boolean first = focus < 0;
-            boolean seek = !first && now - jumpedAt < SEEK_WINDOW_MS;
+            boolean seek = !first && positionClock.jumpedRecently(now, SEEK_WINDOW_MS);
             if (seek) duetLyrics.reset();
             focus = sf;
             setDotsFor(dots);
@@ -1548,8 +1548,7 @@ final class LyricView extends View {
         return android.view.animation.AnimationUtils.currentAnimationTimeMillis();
     }
 
-    private float smoothMs;
-    private long smoothAt;
+    private final LyricPositionClock positionClock = new LyricPositionClock();
 
     /**
      * The session's position at this frame's time, eased rather than jumped when a fresh read of
@@ -1558,30 +1557,8 @@ final class LyricView extends View {
      * and then - a visible hitch in the word fill. A real jump (a seek) is still taken at once.
      */
     private int smoothPosition(long now) {
-        float raw = LockLyrics.positionMs() + (now - SystemClock.uptimeMillis());
-        if (smoothAt == 0L || !LockLyrics.playing()) {
-            // Paused counts too: the progress bar can be dragged while paused, and that is still
-            // a seek even though nothing is advancing between frames to compare against.
-            if (smoothAt != 0L && Math.abs(raw - smoothMs) > JUMP_MS) {
-                jumpedAt = now;
-            }
-            smoothMs = raw;
-        } else {
-            float pred = smoothMs + (now - smoothAt);
-            float err = raw - pred;
-            if (Math.abs(err) > JUMP_MS) {
-                jumpedAt = now;
-                smoothMs = raw;
-            } else {
-                smoothMs = pred + err * Math.min(1f, (now - smoothAt) / 300f);
-            }
-        }
-        smoothAt = now;
-        return smoothMs < 0f ? 0 : Math.round(smoothMs);
+        return LockLyrics.positionAtFrame(positionClock, now);
     }
-
-    /** More than playback alone can explain between two reads: somebody moved the playhead. */
-    private static final float JUMP_MS = 250f;
 
     /**
      * How long after a jump a focus change still counts as part of it.
@@ -1591,9 +1568,6 @@ final class LyricView extends View {
      * moved one frame too late is exactly the inconsistency this window closes.
      */
     private static final long SEEK_WINDOW_MS = 250L;
-
-    /** When the playhead last moved by more than playing could account for. */
-    private long jumpedAt = Long.MIN_VALUE;
 
     /** The kaomoji face hops to beats captured only while its interlude is up. */
     private void setDotsFor(int dots) {

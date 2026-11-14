@@ -1285,12 +1285,19 @@ final class LockLyrics {
         }
         PlaybackState s = sState;
         if (s == null) return 0;
-        long pos = s.getPosition();
-        if (s.getState() == PlaybackState.STATE_PLAYING) {
-            long dt = SystemClock.elapsedRealtime() - s.getLastPositionUpdateTime();
-            if (dt > 0) pos += (long) (dt * s.getPlaybackSpeed());
-        }
-        return pos < 0 ? 0 : (int) Math.min(pos, Integer.MAX_VALUE);
+        return LyricPositionClock.sessionPosition(s.getPosition(), s.getState() == PlaybackState.STATE_PLAYING,
+                s.getPlaybackSpeed(), s.getLastPositionUpdateTime(), SystemClock.elapsedRealtime());
+    }
+
+    /** Capture position/rate/state together; no binder call or extra animation is introduced. */
+    static int positionAtFrame(LyricPositionClock clock, long frameUptime) {
+        PlaybackState s = sState;
+        boolean demo = sDemo;
+        boolean playing = demo || s != null && s.getState() == PlaybackState.STATE_PLAYING;
+        float speed = demo ? 1f : s == null ? 0f : s.getPlaybackSpeed();
+        int position = demo ? positionMs() : s == null ? 0 : LyricPositionClock.sessionPosition(
+                s.getPosition(), playing, speed, s.getLastPositionUpdateTime(), SystemClock.elapsedRealtime());
+        return clock.atFrame(position, playing, speed, frameUptime, SystemClock.uptimeMillis());
     }
 
     /** The title of the track the lyric belongs to, for an extension to match its own against. */
