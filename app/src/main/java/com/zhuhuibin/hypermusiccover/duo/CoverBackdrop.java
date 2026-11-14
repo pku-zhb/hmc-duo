@@ -71,7 +71,7 @@ final class CoverBackdrop {
             wantsLyrics = lyricsRequested && !notificationCompact && !playerChosen
                     && LockLyrics.hasDisplayContent();
             hidden = Main.sHidePlayerBackground || Main.coverOnTapResting()
-                    || NotificationArtworkPolicy.nativeBackdrop(notificationCompact, lyricsRequested, playerChosen);
+                    || NotificationArtworkPolicy.nativeBackdrop(notificationCompact);
             fullComposition = CoverCardLayer.fullScene();
             backgroundWanted = cover && !hidden && !navigation && generation >= 0
                     && (surface == SURFACE_LIT || surface == SURFACE_FULL_AOD);
@@ -186,8 +186,7 @@ final class CoverBackdrop {
 
     static boolean hidden() {
         return Main.sHidePlayerBackground || Main.coverOnTapResting()
-                || NotificationArtworkPolicy.nativeBackdrop(LockLyrics.notificationCompact(),
-                    LockLyrics.requestedLyricsPage(), LockLyrics.playerChosen());
+                || NotificationArtworkPolicy.nativeBackdrop(LockLyrics.notificationCompact());
     }
 
     static boolean nativeForRailCard() {

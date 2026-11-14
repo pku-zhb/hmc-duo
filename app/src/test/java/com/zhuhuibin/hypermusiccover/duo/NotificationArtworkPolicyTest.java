@@ -5,17 +5,54 @@ import static org.junit.Assert.*;
 
 public class NotificationArtworkPolicyTest {
     @Test public void openingNotificationsReleasesBackdropAndReopeningArtworkRestoresIt() {
-        assertFalse(NotificationArtworkPolicy.nativeBackdrop(false, false, false));
-        assertTrue(NotificationArtworkPolicy.nativeBackdrop(true, false, false));
+        assertFalse(NotificationArtworkPolicy.nativeBackdrop(false));
+        assertTrue(NotificationArtworkPolicy.nativeBackdrop(true));
         // Explicit cover selection clears the temporary notification compaction.
-        assertFalse(NotificationArtworkPolicy.nativeBackdrop(false, false, false));
+        assertFalse(NotificationArtworkPolicy.nativeBackdrop(false));
     }
 
-    @Test public void independentLyricsAndPlayerPagesKeepTheirChosenBackground() {
-        assertFalse(NotificationArtworkPolicy.nativeBackdrop(true, true, false));
-        assertFalse(NotificationArtworkPolicy.nativeBackdrop(true, false, true));
-        assertFalse(NotificationArtworkPolicy.nativeBackdrop(true, true, true));
-        assertFalse(NotificationArtworkPolicy.nativeBackdrop(false, true, false));
+    @Test public void aLyricsIntentCannotReopenAPageStillBlockedByTheNotificationList() {
+        // setEnabled used to change only the lyric intent while a settled LIST retained
+        // its compact override. The foreground remains blocked even though this says LYRICS.
+        assertEquals(RailMusicPagePolicy.LYRICS, RailMusicPagePolicy.current(true, true));
+        boolean stillCompact = NotificationArtworkPolicy.compact(true, true, 3, true, false);
+        assertTrue(stillCompact);
+        assertTrue(NotificationArtworkPolicy.nativeBackdrop(stillCompact));
+    }
+
+    @Test public void reopeningARealPageStillWaitsForItsCurrentBackgroundFrame() {
+        ArtworkBackdropState.Handoff background = new ArtworkBackdropState.Handoff();
+        Object window = new Object();
+        background.select(1L, ArtworkBackdropState.MESH, window, 0L, 7);
+        background.presented(1L, ArtworkBackdropState.MESH, window, 0L, 7, 1f);
+        assertTrue(background.local());
+        boolean compact = NotificationArtworkPolicy.compact(false, true, 3, true, true);
+        background.select(2L, NotificationArtworkPolicy.nativeBackdrop(compact)
+                ? ArtworkBackdropState.NATIVE : ArtworkBackdropState.MESH, window, 0L, 7);
+        assertFalse(background.local());
+        // The requested lyric page may change while LIST still owns the foreground.
+        compact = NotificationArtworkPolicy.compact(compact, true, 3, true, false);
+        background.select(3L, NotificationArtworkPolicy.nativeBackdrop(compact)
+                ? ArtworkBackdropState.NATIVE : ArtworkBackdropState.STILL, window, 0L, 7);
+        assertFalse(background.presented(1L, ArtworkBackdropState.MESH, window, 0L, 7, 1f));
+        assertFalse(background.local());
+        // Explicit selectPage clears the override, so an independent lyric/artwork page
+        // can reopen. An old draw or a prepared source still cannot select local sampling.
+        compact = false;
+        background.select(4L, NotificationArtworkPolicy.nativeBackdrop(compact)
+                ? ArtworkBackdropState.NATIVE : ArtworkBackdropState.MESH, window, 0L, 7);
+        assertFalse(background.local());
+        assertFalse(background.presented(3L, ArtworkBackdropState.STILL, window, 0L, 7, 1f));
+        assertTrue(background.presented(4L, ArtworkBackdropState.MESH, window, 0L, 7, 1f));
+        assertTrue(background.local());
+    }
+
+    @Test public void pagesWithoutANotificationOverrideKeepTheirIndependentBackground() {
+        // Selecting a lyric/player page does not hide a user-selected background. Only the
+        // active foreground override does, rather than the raw selected-page flags.
+        assertFalse(NotificationArtworkPolicy.nativeBackdrop(false));
+        assertFalse(NotificationArtworkPolicy.compact(false, true, 3, true, false));
+        assertTrue(NotificationArtworkPolicy.nativeBackdrop(true));
     }
 
     @Test public void pilePullDownAndOvershootingReboundKeepTheBigArtwork() {

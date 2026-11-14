@@ -2009,22 +2009,21 @@ final class LockLyrics {
     /** The app's switch. The setting: it is written to the state file and the app reads it back. */
     static void setEnabled(boolean on, String key, MediaController c) {
         sEnabled = on;
-        sArtworkPage.preferCover();
-        // The switch is the master, so it takes the tap's answer with it. Switching the lyrics
-        // off and on again brings them back; without this, turning them on while a previous tap
-        // had hidden them would leave the lock screen on the cover with the switch saying on.
-        sTapHidden = false;
         Xp.log(TAG + "lyrics " + (on ? "on" : "off"));
-        show(on, key, c, "switched off");
+        // Enabling is the same explicit page choice as the player's button. Updating only
+        // sTapHidden left a notification override blocking the page while its background returned.
+        if (on) selectPage(true, key, c);
+        else {
+            // Disabling content does not reopen artwork hidden by an expanded notification list.
+            sArtworkPage.preferCover();
+            show(false, key, c, "switched off");
+        }
     }
 
     /** The lyrics button under the companion: look again, and the lyrics take over if found. */
     static void searchLyrics(String key, MediaController c) {
         if (sLoading) return;
-        sPlayerChosen = false;
-        sTapHidden = false;
-        sArtworkPage.preferCompact();
-        show(true, key, c, "searched from the button");
+        selectPage(true, key, c);
         Main.saveState();
     }
 

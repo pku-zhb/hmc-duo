@@ -2,9 +2,12 @@ package com.zhuhuibin.hypermusiccover.duo;
 
 /** A temporary thumbnail override, independent of the user's cover/lyrics preference. */
 final class NotificationArtworkPolicy {
-    /** A notification-only thumbnail override releases the artwork background with its cover. */
-    static boolean nativeBackdrop(boolean notificationCompact, boolean lyricsPage, boolean playerChosen) {
-        return notificationCompact && !lyricsPage && !playerChosen;
+    /**
+     * The active compact override blocks the foreground, regardless of the requested page.
+     * Only a page transition that clears that override can reopen its artwork background.
+     */
+    static boolean nativeBackdrop(boolean notificationCompact) {
+        return notificationCompact;
     }
 
     /** Preserve the 32 ms motion cadence; callbacks must not turn it into per-setter sampling. */
