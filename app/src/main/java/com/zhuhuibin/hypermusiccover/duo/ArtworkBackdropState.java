@@ -37,6 +37,11 @@ final class ArtworkBackdropState {
         return Math.min(incoming, coverage);
     }
 
+    /** Disappearance belongs to the renderer scope, even if it still held an outgoing bitmap. */
+    static boolean acceptsEvidence(int desired, int drawn, float alpha) {
+        return Float.isFinite(alpha) && (alpha <= .001f || desired >= 0 && drawn == desired);
+    }
+
     void select(int generation) {
         if (!active) { active = true; epoch++; }
         if (source != generation) { source = generation; drawn = -1; }

@@ -17,6 +17,16 @@ public class ArtworkBackdropStateTest {
         assertEquals(0f, ArtworkBackdropState.compositionEvidence(1f, Float.NaN), 0f);
     }
 
+    @Test public void anOutgoingGenerationMayWithdrawButCannotAcknowledgeTheNewComposition() {
+        assertTrue(ArtworkBackdropState.acceptsEvidence(12, 11, 0f));
+        assertTrue(ArtworkBackdropState.acceptsEvidence(12, -1, 0f));
+        assertFalse(ArtworkBackdropState.acceptsEvidence(12, 11, 1f));
+        assertFalse(ArtworkBackdropState.acceptsEvidence(12, -1, 1f));
+        assertFalse(ArtworkBackdropState.acceptsEvidence(-1, -1, 1f));
+        assertFalse(ArtworkBackdropState.acceptsEvidence(12, 12, Float.NaN));
+        assertTrue(ArtworkBackdropState.acceptsEvidence(12, 12, 1f));
+    }
+
     @Test public void sameSourceGeometryRebuildKeepsTheOutgoingFramesHonestOriginalKey() {
         ArtworkBackdropState.Handoff handoff = new ArtworkBackdropState.Handoff();
         Object window = new Object();
