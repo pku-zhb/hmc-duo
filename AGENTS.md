@@ -112,3 +112,11 @@ visual observations, user reports, source-confirmed defects and hypotheses.
 When the owner requests research before fixes, agree on that report before app
 implementation. Successful tests or settled endpoint diagnostics do not establish
 visual smoothness, readable contrast or good layout composition.
+
+Never use the legacy mutating `PROBE op=cover` entry to select a test page. Its
+direct `attachCover` route can create an unguarded raw ImageView in the shared
+keyguard/shade background while `cover=false`; its matching off operation does
+not reliably remove that view on still wallpaper. A review triggered this spill
+and required a SystemUI scope reload to recover. Select pages through normal
+native player/capsule UI instead. If a host is missing, restore the native music
+card through normal interaction rather than forcing a diagnostic overlay.
