@@ -19,6 +19,20 @@ not automatically verified on every device, display or OS version.
 
 ## Current acceptance scope
 
+### 0.2.8 unified scene ownership and device scenario verification
+
+The owner expanded this iteration to background-led scenario testing, ordinary
+replacement installation and related-scope reloads; full phone reboot remains
+prohibited. HMC now shares a page/surface/window/source snapshot for background
+and clock decisions. Native property leases restore only owned writes; leaf glyph
+drawing no longer re-enters the complete clock frame. Same-source mesh/static
+background handoffs retain actual drawn ownership, while notification compact,
+unlock and changed sources return to native. The inner stack keeps native widths;
+only the combined page moves its column. Height has two presets with visible-row
+AOD budgeting. See [the 0.2.8 record](releases/0.2.8.md) and the single rolling
+owner checklist for actual host/device results. No visual acceptance is implied
+by a source change or build.
+
 ### 0.2.7 direct AOD, fold lifecycle and compact player continuity
 
 Owner feedback on 0.2.6 confirmed working height controls and no new loss of

@@ -95,13 +95,15 @@ remain unmasked. The incoming native effect is the new chain baseline, and the
 existing post-native lease commit remains authoritative. Shelf clipping, per-card
 isolation and the original native drawing path are unchanged.
 
-The 0.2.6 native-width experiment has been superseded by 0.2.7 owner feedback.
-Both inner orientations now use their current Duo content frame, with the same
-center as the clock/artwork rather than the OEM full-window axis. This may be
-wider than the OEM card column, deliberately preserving common alignment. The
-frame is computed from the current window and fixed rail reserve, never from an
-animated card width. Native vertical stacking and swipe behavior remain unchanged;
-geometry is released outside keyguard. The edge renderer uses that actual viewport.
+The 0.2.7 shared-width experiment has been superseded by the clarified 0.2.8
+layout contract. Both inner orientations retain native stack measurement and frame
+width. Single artwork/lyric/clock pages use the full safe-window center. Only the
+combined page translates the entire native stack column to the left, without
+moving a media child outside its header or resizing notifications. Exiting that
+page releases the last actually written X; desired subpixel targets are not owner
+tokens, and native writes remain observable after keyguard eligibility ends.
+The outer display retains its fixed rail/content slot. Swipe edges operate on the
+current real native viewport, independently of the placement policy.
 
 ## Verification boundary
 
