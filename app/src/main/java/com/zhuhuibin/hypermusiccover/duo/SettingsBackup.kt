@@ -32,6 +32,7 @@ object SettingsBackup {
     private const val KEY_MESH_BACKDROP = "meshBackdrop"
     private const val KEY_DEPTH_OPEN = "depthLimitRemoved"
     private const val KEY_AMAP_MAP = "amapNavigationMap"
+    private const val KEY_INNER_FULL_SCREEN_AOD = "innerFullScreenAod"
     private const val KEY_RAIL_STATUS_Y = "railStatusOffsetYDp"
     private const val KEY_FORCE_COLON = "forceClockColon"
     private const val KEY_MEDIA_BAR_GLOW = "mediaBarGlow"
@@ -89,6 +90,13 @@ object SettingsBackup {
 
     internal fun writeAmapNavigationMap(json: JSONObject, module: ModuleBridge.State) {
         json.put(KEY_AMAP_MAP, module.amapNavigationMap)
+    }
+
+    internal fun readInnerFullScreenAod(json: JSONObject): Boolean? =
+        json.opt(KEY_INNER_FULL_SCREEN_AOD) as? Boolean
+
+    internal fun writeInnerFullScreenAod(json: JSONObject, module: ModuleBridge.State) {
+        json.put(KEY_INNER_FULL_SCREEN_AOD, module.innerFullScreenAod)
     }
 
     /** A partial/older backup cannot reset the current status position; reject malformed inputs. */
@@ -151,6 +159,7 @@ object SettingsBackup {
             json.put("hideChargingHint", module.hideChargingHint)
             json.put("forceNotificationFloor", module.forceNotificationFloor)
             json.put("hideLockStatusBar", module.hideLockStatusBar)
+            writeInnerFullScreenAod(json, module)
             json.put("artworkClockRow", module.artworkClockDestination == ArtworkClockDestination.DATE_ROW)
             json.put("artworkClockDestination", module.artworkClockDestination)
             json.put("artworkClockBeforeDate", module.artworkClockBeforeDate)
@@ -210,6 +219,7 @@ object SettingsBackup {
                 "forceNotificationFloor", "hideLockStatusBar", "artworkClockBeforeDate")) {
                 if (obj.has(key)) ModuleBridge.setRailSetting(context, key, obj.getBoolean(key))
             }
+            readInnerFullScreenAod(obj)?.let { ModuleBridge.setRailSetting(context, "innerFullScreenAod", it) }
             readRailStatusOffsetY(obj)?.let { ModuleBridge.setRailStatusOffsetY(context, it) }
             readArtworkClockDestination(obj)?.let { ModuleBridge.setArtworkClockDestination(context, it) }
             if (obj.has(KEY_COVER_STYLE)) {
