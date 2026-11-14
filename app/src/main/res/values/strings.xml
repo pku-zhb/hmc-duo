@@ -478,7 +478,7 @@
     <string name="media_height_portrait">Player height · Portrait</string>
     <string name="media_height_landscape">Player height · Landscape</string>
     <string name="media_height_summary" formatted="false">Compress empty space only; 100% follows the system</string>
-    <string name="credits_hyperlight_behavior">Behavioral reference for lock-screen notifications. Source authorization has not been granted; decompiled source and assets are not distributed.</string>
+    <string name="credits_hyperlight_behavior">Behavioral reference for lock-screen notification interactions.</string>
     <string name="credits_libxposed">Module API and communication with the module manager.</string>
     <string name="license_bundled_title">Bundled license texts</string>
     <string name="license_loading">Loading license text</string>
