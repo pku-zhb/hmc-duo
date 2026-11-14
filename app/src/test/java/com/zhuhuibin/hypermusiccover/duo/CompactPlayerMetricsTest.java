@@ -5,62 +5,88 @@ import static org.junit.Assert.*;
 
 public class CompactPlayerMetricsTest {
     private CompactPlayerMetrics.Plan normal(int percent) {
-        // Retained OEM normal layout: 185dp shell; 52.5dp artwork, 50dp actions,
-        // 38dp seek touch area. Density 2 preserves the half-dp native artwork.
-        return CompactPlayerMetrics.plan(370, percent, 32, 22, 4, 32, 281, 2f);
+        return CompactPlayerMetrics.plan(371, percent, 32, 22, 4, 32, 281, 105, 2f);
     }
 
-    @Test public void defaultPreservesNativeHeightAndEveryGap() {
+    @Test public void defaultPreservesNativeGeometry() {
         CompactPlayerMetrics.Plan p = normal(100);
-        assertEquals(370, p.height);
+        assertEquals(371, p.height);
+        assertEquals(105, p.artwork);
         assertEquals(32, p.top);
         assertEquals(22, p.action);
         assertEquals(4, p.seekTop);
         assertEquals(32, p.seekBottom);
     }
 
-    @Test public void minimumHeightComesOnlyFromAvailableWhitespace() {
+    @Test public void compactHeaderAndInterRowGapsProtectOuterBreathingRoom() {
         CompactPlayerMetrics.Plan p = normal(85);
-        assertEquals(315, p.height);
-        assertEquals(370 - p.height, 32 - p.top + 22 - p.action + 4 - p.seekTop + 32 - p.seekBottom);
+        assertEquals(316, p.height);
+        assertEquals(90, p.artwork);
+        assertTrue(p.top >= 22);
+        assertTrue(p.seekBottom >= 22);
+        assertTrue(p.action + p.seekTop <= 3);
+        assertEquals(371 - p.height, 105 - p.artwork + 32 - p.top + 22 - p.action
+                + 4 - p.seekTop + 32 - p.seekBottom);
+    }
+
+    @Test public void seventyFivePercentKeepsPlaybackAndSeekRowsAndAReadableHeader() {
+        CompactPlayerMetrics.Plan p = normal(75);
+        assertEquals(279, p.height);
+        assertEquals(80, p.artwork);
         assertTrue(p.top >= 8);
-        assertTrue(p.action >= 4);
-        assertTrue(p.seekTop >= 4);
         assertTrue(p.seekBottom >= 8);
-        assertTrue(p.height >= 281 + p.top + p.action + p.seekTop + p.seekBottom - 1);
+        assertTrue(p.action >= 0 && p.seekTop >= 0);
+        // 50dp playback and 38dp seek remain unchanged; every saved pixel is accounted for.
+        assertEquals(p.height, p.artwork + 100 + 76 + p.top + p.action + p.seekTop + p.seekBottom);
     }
 
-    @Test public void aSmallNativeAodVariantDoesNotSqueezeItsControlsToMeetTheSlider() {
-        CompactPlayerMetrics.Plan p = CompactPlayerMetrics.plan(276, 85, 32, 22, 4, 32, 281, 2f);
+    @Test public void aSmallUnknownNativeVariantRetainsItsRows() {
+        CompactPlayerMetrics.Plan p = CompactPlayerMetrics.plan(276, 75, 32, 22, 4, 32, 281, 105, 2f);
         assertEquals(276, p.height);
+        assertEquals(105, p.artwork);
         assertEquals(32, p.top);
-        assertEquals(22, p.action);
     }
 
-    @Test public void alreadyTightOrNegativeNativeGapsAreNotEnlarged() {
-        CompactPlayerMetrics.Plan p = CompactPlayerMetrics.plan(180, 85, 2, 1, -2, 3, 150, 1f);
-        assertEquals(180, p.height);
-        assertEquals(2, p.top);
-        assertEquals(1, p.action);
+    @Test public void alreadyTightOrNegativeGapsAreNotEnlarged() {
+        CompactPlayerMetrics.Plan p = CompactPlayerMetrics.plan(180, 75, 2, 1, -2, 3, 150, 40, 1f);
+        assertEquals(179, p.height);
         assertEquals(-2, p.seekTop);
+        assertEquals(2, p.top);
         assertEquals(3, p.seekBottom);
     }
 
-    @Test public void unsupportedBackgroundHeightOrDensityStaysNative() {
-        assertEquals(-2, CompactPlayerMetrics.plan(-2, 85, 16, 11, 2, 16, 140, 1f).height);
-        assertEquals(185, CompactPlayerMetrics.plan(185, 85, 16, 11, 2, 16, 140, 0f).height);
+    @Test public void unsupportedDimensionsStayNative() {
+        assertEquals(-2, CompactPlayerMetrics.plan(-2, 75, 16, 11, 2, 16, 140, 52, 1f).height);
+        assertEquals(185, CompactPlayerMetrics.plan(185, 75, 16, 11, 2, 16, 140, 52, 0f).height);
     }
 
-    @Test public void heightReducesMonotonicallyWithoutCumulativeCompression() {
-        int previous = normal(85).height;
-        for (int percent = 86; percent <= 100; ++percent) {
+    @Test public void heightAndArtworkAreMonotonicAndDoNotAccumulateCompression() {
+        int previous = normal(75).height;
+        int art = normal(75).artwork;
+        for (int percent = 76; percent <= 100; ++percent) {
             CompactPlayerMetrics.Plan p = normal(percent);
             assertTrue(p.height >= previous);
+            assertTrue(p.artwork >= art);
             assertEquals(p.height, normal(percent).height);
-            previous = p.height;
+            previous = p.height; art = p.artwork;
         }
-        assertEquals(normal(85).height, normal(-500).height);
+        assertEquals(normal(75).height, normal(-500).height);
         assertEquals(normal(100).height, normal(500).height);
+    }
+
+    @Test public void nativeAnimationAndFinalCompactHeightShareBothEndpoints() {
+        for (int percent : new int[]{75, 85, 99, 100}) {
+            int height = normal(percent).height;
+            assertEquals(height, CompactPlayerMetrics.transitionHeight(371, 371, 276, height, 276));
+            assertEquals(276, CompactPlayerMetrics.transitionHeight(276, 371, 276, height, 276));
+            int previous = 276;
+            for (int nativeFrame = 276; nativeFrame <= 371; ++nativeFrame) {
+                int frame = CompactPlayerMetrics.transitionHeight(nativeFrame, 371, 276, height, 276);
+                assertTrue(frame >= previous);
+                previous = frame;
+            }
+        }
+        assertEquals(0, CompactPlayerMetrics.transitionHeight(0, 371, 276, 316, 276));
     }
 
     @Test public void onlyInnerLandscapeUsesTheSeparateProfile() {

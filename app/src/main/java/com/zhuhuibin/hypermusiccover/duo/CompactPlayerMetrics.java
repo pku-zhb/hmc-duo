@@ -1,11 +1,11 @@
 package com.zhuhuibin.hypermusiccover.duo;
 
-/** Compress only available vertical gaps; native artwork, controls and touch areas retain size. */
+/** Compact the header and whitespace while retaining native playback/seek control dimensions. */
 final class CompactPlayerMetrics {
     static final class Plan {
-        final int height, top, action, seekTop, seekBottom;
-        Plan(int height, int[] gaps) {
-            this.height = height;
+        final int height, artwork, top, action, seekTop, seekBottom;
+        Plan(int height, int artwork, int[] gaps) {
+            this.height = height; this.artwork = artwork;
             top = gaps[0]; action = gaps[1]; seekTop = gaps[2]; seekBottom = gaps[3];
         }
     }
@@ -15,32 +15,53 @@ final class CompactPlayerMetrics {
     }
 
     static Plan plan(int nativeHeight, int percent, int top, int action, int seekTop,
-                     int seekBottom, int controlHeight, float density) {
+                     int seekBottom, int controlHeight, int artwork, float density) {
         int[] gaps = {top, action, seekTop, seekBottom};
-        if (nativeHeight <= 0 || percent >= 100 || density <= 0) return new Plan(nativeHeight, gaps);
-        int[] floor = {Math.round(4f * density), Math.round(2f * density),
-                Math.round(2f * density), Math.round(4f * density)};
+        if (nativeHeight <= 0 || percent >= 100 || density <= 0)
+            return new Plan(nativeHeight, artwork, gaps);
+        int[] floor = {Math.round(4f * density), 0, 0, Math.round(4f * density)};
         int[] capacity = new int[4];
         int available = 0, minimumGaps = 0;
         for (int i = 0; i < 4; ++i) {
-            // Do not enlarge an already tight OEM variant or turn a negative margin positive.
             floor[i] = Math.min(gaps[i], floor[i]);
             capacity[i] = Math.max(0, gaps[i] - floor[i]);
             available += capacity[i];
             minimumGaps += Math.max(0, floor[i]);
         }
-        int requested = nativeHeight - (int) Math.ceil(nativeHeight * Math.max(85, percent) / 100d);
-        int safe = Math.max(0, nativeHeight - Math.max(0, controlHeight) - minimumGaps);
-        int reduction = Math.min(requested, Math.min(available, safe));
-        int remaining = reduction, remainingCapacity = available;
-        for (int i = 0; i < 4; ++i) {
-            int take = remainingCapacity == 0 ? 0
-                    : Math.min(capacity[i], Math.round((float) remaining * capacity[i] / remainingCapacity));
-            gaps[i] -= take;
-            remaining -= take;
-            remainingCapacity -= capacity[i];
-        }
-        return new Plan(nativeHeight - reduction, gaps);
+        // Unknown/tight variants retain their native rows, rather than shrinking around them.
+        if (nativeHeight < controlHeight + minimumGaps)
+            return new Plan(nativeHeight, artwork, gaps);
+        int bounded = Math.max(75, percent);
+        float amount = (100 - bounded) / 25f;
+        int headerSaving = Math.min(Math.max(0, artwork - Math.round(40f * density)),
+                Math.round(Math.max(0, artwork) * .24f * amount));
+        int requested = nativeHeight - (int) Math.ceil(nativeHeight * bounded / 100d);
+        headerSaving = Math.min(headerSaving, requested);
+        int safe = Math.max(0, nativeHeight - (controlHeight - headerSaving) - minimumGaps);
+        int reduction = Math.min(requested, Math.min(available + headerSaving, safe));
+        headerSaving = Math.min(headerSaving, reduction);
+        int gapSaving = reduction - headerSaving;
+        // Prefer the two inter-row gaps; preserve breathing room above and below the header.
+        int middle = Math.min(capacity[1] + capacity[2], Math.round(gapSaving * .60f));
+        middle = Math.max(middle, gapSaving - capacity[0] - capacity[3]);
+        take(gaps, capacity, 1, 2, middle);
+        take(gaps, capacity, 0, 3, gapSaving - middle);
+        return new Plan(nativeHeight - reduction, artwork - headerSaving, gaps);
+    }
+
+    private static void take(int[] gaps, int[] capacity, int first, int second, int total) {
+        int room = capacity[first] + capacity[second];
+        int a = room == 0 ? 0 : Math.min(capacity[first], Math.round((float) total * capacity[first] / room));
+        int b = Math.min(capacity[second], total - a);
+        a = total - b;
+        gaps[first] -= a; gaps[second] -= b;
+    }
+
+    /** One affine remapping of the OEM height timeline; both endpoints stay continuous. */
+    static int transitionHeight(int height, int nativeNormal, int nativeAod, int normal, int aod) {
+        if (height <= 0 || nativeNormal <= nativeAod || normal <= aod) return height;
+        float progress = (height - nativeAod) / (float) (nativeNormal - nativeAod);
+        return Math.round(aod + progress * (normal - aod));
     }
 
     private CompactPlayerMetrics() {}
