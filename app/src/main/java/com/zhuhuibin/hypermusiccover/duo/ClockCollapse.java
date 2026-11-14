@@ -920,6 +920,8 @@ final class ClockCollapse {
     private static boolean prepareHeldAodPose(String source) {
         if (sCommitting) { sGlyphGeometryDirty = true; return false; }
         if (Main.sContainer == null || !measure(LIVE)) return false;
+        // A valid native glyph measurement does not provide date-row destination coordinates.
+        if (CompactClockRowRuntime.requested() && compactRowPlan(LIVE.date) == null) return false;
         enter(false, false, source, true);
         frame();
         return sPoseDrawn;
@@ -2956,10 +2958,13 @@ final class ClockCollapse {
             return;
         }
         sGlyphGeometryDirty = false;
-        if (phase == Phase.AOD && !sAodHeld && !sWaking && SCENE.requested) {
-            // A late native bind acquires the selected page at this one pre-draw commit.
-            // No nested frame() and no release/reacquire of a valid replacement-time lease.
-            enter(false, false, "first measured full-AOD frame", true);
+        boolean rowRequested = CompactClockRowRuntime.requested();
+        sRowPlan = rowRequested || compactRowMoving() ? compactRowPlan(m.date) : null;
+        if (SCENE.needsAodDestinationCommit(phase == Phase.AOD, sWaking, sAodHeld,
+                rowRequested, sRowPlan != null, CompactClockRowRuntime.presented())) {
+            // A late coordinate destination needs its complete endpoint, even if a native pose
+            // was already held. Commit the ready row here before latching that endpoint in AOD.
+            enter(false, false, "first ready full-AOD destination", true);
             phase = sPhase;
             latchAodAfterCommit = true;
         }
@@ -2978,9 +2983,7 @@ final class ClockCollapse {
                 phase = sPhase;
             }
         }
-        boolean wantsRow = CompactClockRowRuntime.requested();
-        sRowPlan = wantsRow || compactRowMoving() ? compactRowPlan(m.date) : null;
-        wantsRow &= sRowPlan != null;
+        boolean wantsRow = CompactClockRowRuntime.requested() && sRowPlan != null;
         // A player-to-artwork page change may keep the cover owner. Reuse its pose spring so
         // the big clock, date and new time cannot finish on separate timelines.
         if (phase == Phase.ON && (wantsRow != sRowTarget || statusClockIntended() != STATUS.target())) {

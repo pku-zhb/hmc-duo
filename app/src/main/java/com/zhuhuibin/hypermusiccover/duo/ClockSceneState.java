@@ -22,6 +22,13 @@ final class ClockSceneState {
         this.requested = requested;
     }
 
+    /** A held native pose is not proof that a coordinate-based destination has committed. */
+    boolean needsAodDestinationCommit(boolean aod, boolean waking, boolean held,
+                                      boolean rowRequested, boolean rowReady, boolean rowPresented) {
+        if (!requested || window == null || !aod || waking) return false;
+        return rowRequested ? rowReady && (!held || !rowPresented || !retainLease()) : !held;
+    }
+
     void beginPass() { passes++; passCommits = 0; }
 
     void measured(boolean ready, boolean cached) {
