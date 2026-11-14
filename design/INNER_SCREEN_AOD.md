@@ -55,8 +55,8 @@ hook is introduced.
   firmware without the verified contract retains the existing global fallback.
 - The switch is evaluated by native calls; it has no polling timer and requires
   no scope restart. Toggle while awake, then enter AOD for a fresh native cycle.
-- No persistent firmware feature, system setting or hardware capability is
-  overwritten. Disabling the option restores native decisions on subsequent
+- No native firmware feature, OEM setting or hardware capability is overwritten.
+  The only shared setting is HMC's own boolean choice. Disabling the option restores native decisions on subsequent
   calls. Unknown hook contracts preserve the native result.
 
 ## Validation boundary
@@ -67,3 +67,18 @@ visibility, actual display doze state, geometry and restoration on disabling.
 A passing policy test or global `fullAod=true` is not evidence that an inner panel
 is actually rendered. Physical display support, power consumption and final
 visual transitions remain device-level observations.
+
+## 0.2.14 device result
+
+The physical inner display entered `DOZE` with the option enabled, while the
+inactive outer display remained `OFF`. Both native keyguard parents were visible,
+the large time targets had alpha zero and replacement time alpha one. Both
+SystemUI and the actual AOD plugin reported the opt-in with no contract error.
+Lyric, combined and interrupted sleep/wake cases settled to a committed valid
+pose and exact native progress endpoint with no remaining running transition.
+
+After disabling, both gates and the shared choice returned false/zero, full-AOD
+classification stopped and native inner display state returned to `OFF`. Original
+page, height, material, rotation and posture settings were restored. These are
+backend observations without screenshots; they do not prove every visual frame
+or establish power consumption.
