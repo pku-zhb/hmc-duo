@@ -1,6 +1,8 @@
 package com.zhuhuibin.hypermusiccover.duo;
 
 import android.graphics.Canvas;
+import android.graphics.Matrix;
+import android.graphics.RectF;
 import android.view.View;
 import java.lang.reflect.Method;
 
@@ -9,7 +11,12 @@ final class RailStackBounds {
     private RailStackBounds() {}
     private static View stack;
     private static RailContentFrame frame;
-    private static float originalX;
+    private static NativeTranslationLease xLease;
+    private static float columnX = Float.NaN;
+    private static boolean writingX;
+    private static final Matrix columnMatrix = new Matrix(), columnInverse = new Matrix();
+    private static final RectF columnBox = new RectF();
+    private static final float[] columnUnit = new float[4];
     private static boolean installed;
     private static long measureOverrides, frameOverrides, translationOverrides;
     private static int nativeMeasureWidth, nativeLeft, nativeWidth;
@@ -24,31 +31,41 @@ final class RailStackBounds {
             Method setFrame = Xp.findMethodExact(type, "setFrame", int.class, int.class, int.class, int.class);
             Method setX = Xp.findMethodExact(type, "setTranslationX", float.class);
             Xp.hook(measure, chain -> {
-                if (!owns(chain.getThisObject())) return chain.proceed();
+                if (!ownsStack(chain.getThisObject())) return chain.proceed();
                 int spec = (Integer) chain.getArg(0);
                 nativeMeasureWidth = View.MeasureSpec.getSize(spec);
+                if (frame == null) return chain.proceed();
                 int fixed = View.MeasureSpec.makeMeasureSpec(frame.width, View.MeasureSpec.EXACTLY);
                 if (spec == fixed) return chain.proceed();
                 measureOverrides++;
                 return chain.proceed(new Object[]{fixed, chain.getArg(1)});
             });
             Xp.hook(setFrame, chain -> {
-                if (!owns(chain.getThisObject())) return chain.proceed();
+                if (!ownsStack(chain.getThisObject())) return chain.proceed();
                 int left = (Integer) chain.getArg(0), right = (Integer) chain.getArg(2);
                 nativeLeft = left; nativeWidth = right - left;
+                if (frame == null) return chain.proceed();
                 if (frame.matches(left, right - left)) return chain.proceed();
                 frameOverrides++;
                 // Leave vertical stacking, scrolling and animation entirely native.
                 return chain.proceed(new Object[]{frame.left, chain.getArg(1), frame.right(), chain.getArg(3)});
             });
             Xp.hook(setX, chain -> {
-                if (!owns(chain.getThisObject()) || ((Float) chain.getArg(0)) == 0f) return chain.proceed();
-                translationOverrides++;
-                return chain.proceed(new Object[]{0f});
+                if (writingX || chain.getThisObject() != stack || xLease == null) return chain.proceed();
+                float requested = (Float) chain.getArg(0);
+                // Observe native writes even as keyguard eligibility ends, including equal values.
+                xLease.nativeWrite(requested);
+                if (!ownsStack(chain.getThisObject()) || frame == null && !Float.isFinite(columnX))
+                    return chain.proceed();
+                float desired = frame != null ? 0f : columnX;
+                if (requested != desired) translationOverrides++;
+                Object result = chain.proceed(new Object[]{desired});
+                if (stack != null && stack.getTranslationX() == desired) xLease.wrote(desired);
+                return result;
             });
             installed = true;
         } catch (Throwable error) {
-            // Partial hooks stay inert: owns() requires the complete installation.
+            // Partial hooks stay inert: ownership requires the complete installation.
             installed = false;
             Xp.w(Main.TAG + "fixed stack bounds unavailable: " + error);
         }
@@ -153,10 +170,6 @@ final class RailStackBounds {
                 .setExceptionMode(io.github.libxposed.api.XposedInterface.ExceptionMode.PASSTHROUGH).intercept(hook);
     }
 
-    private static boolean owns(Object candidate) {
-        return frame != null && ownsStack(candidate);
-    }
-
     private static boolean ownsStack(Object candidate) {
         return installed && candidate != null && candidate == stack && Main.sRightRail
                 && Main.sReflowLockContent && Main.keyguardLocked() && !Main.bouncerShown();
@@ -179,29 +192,67 @@ final class RailStackBounds {
         if (fixedBounds && target == null) { release(); return false; }
         if (stack != next) {
             release();
-            originalX = next.getTranslationX();
+            xLease = new NativeTranslationLease(next.getTranslationX());
             stack = next;
 
         }
         boolean wasFixed = frame != null;
+        boolean hadX = wasFixed || Float.isFinite(columnX);
         boolean changed = wasFixed != (target != null) || target != null && !target.matches(frame.left, frame.width);
-        if (!wasFixed && target != null) originalX = next.getTranslationX();
         frame = target;
+        boolean combined = target == null && FoldMusicRuntime.combinedRequested() && Main.coverModeOn();
+        float moved = combined ? combinedColumnX(next, root, content) : Float.NaN;
+        if (combined && !Float.isFinite(moved) && !wasFixed) moved = columnX;
+        columnX = moved;
         if (edgeInstalled && edge != null) edge.configure(next, target == null ? next.getWidth() : target.width, next.getHeight(),
                 next.getResources().getDisplayMetrics().density);
-        if (target != null && next.getTranslationX() != 0f) next.setTranslationX(0f);
-        else if (wasFixed && target == null && next.getTranslationX() == 0f) next.setTranslationX(originalX);
+        if (target != null) writeX(next, 0f, true);
+        else if (Float.isFinite(columnX)) writeX(next, columnX, true);
+        else if (hadX && xLease != null) {
+            writeX(next, xLease.restore(next.getTranslationX()), false);
+            xLease.release();
+        }
         if (changed) next.requestLayout();
-        return target != null;
+        return target != null || Float.isFinite(columnX);
+    }
+
+    /** Only the combined page moves the whole native column; its width remains OEM-owned. */
+    private static float combinedColumnX(View next, View root, FoldMusicLayout.Box content) {
+        int id = next.getResources().getIdentifier("mi_media_controls", "id", "com.android.systemui");
+        View player = id == 0 ? null : next.findViewById(id);
+        if (player == null || !player.isAttachedToWindow() || player.getWidth() <= 0
+                || !(next.getParent() instanceof View)) return Float.NaN;
+        columnMatrix.reset(); player.transformMatrixToGlobal(columnMatrix);
+        columnInverse.reset(); root.transformMatrixToGlobal(columnInverse);
+        if (!columnInverse.invert(columnInverse)) return Float.NaN;
+        columnMatrix.postConcat(columnInverse);
+        columnBox.set(0, 0, player.getWidth(), player.getHeight());
+        columnMatrix.mapRect(columnBox);
+        columnMatrix.reset(); ((View) next.getParent()).transformMatrixToGlobal(columnMatrix);
+        columnMatrix.postConcat(columnInverse);
+        columnUnit[0] = columnUnit[1] = columnUnit[3] = 0f; columnUnit[2] = 1f;
+        columnMatrix.mapPoints(columnUnit);
+        float desiredLeft = content.left + FoldMusicLayout.GAP_DP * root.getResources().getDisplayMetrics().density;
+        return RailContentFrame.columnTranslation(next.getTranslationX(), columnBox.left, desiredLeft,
+                columnUnit[2] - columnUnit[0]);
+    }
+
+    private static void writeX(View view, float value, boolean own) {
+        if (own ? Math.abs(view.getTranslationX() - value) < .25f : view.getTranslationX() == value) return;
+        writingX = true;
+        try {
+            view.setTranslationX(value);
+            if (own && xLease != null && view.getTranslationX() == value) xLease.wrote(value);
+        } finally { writingX = false; }
     }
 
     static void release() {
         View previous = stack;
-        boolean wasFixed = frame != null;
-        stack = null; frame = null;
+        NativeTranslationLease lease = xLease;
+        stack = null; frame = null; columnX = Float.NaN; xLease = null;
         if (edge != null) edge.release();
         if (previous == null) return;
-        if (wasFixed && previous.getTranslationX() == 0f) previous.setTranslationX(originalX);
+        if (lease != null) writeX(previous, lease.restore(previous.getTranslationX()), false);
         // Native LayoutParams were never touched, so a fresh native pass restores the full shade.
         previous.requestLayout();
     }
@@ -210,6 +261,6 @@ final class RailStackBounds {
         return "installed=" + installed + " target=" + (frame == null ? "none" : frame.left + ".." + frame.right())
                 + " native=" + nativeLeft + "/" + nativeWidth + " measure=" + nativeMeasureWidth
                 + " overrides=" + measureOverrides + "/" + frameOverrides + "/" + translationOverrides
-                + " softEdge=" + edgeInstalled;
+                + " columnX=" + columnX + " softEdge=" + edgeInstalled;
     }
 }
