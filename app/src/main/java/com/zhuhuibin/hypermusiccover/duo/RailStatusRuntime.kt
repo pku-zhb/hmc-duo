@@ -20,6 +20,7 @@ internal object RailStatusRuntime {
     private var holdingX = false
     private var nativeInkX = Float.NaN
     private var correctedInkX = Float.NaN
+    private var timeReadyWindow: View? = null
 
     @JvmStatic fun update(window: View, plan: RightRailLayout.Plan) {
         runCatching {
@@ -84,6 +85,7 @@ internal object RailStatusRuntime {
             status.translationY = top-status.top + correctionY
             status.visibility = View.VISIBLE
             status.setListening(true)
+            publishTimeReadiness()
             refreshTime()
         }.onFailure {
             hide()
@@ -99,7 +101,18 @@ internal object RailStatusRuntime {
     @JvmStatic fun hide() {
         holdingX = false; nativeInkX = Float.NaN; correctedInkX = Float.NaN
         view?.apply { visibility = View.INVISIBLE; setTimeAlpha(0f); setListening(false) }
+        publishTimeReadiness()
     }
+
+    /** Resource readiness is an event; it never publishes an uncommitted replacement clock. */
+    private fun publishTimeReadiness() {
+        val ready = timeWindow()
+        if (timeReadyWindow === ready) return
+        timeReadyWindow = ready
+        ClockCollapse.statusDestinationChanged()
+    }
+
+    @JvmStatic fun timeWindow(): View? = if (timeAvailable()) parent?.rootView else null
 
     /** Called after the shared clock pose is written, independent of pre-draw listener order. */
     @JvmStatic fun refreshTime() {
