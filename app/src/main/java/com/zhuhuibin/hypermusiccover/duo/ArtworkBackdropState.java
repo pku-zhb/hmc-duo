@@ -7,6 +7,13 @@ final class ArtworkBackdropState {
     private int source = -1, drawn = -1;
     private boolean active, revealed;
 
+    /** A compact unavailable lyric page has no foreground to put an artwork background behind. */
+    static boolean foregroundReady(boolean explicitPlayer, boolean compact, boolean lyricContentReady) {
+        // The legacy explicit player page has its own background choice. A real artwork
+        // page (including combined layout) or an available lyric/BPM page can also own it.
+        return explicitPlayer || !compact || lyricContentReady;
+    }
+
     static boolean eligible(boolean selected, boolean cover, boolean awake, boolean locked,
                             boolean goingAway, boolean onKeyguard) {
         return selected && cover && awake && locked && !goingAway && onKeyguard;

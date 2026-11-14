@@ -2,6 +2,7 @@ package com.zhuhuibin.hypermusiccover.duo;
 
 import android.content.Intent;
 import android.os.SystemClock;
+import android.os.Looper;
 import android.view.View;
 import android.view.ViewGroup;
 
@@ -35,7 +36,7 @@ final class CoverBackdrop {
         final int page, surface, generation, desiredRenderer, width, height, blur, dim, clockDestination;
         final View window;
         final boolean navigation, cover, playerChosen, lyricsRequested, notificationCompact;
-        final boolean combinedRequested, pageClockRequested, hidden, backgroundWanted, fullComposition;
+        final boolean combinedRequested, pageClockRequested, foregroundReady, hidden, backgroundWanted, fullComposition;
         final boolean locked, goingAway, onKeyguard, awake, compact, lyrics, wantsLyrics;
         final float bias;
 
@@ -70,8 +71,9 @@ final class CoverBackdrop {
             lyrics = LockLyrics.hasLyrics();
             wantsLyrics = lyricsRequested && !notificationCompact && !playerChosen
                     && LockLyrics.hasDisplayContent();
+            foregroundReady = ArtworkBackdropState.foregroundReady(playerChosen, compact, wantsLyrics);
             hidden = Main.sHidePlayerBackground || Main.coverOnTapResting()
-                    || NotificationArtworkPolicy.nativeBackdrop(notificationCompact);
+                    || NotificationArtworkPolicy.nativeBackdrop(notificationCompact) || !foregroundReady;
             fullComposition = CoverCardLayer.fullScene();
             backgroundWanted = cover && !hidden && !navigation && generation >= 0
                     && (surface == SURFACE_LIT || surface == SURFACE_FULL_AOD);
@@ -89,6 +91,7 @@ final class CoverBackdrop {
                     && cover == s.cover && navigation == s.navigation && playerChosen == s.playerChosen
                     && lyricsRequested == s.lyricsRequested && notificationCompact == s.notificationCompact
                     && combinedRequested == s.combinedRequested && hidden == s.hidden
+                    && foregroundReady == s.foregroundReady
                     && compact == s.compact && lyrics == s.lyrics && wantsLyrics == s.wantsLyrics
                     && fullComposition == s.fullComposition && locked == s.locked
                     && goingAway == s.goingAway && onKeyguard == s.onKeyguard && awake == s.awake
@@ -167,7 +170,8 @@ final class CoverBackdrop {
                 + (handoff.local() ? handoff.generation() : -1) + " ownerEpoch=" + handoff.epoch()
                 + " geometry=" + scene.geometryRevision + " window="
                 + (scene.window == null ? "none" : Integer.toHexString(System.identityHashCode(scene.window)))
-                + " hidden=" + scene.hidden + " cover=" + scene.cover
+                + " hidden=" + scene.hidden + " foregroundReady=" + scene.foregroundReady
+                + " lyricsReady=" + scene.wantsLyrics + " cover=" + scene.cover
                 + " locked=" + Main.keyguardLocked() + " dim=" + Main.sWallpaperDim
                 + " target=" + dimTarget + " compact=" + LockLyrics.wantsCompactArtwork()
                 + " lyrics=" + LockLyrics.hasLyrics() + " window=" + LockLyrics.wantsWindow()
@@ -185,8 +189,9 @@ final class CoverBackdrop {
     }
 
     static boolean hidden() {
-        return Main.sHidePlayerBackground || Main.coverOnTapResting()
-                || NotificationArtworkPolicy.nativeBackdrop(LockLyrics.notificationCompact());
+        // The artwork worker must use the same normalized decision without walking Views.
+        Snapshot scene = Looper.myLooper() == Looper.getMainLooper() ? snapshot() : published;
+        return scene == null || scene.hidden;
     }
 
     static boolean nativeForRailCard() {

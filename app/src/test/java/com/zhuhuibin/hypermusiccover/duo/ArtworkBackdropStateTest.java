@@ -4,6 +4,75 @@ import org.junit.Test;
 import static org.junit.Assert.*;
 
 public class ArtworkBackdropStateTest {
+    @Test public void unavailableCompactLyricsDoNotOwnAnArtworkBackground() {
+        // Instrumental/no-provider result: the requested page is LYRICS, but compact=true
+        // and no lyric/BPM content can render. A prepared artwork bitmap does not change it.
+        assertFalse(ArtworkBackdropState.foregroundReady(false, true, false));
+        assertTrue(ArtworkBackdropState.foregroundReady(false, true, true));
+    }
+
+    @Test public void realArtworkCombinedAndExplicitPlayerPagesKeepTheirBackgroundChoice() {
+        assertTrue(ArtworkBackdropState.foregroundReady(false, false, false)); // ARTWORK
+        assertTrue(ArtworkBackdropState.foregroundReady(false, false, true)); // combined
+        assertTrue(ArtworkBackdropState.foregroundReady(true, true, false)); // explicit PLAYER
+        assertTrue(ArtworkBackdropState.foregroundReady(false, true, true)); // lyrics or BPM
+    }
+
+    @Test public void anEmptyLyricSelectionRemainsNativeAfterTheNotificationOverrideClears() {
+        ArtworkBackdropState.Handoff handoff = new ArtworkBackdropState.Handoff();
+        Object window = new Object();
+        handoff.select(1L, ArtworkBackdropState.MESH, window, 4L, 3);
+        handoff.presented(1L, ArtworkBackdropState.MESH, window, 4L, 3, 1f);
+        // Opening LIST closes the artwork foreground.
+        handoff.select(2L, ArtworkBackdropState.NATIVE, window, 4L, 3);
+        assertFalse(handoff.local());
+        // Explicit lyrics selection clears LIST's compact override, but an unavailable
+        // lyric page is still compact and empty. Neither awake nor AOD may revive its fill.
+        boolean ready = ArtworkBackdropState.foregroundReady(false, true, false);
+        handoff.select(3L, ready ? ArtworkBackdropState.MESH : ArtworkBackdropState.NATIVE,
+                window, 4L, 3);
+        assertFalse(handoff.presented(3L, ArtworkBackdropState.MESH, window, 4L, 3, 1f));
+        handoff.select(4L, ready ? ArtworkBackdropState.STILL : ArtworkBackdropState.NATIVE,
+                window, 4L, 3);
+        assertFalse(handoff.presented(1L, ArtworkBackdropState.MESH, window, 4L, 3, 1f));
+        assertFalse(handoff.presented(4L, ArtworkBackdropState.STILL, window, 4L, 3, 1f));
+        assertFalse(handoff.local());
+    }
+
+    @Test public void losingContentWithdrawsTheBackgroundAndRealContentCanReopenItWithoutATimer() {
+        ArtworkBackdropState.Handoff handoff = new ArtworkBackdropState.Handoff();
+        Object window = new Object();
+        handoff.select(1L, ArtworkBackdropState.STILL, window, 0L, 8);
+        handoff.presented(1L, ArtworkBackdropState.STILL, window, 0L, 8, 1f);
+        assertTrue(handoff.local());
+        boolean ready = ArtworkBackdropState.foregroundReady(false, true, false);
+        handoff.select(2L, ready ? ArtworkBackdropState.STILL : ArtworkBackdropState.NATIVE,
+                window, 0L, 8);
+        assertFalse(handoff.local());
+        assertFalse(handoff.retains(ArtworkBackdropState.STILL));
+        // Actual lyric/BPM content becomes available while the selected page stays put.
+        ready = ArtworkBackdropState.foregroundReady(false, true, true);
+        handoff.select(3L, ready ? ArtworkBackdropState.STILL : ArtworkBackdropState.NATIVE,
+                window, 0L, 8);
+        assertFalse(handoff.local());
+        assertFalse(handoff.presented(1L, ArtworkBackdropState.STILL, window, 0L, 8, 1f));
+        assertTrue(handoff.presented(3L, ArtworkBackdropState.STILL, window, 0L, 8, 1f));
+        assertTrue(handoff.local());
+    }
+
+    @Test public void reopeningArtworkAfterAnInstrumentalMissStillRequiresItsOwnDraw() {
+        ArtworkBackdropState.Handoff handoff = new ArtworkBackdropState.Handoff();
+        Object window = new Object();
+        handoff.select(1L, ArtworkBackdropState.NATIVE, window, 0L, 5);
+        boolean ready = ArtworkBackdropState.foregroundReady(false, false, false);
+        handoff.select(2L, ready ? ArtworkBackdropState.MESH : ArtworkBackdropState.NATIVE,
+                window, 0L, 5);
+        assertFalse(handoff.local());
+        assertFalse(handoff.presented(1L, ArtworkBackdropState.MESH, window, 0L, 5, 1f));
+        assertTrue(handoff.presented(2L, ArtworkBackdropState.MESH, window, 0L, 5, 1f));
+        assertTrue(handoff.local());
+    }
+
     @Test public void fullScreenAodBackgroundDoesNotRequireAClockHoldOrVisibleClockContainer() {
         // A native full-AOD scene is sufficient even when the foreground clock never
         // acquired a custom pose or its own container is hidden by native notifications.
