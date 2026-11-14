@@ -241,7 +241,9 @@ final class VideoBackdropMesh extends View implements Choreographer.FrameCallbac
     /** Local pixels, not a requested setting, select the native card's sampling domain. */
     static boolean samplingBackdropIn(View source) {
         VideoBackdropMesh v = view;
-        return source != null && backdropPresented()
+        // A full-screen foreground band may still draw over native wallpaper. Its presence
+        // does not authorize the media sampler after the artwork background relinquishes it.
+        return source != null && !CoverBackdrop.hidden() && backdropPresented()
                 && v.getRootView() == source.getRootView();
     }
 
