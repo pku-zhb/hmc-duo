@@ -32,7 +32,7 @@ final class CoverBackdrop {
 
     /** One immutable input for the page, clock and background consumers of this frame. */
     static final class Snapshot {
-        final long epoch, geometryRevision;
+        final long epoch, geometryRevision, sourceIdentity;
         final int page, surface, generation, desiredRenderer, width, height, blur, dim, clockDestination;
         final View window;
         final boolean navigation, cover, playerChosen, lyricsRequested, notificationCompact;
@@ -59,6 +59,7 @@ final class CoverBackdrop {
             width = geometry.width;
             height = geometry.height;
             generation = CoverCardLayer.backdropGeneration();
+            sourceIdentity = CoverCardLayer.backdropSourceIdentity();
             cover = Main.coverModeOn();
             navigation = ImmersiveHost.navigationClock();
             playerChosen = LockLyrics.playerChosen();
@@ -88,6 +89,7 @@ final class CoverBackdrop {
         private boolean same(Snapshot s) {
             return s != null && surface == s.surface && page == s.page && window == s.window
                     && geometryRevision == s.geometryRevision && generation == s.generation
+                    && sourceIdentity == s.sourceIdentity
                     && cover == s.cover && navigation == s.navigation && playerChosen == s.playerChosen
                     && lyricsRequested == s.lyricsRequested && notificationCompact == s.notificationCompact
                     && combinedRequested == s.combinedRequested && hidden == s.hidden
@@ -124,7 +126,26 @@ final class CoverBackdrop {
 
     /** Called after draw recording. Commit only on the next frame, never from inside onDraw. */
     static void drawn(int renderer, Snapshot scene, View view, int generation, float alpha) {
-        if (generation != scene.generation || generation < 0 || !Float.isFinite(alpha)) return;
+        drawn(renderer, scene, view, generation, alpha, alpha);
+    }
+
+    static void drawn(int renderer, Snapshot scene, View view, int generation,
+                      float compositionAlpha, float rendererAlpha) {
+        if (generation != scene.generation || generation < 0) return;
+        float alpha = ArtworkBackdropState.compositionEvidence(compositionAlpha, rendererAlpha);
+        if (!Float.isFinite(alpha)) {
+            // The outgoing pixels are still visible, but the new composition contributed
+            // nothing. It cannot acknowledge or revoke the outgoing display list.
+            pending[renderer] = null;
+            return;
+        }
+        boolean invisible = alpha <= .001f;
+        // An old composition may remain visible during a rebuild, but its draw cannot
+        // attest that those pixels were composed for this new geometry/window/mode.
+        if (!invisible && !CoverCardLayer.backdropCompositionMatches(scene)) {
+            pending[renderer] = null;
+            return;
+        }
         pending[renderer] = new Presented(scene, view, generation, alpha);
         if (!(handoff.needsPresentation(renderer, alpha)
                 || alpha <= .001f && handoff.owner() == renderer) || commitPosted) return;
@@ -146,7 +167,7 @@ final class CoverBackdrop {
 
     static boolean retains(int renderer, Snapshot scene) {
         return scene.backgroundWanted && handoff.matches(scene.epoch, scene.window,
-                scene.geometryRevision, scene.generation) && handoff.retains(renderer);
+                scene.sourceIdentity, scene.geometryRevision, scene.generation) && handoff.retains(renderer);
     }
 
     /** Sampling follows the final renderer submission, not requested cover or AOD flags. */
@@ -154,7 +175,8 @@ final class CoverBackdrop {
         Snapshot scene = snapshot();
         select(scene);
         return source != null && source.getRootView() == scene.window && scene.backgroundWanted
-                && handoff.matches(scene.epoch, scene.window, scene.geometryRevision, scene.generation)
+                && handoff.matches(scene.epoch, scene.window, scene.sourceIdentity,
+                    scene.geometryRevision, scene.generation)
                 && handoff.local();
     }
 
@@ -167,14 +189,16 @@ final class CoverBackdrop {
         String state = "epoch=" + scene.epoch + " surface=" + scene.surface + " page=" + scene.page
                 + " renderer=" + scene.desiredRenderer + " owner=" + handoff.owner()
                 + " generation=" + scene.generation + " committed="
-                + (handoff.local() ? handoff.generation() : -1) + " ownerEpoch=" + handoff.epoch()
-                + " geometry=" + scene.geometryRevision + " window="
+                + (handoff.local() ? handoff.generation() : -1) + " ownerEpoch=" + handoff.ownerEpoch()
+                + " geometry=" + scene.geometryRevision + " ownerGeometry=" + handoff.ownerGeometry()
+                + " source=" + scene.sourceIdentity + " ownerSource=" + handoff.ownerSource() + " window="
                 + (scene.window == null ? "none" : Integer.toHexString(System.identityHashCode(scene.window)))
                 + " hidden=" + scene.hidden + " foregroundReady=" + scene.foregroundReady
                 + " lyricsReady=" + scene.wantsLyrics + " cover=" + scene.cover
                 + " locked=" + Main.keyguardLocked() + " dim=" + Main.sWallpaperDim
                 + " target=" + dimTarget + " compact=" + LockLyrics.wantsCompactArtwork()
                 + " lyrics=" + LockLyrics.hasLyrics() + " window=" + LockLyrics.wantsWindow()
+                + " composition=[" + CoverCardLayer.compositionDescription() + "]"
                 + " localBackdrop=[" + VideoBackdropMesh.describe() + "]";
         if (view == null) return state + " layer=none";
         state += " alpha=" + view.getAlpha() + " shown=" + view.isShown()
@@ -260,7 +284,7 @@ final class CoverBackdrop {
 
     private static void select(Snapshot scene) {
         handoff.select(scene.epoch, scene.desiredRenderer, scene.window,
-                scene.geometryRevision, scene.generation);
+                scene.sourceIdentity, scene.geometryRevision, scene.generation);
         for (int renderer = ArtworkBackdropState.MESH; renderer <= ArtworkBackdropState.STILL; renderer++) {
             View view = presenters[renderer];
             if (view != null && (!view.isAttachedToWindow() || !view.isShown()
@@ -273,8 +297,13 @@ final class CoverBackdrop {
             pending[renderer] = null;
             if (!frame.renderer.isAttachedToWindow() || !frame.renderer.isShown()
                     || frame.renderer.getRootView() != scene.window) continue;
+            if (frame.alpha <= .001f) {
+                handoff.invisible(frame.scene.epoch, renderer, frame.renderer.getRootView(), frame.scene.sourceIdentity);
+                continue;
+            }
+            if (!CoverCardLayer.backdropCompositionMatches(scene)) continue;
             if (handoff.presented(frame.scene.epoch, renderer, frame.renderer.getRootView(),
-                    frame.scene.geometryRevision, frame.generation, frame.alpha))
+                    frame.scene.sourceIdentity, frame.scene.geometryRevision, frame.generation, frame.alpha))
                 presenters[renderer] = frame.renderer;
         }
     }

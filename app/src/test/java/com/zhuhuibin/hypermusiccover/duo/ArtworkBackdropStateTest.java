@@ -4,6 +4,129 @@ import org.junit.Test;
 import static org.junit.Assert.*;
 
 public class ArtworkBackdropStateTest {
+    @Test public void anOpaqueRendererDoesNotAcknowledgeANewCompositionWithZeroContribution() {
+        assertTrue(Float.isNaN(ArtworkBackdropState.compositionEvidence(0f, 1f)));
+        assertTrue(Float.isNaN(ArtworkBackdropState.compositionEvidence(Float.NaN, 1f)));
+        assertEquals(.4f, ArtworkBackdropState.compositionEvidence(.4f, 1f), 0f);
+        assertEquals(.2f, ArtworkBackdropState.compositionEvidence(.4f, .2f), 0f);
+    }
+
+    @Test public void actualRendererInvisibilityWithdrawsEvenWhenTheCompositionProofIsUnknown() {
+        assertEquals(0f, ArtworkBackdropState.compositionEvidence(1f, 0f), 0f);
+        assertEquals(0f, ArtworkBackdropState.compositionEvidence(Float.NaN, 0f), 0f);
+        assertEquals(0f, ArtworkBackdropState.compositionEvidence(1f, Float.NaN), 0f);
+    }
+
+    @Test public void sameSourceGeometryRebuildKeepsTheOutgoingFramesHonestOriginalKey() {
+        ArtworkBackdropState.Handoff handoff = new ArtworkBackdropState.Handoff();
+        Object window = new Object();
+        handoff.select(1L, ArtworkBackdropState.MESH, window, 41L, 7L, 11);
+        handoff.presented(1L, ArtworkBackdropState.MESH, window, 41L, 7L, 11, 1f);
+        handoff.select(2L, ArtworkBackdropState.MESH, window, 41L, 8L, 12);
+        assertTrue(handoff.local());
+        assertEquals(7L, handoff.ownerGeometry());
+        assertEquals(11, handoff.generation());
+        assertEquals(1L, handoff.ownerEpoch());
+        assertEquals(41L, handoff.ownerSource());
+        assertTrue(handoff.matches(2L, window, 41L, 8L, 12));
+        assertTrue(handoff.needsPresentation(ArtworkBackdropState.MESH, 1f));
+        // Drawing the retained old composition cannot claim that it was made for revision 8.
+        assertFalse(handoff.presented(2L, ArtworkBackdropState.MESH, window, 41L, 7L, 11, 1f));
+        assertEquals(7L, handoff.ownerGeometry());
+        assertFalse(handoff.presented(2L, ArtworkBackdropState.MESH, window, 41L, 8L, 12, .5f));
+        assertEquals(7L, handoff.ownerGeometry());
+        assertTrue(handoff.presented(2L, ArtworkBackdropState.MESH, window, 41L, 8L, 12, 1f));
+        assertEquals(8L, handoff.ownerGeometry());
+        assertEquals(12, handoff.generation());
+        assertEquals(2L, handoff.ownerEpoch());
+    }
+
+    @Test public void modeOrBlurRecompositionNeedsANewDrawEvenInTheSameRendererAndGeometry() {
+        ArtworkBackdropState.Handoff handoff = new ArtworkBackdropState.Handoff();
+        Object window = new Object();
+        handoff.select(1L, ArtworkBackdropState.MESH, window, 41L, 7L, 11);
+        handoff.presented(1L, ArtworkBackdropState.MESH, window, 41L, 7L, 11, 1f);
+        handoff.select(2L, ArtworkBackdropState.MESH, window, 41L, 7L, 12);
+        assertTrue(handoff.local());
+        assertEquals(11, handoff.generation());
+        assertTrue(handoff.needsPresentation(ArtworkBackdropState.MESH, 1f));
+        assertFalse(handoff.presented(1L, ArtworkBackdropState.MESH, window, 41L, 7L, 11, 1f));
+        handoff.presented(2L, ArtworkBackdropState.MESH, window, 41L, 7L, 12, 1f);
+        assertEquals(12, handoff.generation());
+        assertFalse(handoff.needsPresentation(ArtworkBackdropState.MESH, 1f));
+    }
+
+    @Test public void aDifferentOriginalSourceCannotBorrowAnOutgoingFrameWithTheSameGeneration() {
+        ArtworkBackdropState.Handoff handoff = new ArtworkBackdropState.Handoff();
+        Object window = new Object();
+        handoff.select(1L, ArtworkBackdropState.MESH, window, 41L, 7L, 11);
+        handoff.presented(1L, ArtworkBackdropState.MESH, window, 41L, 7L, 11, 1f);
+        handoff.select(2L, ArtworkBackdropState.MESH, window, 42L, 7L, 11);
+        assertFalse(handoff.local());
+        assertEquals(-1, handoff.generation());
+        assertFalse(handoff.presented(2L, ArtworkBackdropState.MESH, window, 41L, 7L, 11, 1f));
+        assertFalse(handoff.invisible(1L, ArtworkBackdropState.MESH, window, 41L));
+        handoff.presented(2L, ArtworkBackdropState.MESH, window, 42L, 7L, 11, 1f);
+        assertEquals(42L, handoff.ownerSource());
+    }
+
+    @Test public void aNewWindowAndANativeSceneBothWithdrawTheRetainedSourceImmediately() {
+        ArtworkBackdropState.Handoff handoff = new ArtworkBackdropState.Handoff();
+        Object first = new Object(), second = new Object();
+        handoff.select(1L, ArtworkBackdropState.STILL, first, 41L, 7L, 11);
+        handoff.presented(1L, ArtworkBackdropState.STILL, first, 41L, 7L, 11, 1f);
+        handoff.select(2L, ArtworkBackdropState.STILL, second, 41L, 8L, 12);
+        assertFalse(handoff.local());
+        assertFalse(handoff.presented(2L, ArtworkBackdropState.STILL, first, 41L, 8L, 12, 1f));
+        handoff.presented(2L, ArtworkBackdropState.STILL, second, 41L, 8L, 12, 1f);
+        handoff.select(3L, ArtworkBackdropState.NATIVE, second, 41L, 8L, 12);
+        assertFalse(handoff.local());
+        handoff.select(4L, ArtworkBackdropState.STILL, second, 41L, 8L, 12);
+        assertFalse(handoff.local());
+        assertFalse(handoff.presented(2L, ArtworkBackdropState.STILL, second, 41L, 8L, 12, 1f));
+    }
+
+    @Test public void aWithdrawnOutgoingRendererCannotFallBackToAnOldGeometryCandidate() {
+        ArtworkBackdropState.Handoff handoff = new ArtworkBackdropState.Handoff();
+        Object window = new Object();
+        handoff.select(1L, ArtworkBackdropState.STILL, window, 41L, 7L, 11);
+        handoff.presented(1L, ArtworkBackdropState.STILL, window, 41L, 7L, 11, 1f);
+        handoff.presented(1L, ArtworkBackdropState.MESH, window, 41L, 7L, 11, 1f);
+        handoff.select(2L, ArtworkBackdropState.MESH, window, 41L, 8L, 12);
+        assertTrue(handoff.local());
+        handoff.withdraw(ArtworkBackdropState.STILL);
+        assertFalse(handoff.local());
+        assertEquals(ArtworkBackdropState.NATIVE, handoff.owner());
+    }
+
+    @Test public void aZeroAlphaOutgoingDrawRevokesPixelsWithoutMasqueradingAsTheNewGeometry() {
+        ArtworkBackdropState.Handoff handoff = new ArtworkBackdropState.Handoff();
+        Object window = new Object();
+        handoff.select(1L, ArtworkBackdropState.MESH, window, 41L, 7L, 11);
+        handoff.presented(1L, ArtworkBackdropState.MESH, window, 41L, 7L, 11, 1f);
+        handoff.select(2L, ArtworkBackdropState.STILL, window, 41L, 8L, 12);
+        assertFalse(handoff.invisible(1L, ArtworkBackdropState.MESH, window, 41L));
+        assertTrue(handoff.local());
+        assertTrue(handoff.invisible(2L, ArtworkBackdropState.MESH, window, 41L));
+        assertFalse(handoff.local());
+    }
+
+    @Test public void geometryAndAodRendererCanChangeTogetherWithoutRelabellingTheOldFrame() {
+        ArtworkBackdropState.Handoff handoff = new ArtworkBackdropState.Handoff();
+        Object window = new Object();
+        handoff.select(1L, ArtworkBackdropState.MESH, window, 41L, 7L, 11);
+        handoff.presented(1L, ArtworkBackdropState.MESH, window, 41L, 7L, 11, 1f);
+        handoff.select(2L, ArtworkBackdropState.STILL, window, 41L, 8L, 12);
+        assertTrue(handoff.retains(ArtworkBackdropState.MESH));
+        handoff.presented(2L, ArtworkBackdropState.STILL, window, 41L, 8L, 12, .5f);
+        assertEquals(ArtworkBackdropState.MESH, handoff.owner());
+        assertEquals(7L, handoff.ownerGeometry());
+        handoff.presented(2L, ArtworkBackdropState.STILL, window, 41L, 8L, 12, 1f);
+        assertEquals(ArtworkBackdropState.STILL, handoff.owner());
+        assertEquals(8L, handoff.ownerGeometry());
+        assertEquals(41L, handoff.ownerSource());
+    }
+
     @Test public void unavailableCompactLyricsDoNotOwnAnArtworkBackground() {
         // Instrumental/no-provider result: the requested page is LYRICS, but compact=true
         // and no lyric/BPM content can render. A prepared artwork bitmap does not change it.
