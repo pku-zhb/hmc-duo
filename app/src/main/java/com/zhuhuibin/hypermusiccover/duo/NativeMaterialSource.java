@@ -4,8 +4,8 @@ package com.zhuhuibin.hypermusiccover.duo;
 final class NativeMaterialSource {
     private NativeMaterialSource() {}
 
-    static boolean ownedClass(String name) {
-        return name.startsWith("com.zhuhuibin.hypermusiccover.duo.");
+    static boolean ownedTarget(Object target) {
+        return target instanceof NativeMaterialTarget;
     }
 
     static boolean accepts(String resourceName, Iterable<String> lineage, boolean registeredTarget) {

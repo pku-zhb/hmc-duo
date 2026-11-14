@@ -30,7 +30,7 @@ import kotlin.math.roundToInt
 import org.json.JSONObject
 
 /** HyperChanger's compact card, hosted in SystemUI's shortcut area. */
-internal class MiniPlayerView(context: Context) : FrameLayout(context) {
+internal class MiniPlayerView(context: Context) : FrameLayout(context), NativeMaterialTarget {
     private var materialLayer = MaterialElement(context)
     private val artwork = ImageView(context)
 

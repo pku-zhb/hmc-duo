@@ -43,7 +43,7 @@ final class NativeGlassRelay {
     static void registerBlurContainer(View target) { register(target, BLUR_TARGET); }
     private static void register(View target, int role) {
         // A caller cannot turn an OEM card into a relay destination by registering it.
-        if (target != null && NativeMaterialSource.ownedClass(target.getClass().getName()))
+        if (NativeMaterialSource.ownedTarget(target))
             synchronized (targets) { targets.put(target, targets.getOrDefault(target, 0) | role); }
     }
     static void unregister(View target) { targets.remove(target); palettes.remove(target); }
@@ -365,6 +365,7 @@ final class NativeGlassRelay {
         ArrayList<String> lineage = new ArrayList<>();
         boolean containsOwner = false;
         for (View v = view; v != null; v = v.getParent() instanceof View ? (View) v.getParent() : null) {
+            if (NativeMaterialSource.ownedTarget(v)) return false;
             lineage.add(v.getClass().getName());
             if (v == owner) containsOwner = true;
         }

@@ -94,3 +94,22 @@ sampling.
 This AOD correction has host frame-evidence checks. The owner's reported
 desktop-to-AOD scene still needs acceptance; no screenshot or live setting change
 was used to infer GPU pixels.
+
+## Destination identity in optimized builds
+
+The 0.2.7 release mapping confirmed that `-repackageclasses` renamed the owned
+material element, capsule, shortcut disc and glass carrier outside the original
+package. The relay's destination guard compared a runtime class-name prefix, so
+optimized APKs rejected these destinations even though unoptimized host tests
+accepted their original names. This is independent of whether the native player
+itself received a tuned recipe.
+
+Destination registration now requires the explicit `NativeMaterialTarget` type.
+Only the owned element and its capsule/disc/glass blur carriers implement it;
+class renaming does not change that identity. The native source walk also rejects
+marker ancestors, so a module-owned layer cannot become a player-material source.
+Native shortcut icons, their launch path and their geometry remain unchanged:
+the already existing `ShortcutDisc` behind each icon uses the same relay as pills.
+A regression checks a deliberately short-named marker implementation and rejects
+plain objects, null and a spoofed original-name string. Native-frame/GPU material
+appearance still needs owner acceptance after the optimized APK is loaded.

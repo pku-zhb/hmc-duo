@@ -417,7 +417,7 @@ internal object ColorOsPill {
  * uses a rounded native material carrier inside that mask: the native refraction frame and
  * the non-convex fusion contour are separate, rather than giving an arbitrary path to its SDF.
  */
-internal class GooGlass(context: Context, private val roundedCarrier: Boolean = false) : FrameLayout(context) {
+internal class GooGlass(context: Context, private val roundedCarrier: Boolean = false) : FrameLayout(context), NativeMaterialTarget {
     private val element = MaterialElement(context)
     private val local = Path()
     private val contourRim = if (roundedCarrier) GlassContourRim(context.resources.displayMetrics.density) else null

@@ -25,7 +25,7 @@ import kotlin.math.sqrt
  * (MiniPlayerRuntime.material): this frame is the blur container, [element] replays the card's
  * recorded calls. It never takes a touch - the button above it keeps its own.
  */
-internal class ShortcutDisc(context: Context) : FrameLayout(context) {
+internal class ShortcutDisc(context: Context) : FrameLayout(context), NativeMaterialTarget {
     private val element = MaterialElement(context)
 
     private var dressWith: ((ImageView) -> Boolean)? = null
