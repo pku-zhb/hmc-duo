@@ -423,9 +423,10 @@ object MiniPlayerRuntime {
             runCatching {
                 Xp.hookAll(cls, "apply") { chain ->
                     val target = chain.args.firstOrNull() as? View
-                    val card = Main.miniPlayerMediaHeader()
                     val candidateBg = target?.let { holderMediaBg(it) ?: Main.miniPlayerMediaBg(it) }
-                    val mine = effectDepth == 0 && target != null && target === card &&
+                    // A fold can bind a new native holder before Main's cached card changes.
+                    // The relay validates its native lineage and current window itself.
+                    val mine = effectDepth == 0 && target != null &&
                         NativeGlassRelay.bindNativePlayerBackground(candidateBg, target)
                     if (mine) {
                         // The holder's own mediaBg, the view the effect dresses: looked up by

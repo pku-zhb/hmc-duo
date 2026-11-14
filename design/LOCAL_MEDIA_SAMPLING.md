@@ -34,6 +34,28 @@ own baseline property; HMC's own writes are excluded from that capture.
 Normal solid media cards do not enter the lease. Unsupported getters or
 rejected writes restore native state and retire that binding.
 
+## Final material profile lifetime
+
+The retained framework's View setter describes a false RenderNode result as
+"params not updated". The JNI implementation has no exposed glass getter, so
+an arbitrary false result is not treated as proof of acceptance. Instead, a
+weak, node-identity cache records only observed successful lower-level writes
+on structurally verified native media backgrounds. After a scene-profile reset,
+a false write can reuse a value only when it exactly matches that same node's
+most recent successful write. Unknown false results and rejected/different
+values cannot seed the cache, a replacement node cannot borrow another node's
+recipe, and newer successful writes invalidate the old evidence. The cache
+observes already-known native nodes while keyguard is absent without applying
+anything to that scene.
+
+The known OEM effect entry identifies its own holder before the effect runs.
+It no longer waits for Main's cached current-card identity, which can still
+refer to the pre-fold holder. Final forwarding still requires the genuine
+native media lineage, an allowed locked scene and the current keyguard root;
+registered HMC destinations and island copies remain excluded as sources.
+These are source-path fixes and pure-host node-lifetime tests, not a verified
+GPU-material acceptance result.
+
 There is no per-frame hierarchy discovery or native effect rebind. The existing
 backdrop pre-draw guard evaluates cached state and only writes when the lease
 changes. The content-free `glassRelay` diagnostic reports its active state.
