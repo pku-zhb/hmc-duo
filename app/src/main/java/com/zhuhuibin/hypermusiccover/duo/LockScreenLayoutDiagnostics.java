@@ -53,6 +53,11 @@ final class LockScreenLayoutDiagnostics {
             View card = Main.findLockScreenView("mi_media_controls");
             out.put("player", view(card));
             out.put("playerMaterial", view(named(card, "media_bg")));
+            JSONObject controls = new JSONObject();
+            for (String name : new String[]{"album_art", "header_title", "media_seamless", "action0",
+                    "action1", "action2", "action3", "action4", "media_progress_bar"})
+                controls.put(name, view(named(card, name)));
+            out.put("playerControls", controls);
             out.put("notifications", view(named(root, "notification_stack_scroller")));
             View pill = MiniPlayerRuntime.pillForDiagnostics();
             out.put("pill", view(pill));
@@ -98,6 +103,18 @@ final class LockScreenLayoutDiagnostics {
         out.put("shown", v.isShown());
         out.put("attached", v.isAttachedToWindow());
         out.put("layoutRequested", v.isLayoutRequested());
+        android.graphics.Matrix global = new android.graphics.Matrix();
+        v.transformMatrixToGlobal(global);
+        android.graphics.RectF bounds = new android.graphics.RectF(0, 0, v.getWidth(), v.getHeight());
+        global.mapRect(bounds);
+        out.put("globalBounds", new JSONArray(new float[]{bounds.left, bounds.top, bounds.right, bounds.bottom}));
+        android.graphics.Rect visible = new android.graphics.Rect();
+        if (v.getGlobalVisibleRect(visible))
+            out.put("visibleBounds", new JSONArray(new int[]{visible.left, visible.top, visible.right, visible.bottom}));
+        if (v instanceof android.widget.SeekBar) {
+            android.widget.SeekBar seek = (android.widget.SeekBar) v;
+            out.put("progress", seek.getProgress()); out.put("max", seek.getMax());
+        }
         out.put("alpha", v.getAlpha());
         out.put("scaleX", v.getScaleX()); out.put("scaleY", v.getScaleY());
         out.put("translationX", v.getTranslationX()); out.put("translationY", v.getTranslationY());
