@@ -421,6 +421,7 @@
     <string name="clock_artwork_row_side">Time position</string>
     <string name="clock_artwork_row_left">Left of the date</string>
     <string name="clock_artwork_row_right">Right of the date</string>
+    <string name="lock_inner_full_screen_aod">Inner full-screen AOD (experimental)</string>
     <string name="lock_hide_status_bar">Hide lock-screen status bar</string>
     <string name="lock_hide_status_bar_summary">Hide the top system status bar on the lock screen. The home screen and control centre keep their normal status bars.</string>
     <string name="about_support_duo">Support Duo</string>

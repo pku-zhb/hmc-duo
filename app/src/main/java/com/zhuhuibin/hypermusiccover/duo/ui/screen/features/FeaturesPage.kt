@@ -230,6 +230,15 @@ internal fun TweaksPageView(
                     )
                     SwitchPreference(
                         insideMargin = featurePreferenceMargin,
+                        title = stringResource(R.string.lock_inner_full_screen_aod),
+                        checked = module.innerFullScreenAod, enabled = module.alive,
+                        onCheckedChange = {
+                            module = module.copy(innerFullScreenAod = it)
+                            ModuleBridge.setRailSetting(context, "innerFullScreenAod", it)
+                        },
+                    )
+                    SwitchPreference(
+                        insideMargin = featurePreferenceMargin,
                         title = stringResource(R.string.lock_hide_charging_hint),
                         summary = stringResource(R.string.lock_hide_charging_hint_summary),
                         checked = module.hideChargingHint, enabled = module.alive,

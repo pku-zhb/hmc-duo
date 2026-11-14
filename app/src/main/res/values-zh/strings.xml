@@ -461,6 +461,7 @@
     <string name="clock_artwork_row_side">小时间位置</string>
     <string name="clock_artwork_row_left">日期左侧</string>
     <string name="clock_artwork_row_right">日期右侧</string>
+    <string name="lock_inner_full_screen_aod">内屏全屏 AOD（实验性功能）</string>
     <string name="lock_hide_status_bar">隐藏锁屏系统状态栏</string>
     <string name="lock_hide_status_bar_summary">隐藏锁屏顶部的系统状态栏，桌面与控制中心保持系统显示。</string>
     <string name="about_support_duo">支持 Duo</string>
