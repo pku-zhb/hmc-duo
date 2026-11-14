@@ -2199,7 +2199,9 @@ final class ClockCollapse {
         if (b == null) return;
         float h = b.height();
         Float was = sGlyphH.put(tv, h);
-        if (was == null || h <= 0f || Math.abs(h - was) <= GLYPH_JUMP_PX) return;
+        // The first draw of a newly attached face is also its first usable measurement.
+        // Skipping it left the native big clock visible until the next AOD pre-draw.
+        if (h <= 0f || was != null && Math.abs(h - was) <= GLYPH_JUMP_PX) return;
         sRedoing = true;
         try {
             frame();

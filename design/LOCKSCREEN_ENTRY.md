@@ -53,6 +53,10 @@ SCREEN_OFF. If the keyguard clock attaches late, its first complete pre-draw
 prepares the held pose before that frame is drawn. This fallback has no timed
 polling and does not hide an unmeasurable clock.
 
+A newly attached TimeView may first expose its path bounds inside onDraw. Its
+first valid glyph measurement now re-places the scene in that same draw pass,
+as existing geometry changes already do, instead of waiting for a second frame.
+
 The clock pre-draw observer is also retained and removed by its original
 identity across keyguard rebuilds. These source corrections address the reported
 large-clock presence on direct lyric-page sleep and the navigation clock flash;
