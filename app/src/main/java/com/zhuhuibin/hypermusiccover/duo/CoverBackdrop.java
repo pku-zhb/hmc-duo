@@ -131,11 +131,14 @@ final class CoverBackdrop {
 
     static void drawn(int renderer, Snapshot scene, View view, int generation,
                       float compositionAlpha, float rendererAlpha) {
-        if (generation != scene.generation || generation < 0) return;
         float alpha = ArtworkBackdropState.compositionEvidence(compositionAlpha, rendererAlpha);
         if (!Float.isFinite(alpha)) {
             // The outgoing pixels are still visible, but the new composition contributed
             // nothing. It cannot acknowledge or revoke the outgoing display list.
+            pending[renderer] = null;
+            return;
+        }
+        if (!ArtworkBackdropState.acceptsEvidence(scene.generation, generation, alpha)) {
             pending[renderer] = null;
             return;
         }
