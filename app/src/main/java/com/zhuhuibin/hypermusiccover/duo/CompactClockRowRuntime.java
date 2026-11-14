@@ -24,11 +24,14 @@ final class CompactClockRowRuntime {
 
     static boolean requested() {
         ScreenGeometry s = Main.screenGeometry();
-        return CompactClockRowLayout.requested(Main.sArtworkClockDestination == ArtworkClockDestination.DATE_ROW, s.width, s.height,
-                s.densityDpi / 160f,
-                ArtworkClockDestination.sceneRequested(Main.coverModeOn(), LockLyrics.playerChosen(),
-                        LockLyrics.notificationCompact(), ImmersiveHost.navigationClock()), false, false)
-                && (!ImmersiveHost.holdsClock() || ImmersiveHost.navigationClock());
+        return intended() && CompactClockRowLayout.supportsDisplay(s.width, s.height, s.densityDpi / 160f);
+    }
+
+    /** A selected date-row page is still selected while its native date is being rebound. */
+    static boolean intended() {
+        CoverBackdrop.Snapshot page = ClockCollapse.sceneSnapshot();
+        return page.clockDestination == ArtworkClockDestination.DATE_ROW
+                && page.pageClockRequested && (!ImmersiveHost.holdsClock() || page.navigation);
     }
 
     static boolean supportsDisplay() {
@@ -39,6 +42,7 @@ final class CompactClockRowRuntime {
     /** Never fade a clock target that also owns the date or hide an unresolved time face. */
     static boolean statusSupported() {
         View date = Main.visibleDate();
+        if (date == null) date = ClockCollapse.retainedDate();
         if (date == null) return false;
         boolean found = false;
         for (View root : Main.clockRoots()) {
@@ -58,12 +62,15 @@ final class CompactClockRowRuntime {
 
     static final class Plan {
         final View date;
+        final View window;
+        final long revision;
         final TextView text;
         final CompactClockRowLayout.Row row;
         final float inkLeft, baseline, baseLeft, baseScaleX, top, bottom;
         Plan(View date, TextView text, CompactClockRowLayout.Row row, float inkLeft,
              float baseline, float baseLeft, float baseScaleX, float top, float bottom) {
             this.date = date; this.text = text; this.row = row; this.inkLeft = inkLeft;
+            this.window = date.getRootView(); this.revision = Main.screenGeometry().revision;
             this.baseline = baseline; this.baseLeft = baseLeft; this.baseScaleX = baseScaleX;
             this.top = top; this.bottom = bottom;
         }
@@ -125,15 +132,35 @@ final class CompactClockRowRuntime {
         return lastPlan;
     }
 
-    private static Plan unavailable(String why) { reason = why; lastPlan = null; return null; }
+    private static boolean current(Plan plan) {
+        return plan != null && plan.date.isAttachedToWindow() && plan.text.isAttachedToWindow()
+                && plan.date.getRootView() == plan.window && Main.sContainer != null
+                && Main.sContainer.getRootView() == plan.window
+                && Main.screenGeometry().revision == plan.revision && Main.anchoredStyle();
+    }
+
+    private static Plan unavailable(String why) {
+        if (intended() && current(lastPlan)) {
+            reason = "retained: " + why;
+            return lastPlan;
+        }
+        reason = why;
+        lastPlan = null;
+        return null;
+    }
 
     static void apply(Plan p, float progress) {
-        if (p == null || !(progress > 0f) || !supportsDisplay() || !Main.keyguardLocked()
+        if (!(progress > 0f) || !supportsDisplay() || !Main.keyguardLocked()
                 || MiniPlayerScene.INSTANCE.getKeyguardGoingAway() || Main.bouncerShown()
                 || MiniPlayerScene.INSTANCE.getCustomAodActive()
                 || MiniPlayerScene.INSTANCE.getBlocksMiniPlayer()) {
             clear();
             return;
+        }
+        // A temporary native measurement miss is not a page dismissal.
+        if (!current(p)) {
+            if (intended() && current(lastPlan)) p = lastPlan;
+            else { clear(); return; }
         }
         float alpha = CompactClockRowLayout.alpha(progress);
         drawnProgress = progress;
@@ -197,6 +224,8 @@ final class CompactClockRowRuntime {
             lease.apply(g, alpha);
         }
     }
+
+    static boolean ownsPose() { return !clocks.isEmpty() || !dates.isEmpty(); }
 
     static void clear() {
         drawnProgress = 0f;

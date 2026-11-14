@@ -70,4 +70,98 @@ public class ArtworkBackdropStateTest {
         assertFalse(ArtworkBackdropState.eligible(true, true, true, true, true, true));
         assertFalse(ArtworkBackdropState.eligible(true, true, true, true, false, false));
     }
+
+    @Test public void preparingTheReplacementKeepsOnlyTheActuallyDrawnOutgoingRenderer() {
+        ArtworkBackdropState.Handoff handoff = new ArtworkBackdropState.Handoff();
+        Object window = new Object();
+        handoff.select(1L, ArtworkBackdropState.MESH, window, 7L, 4);
+        assertFalse(handoff.local());
+        handoff.presented(1L, ArtworkBackdropState.MESH, window, 7L, 4, 1f);
+        handoff.select(2L, ArtworkBackdropState.STILL, window, 7L, 4);
+        assertTrue(handoff.local());
+        assertTrue(handoff.retains(ArtworkBackdropState.MESH));
+        handoff.presented(2L, ArtworkBackdropState.STILL, window, 7L, 4, .25f);
+        assertEquals(ArtworkBackdropState.MESH, handoff.owner());
+        handoff.presented(2L, ArtworkBackdropState.STILL, window, 7L, 4, 1f);
+        assertEquals(ArtworkBackdropState.STILL, handoff.owner());
+        assertFalse(handoff.retains(ArtworkBackdropState.MESH));
+    }
+
+    @Test public void wakingKeepsTheStaticPixelsUntilTheMeshHasActuallyCoveredThem() {
+        ArtworkBackdropState.Handoff handoff = new ArtworkBackdropState.Handoff();
+        Object window = new Object();
+        handoff.select(8L, ArtworkBackdropState.STILL, window, 2L, 6);
+        handoff.presented(8L, ArtworkBackdropState.STILL, window, 2L, 6, 1f);
+        handoff.select(9L, ArtworkBackdropState.MESH, window, 2L, 6);
+        assertTrue(handoff.retains(ArtworkBackdropState.STILL));
+        assertTrue(handoff.local());
+        handoff.presented(9L, ArtworkBackdropState.MESH, window, 2L, 6, .9f);
+        assertEquals(ArtworkBackdropState.STILL, handoff.owner());
+        handoff.presented(9L, ArtworkBackdropState.MESH, window, 2L, 6, 1f);
+        assertEquals(ArtworkBackdropState.MESH, handoff.owner());
+    }
+
+    @Test public void aNativeSceneRevokesOwnershipAndRejectsLateFramesEvenForTheSameBitmap() {
+        ArtworkBackdropState.Handoff handoff = new ArtworkBackdropState.Handoff();
+        Object window = new Object();
+        handoff.select(1L, ArtworkBackdropState.MESH, window, 0L, 4);
+        handoff.presented(1L, ArtworkBackdropState.MESH, window, 0L, 4, 1f);
+        handoff.select(2L, ArtworkBackdropState.NATIVE, window, 0L, 4);
+        assertFalse(handoff.local());
+        handoff.select(3L, ArtworkBackdropState.MESH, window, 0L, 4);
+        assertFalse(handoff.presented(1L, ArtworkBackdropState.MESH, window, 0L, 4, 1f));
+        assertFalse(handoff.local());
+        assertTrue(handoff.presented(3L, ArtworkBackdropState.MESH, window, 0L, 4, 1f));
+        assertTrue(handoff.local());
+    }
+
+    @Test public void windowGeometryAndSourceChangesCannotRetainAStaleDisplayList() {
+        ArtworkBackdropState.Handoff handoff = new ArtworkBackdropState.Handoff();
+        Object first = new Object(), second = new Object();
+        handoff.select(1L, ArtworkBackdropState.MESH, first, 0L, 4);
+        handoff.presented(1L, ArtworkBackdropState.MESH, first, 0L, 4, 1f);
+        handoff.select(2L, ArtworkBackdropState.STILL, second, 0L, 4);
+        assertFalse(handoff.local());
+        assertFalse(handoff.presented(2L, ArtworkBackdropState.STILL, first, 0L, 4, 1f));
+        handoff.presented(2L, ArtworkBackdropState.STILL, second, 0L, 4, 1f);
+        handoff.select(3L, ArtworkBackdropState.MESH, second, 1L, 4);
+        assertFalse(handoff.local());
+        handoff.presented(3L, ArtworkBackdropState.MESH, second, 1L, 4, 1f);
+        handoff.select(4L, ArtworkBackdropState.STILL, second, 1L, 5);
+        assertFalse(handoff.local());
+        assertFalse(handoff.presented(4L, ArtworkBackdropState.STILL, second, 1L, 4, 1f));
+    }
+
+    @Test public void aSameBitmapPageChangeKeepsValidPixelsButRejectsOldCallbacks() {
+        ArtworkBackdropState.Handoff handoff = new ArtworkBackdropState.Handoff();
+        Object window = new Object();
+        handoff.select(1L, ArtworkBackdropState.MESH, window, 0L, 4);
+        handoff.presented(1L, ArtworkBackdropState.MESH, window, 0L, 4, 1f);
+        handoff.select(2L, ArtworkBackdropState.MESH, window, 0L, 4);
+        assertTrue(handoff.local());
+        assertFalse(handoff.presented(1L, ArtworkBackdropState.STILL, window, 0L, 4, 1f));
+        assertEquals(ArtworkBackdropState.MESH, handoff.owner());
+    }
+
+    @Test public void aHiddenOrZeroAlphaOwnerDoesNotAuthorizeLocalSampling() {
+        ArtworkBackdropState.Handoff handoff = new ArtworkBackdropState.Handoff();
+        Object window = new Object();
+        handoff.select(1L, ArtworkBackdropState.MESH, window, 0L, 4);
+        handoff.presented(1L, ArtworkBackdropState.MESH, window, 0L, 4, 1f);
+        handoff.presented(1L, ArtworkBackdropState.MESH, window, 0L, 4, 0f);
+        assertFalse(handoff.local());
+        handoff.presented(1L, ArtworkBackdropState.MESH, window, 0L, 4, 1f);
+        handoff.withdraw(ArtworkBackdropState.MESH);
+        assertFalse(handoff.local());
+    }
+
+    @Test public void anUnrequestedRendererCannotStealTheSamplingOwner() {
+        ArtworkBackdropState.Handoff handoff = new ArtworkBackdropState.Handoff();
+        Object window = new Object();
+        handoff.select(1L, ArtworkBackdropState.STILL, window, 0L, 4);
+        handoff.presented(1L, ArtworkBackdropState.MESH, window, 0L, 4, 1f);
+        assertFalse(handoff.local());
+        handoff.presented(1L, ArtworkBackdropState.STILL, window, 0L, 4, .1f);
+        assertEquals(ArtworkBackdropState.STILL, handoff.owner());
+    }
 }

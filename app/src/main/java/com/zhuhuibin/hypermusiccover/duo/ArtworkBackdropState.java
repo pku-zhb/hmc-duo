@@ -2,6 +2,7 @@ package com.zhuhuibin.hypermusiccover.duo;
 
 /** A prepared bitmap is not a presented frame; stale frame callbacks cannot reveal a new scene. */
 final class ArtworkBackdropState {
+    static final int NATIVE = 0, MESH = 1, STILL = 2;
     private long epoch;
     private int source = -1, drawn = -1;
     private boolean active, revealed;
@@ -45,4 +46,66 @@ final class ArtworkBackdropState {
     int source() { return source; }
     int drawn() { return drawn; }
     boolean revealed() { return revealed; }
+
+    /**
+     * The outgoing display list may bridge a renderer change only in the same window,
+     * geometry and source generation. A prepared bitmap or a timeout never owns sampling.
+     */
+    static final class Handoff {
+        private Object window;
+        private long revision, epoch;
+        private int generation = -1, desired, owner;
+        private final float[] presented = new float[3];
+
+        void select(long epoch, int desired, Object window, long revision, int generation) {
+            boolean valid = desired != NATIVE && window != null && generation >= 0;
+            if (!valid || this.window != window || this.revision != revision
+                    || this.generation != generation) {
+                owner = NATIVE;
+                presented[MESH] = presented[STILL] = 0f;
+            }
+            this.epoch = epoch;
+            this.desired = valid ? desired : NATIVE;
+            this.window = valid ? window : null;
+            this.revision = revision;
+            this.generation = valid ? generation : -1;
+        }
+
+        boolean presented(long epoch, int renderer, Object window, long revision,
+                          int generation, float alpha) {
+            if (!matches(epoch, window, revision, generation) || renderer == NATIVE) return false;
+            if (!presentedFrame(generation, generation, alpha)) {
+                withdraw(renderer);
+                return false;
+            }
+            presented[renderer] = Math.min(1f, alpha);
+            // First presentation has no outgoing artwork to keep. During a handoff the
+            // replacement must actually cover it before the old display list is retired.
+            if (renderer == desired && (owner == NATIVE || alpha >= .995f)) owner = renderer;
+            return true;
+        }
+
+        void withdraw(int renderer) {
+            presented[renderer] = 0f;
+            if (owner == renderer) {
+                owner = presented[desired] >= .995f ? desired : NATIVE;
+            }
+        }
+
+        boolean matches(long epoch, Object window, long revision, int generation) {
+            return desired != NATIVE && this.epoch == epoch && this.window == window
+                    && this.revision == revision && this.generation == generation;
+        }
+
+        boolean retains(int renderer) { return owner == renderer && desired != renderer; }
+        boolean local() { return owner != NATIVE && presented[owner] > .001f; }
+        boolean needsPresentation(int renderer, float alpha) {
+            return desired != NATIVE && renderer == desired && owner != renderer
+                    && (owner == NATIVE || alpha >= .995f);
+        }
+        int owner() { return owner; }
+        int desired() { return desired; }
+        int generation() { return generation; }
+        long epoch() { return epoch; }
+    }
 }
