@@ -20,14 +20,13 @@ final class RailContentFrame {
 
     static RailContentFrame inWindow(FoldMusicLayout.Box content, float density, int parentLeft,
                                      float windowWidth, float windowHeight, boolean combined) {
-        // Both inner orientations retain the OEM card column. Artwork and lyrics
-        // can use their own measured rooms without resizing the native stack.
+        // All orientations share the Duo content axis. A native-width inner column
+        // remains centered on the full window and drifts away from our clock/artwork.
         return ownsNativeBounds(windowWidth, windowHeight, density) ? in(content, density, parentLeft) : null;
     }
 
     static boolean ownsNativeBounds(float width, float height, float density) {
-        return FoldMusicLayout.finite(width, height, density) && width > 0f && height > 0f && density > 0f
-                && Math.min(width, height) / density < 600f;
+        return FoldMusicLayout.finite(width, height, density) && width > 0f && height > 0f && density > 0f;
     }
 
     int right() { return left + width; }
