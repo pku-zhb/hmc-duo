@@ -7810,14 +7810,13 @@ public class Main extends XposedModule {
                 && ClockCollapse.aodHeld();
     }
 
-    /** The full-screen AOD may show a faint static colour wash even with the square hidden. */
+    /** The full-screen AOD retains the selected static background independently of clock pose. */
     static boolean coverCardBackdropInAod() {
         View c = sContainer;
-        return sCoverMode
-                && !sScreenOn
-                && ClockCollapse.phase() == ClockCollapse.Phase.AOD
-                && ClockCollapse.aodFullScreen() && keyguardShowing()
-                && c != null && c.isShown();
+        return ArtworkBackdropState.eligibleAod(sCoverMode, sScreenOn,
+                MiniPlayerScene.INSTANCE.getFullScreenAodActive(), keyguardLocked(),
+                MiniPlayerScene.INSTANCE.getKeyguardGoingAway(),
+                c != null && c.isAttachedToWindow() && c.getRootView().isShown());
     }
 
     static int screenWidth() {

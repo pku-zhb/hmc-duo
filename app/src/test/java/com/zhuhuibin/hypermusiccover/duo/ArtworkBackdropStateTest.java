@@ -4,6 +4,21 @@ import org.junit.Test;
 import static org.junit.Assert.*;
 
 public class ArtworkBackdropStateTest {
+    @Test public void fullScreenAodBackgroundDoesNotRequireAClockHoldOrVisibleClockContainer() {
+        // A native full-AOD scene is sufficient even when the foreground clock never
+        // acquired a custom pose or its own container is hidden by native notifications.
+        assertTrue(ArtworkBackdropState.eligibleAod(true, false, true, true, false, true));
+    }
+
+    @Test public void aodBackgroundCannotLeakIntoNativeOnlyAodOrAnUnlockedWindow() {
+        assertFalse(ArtworkBackdropState.eligibleAod(true, false, false, true, false, true));
+        assertFalse(ArtworkBackdropState.eligibleAod(true, true, true, true, false, true));
+        assertFalse(ArtworkBackdropState.eligibleAod(true, false, true, false, false, true));
+        assertFalse(ArtworkBackdropState.eligibleAod(true, false, true, true, true, true));
+        assertFalse(ArtworkBackdropState.eligibleAod(true, false, true, true, false, false));
+        assertFalse(ArtworkBackdropState.eligibleAod(false, false, true, true, false, true));
+    }
+
     @Test public void aodSamplingRequiresCurrentVisiblePixelsRatherThanAnOldVisibleWash() {
         assertTrue(ArtworkBackdropState.presentedFrame(4, 4, 64f / 255f));
         assertFalse(ArtworkBackdropState.presentedFrame(5, 4, 64f / 255f));

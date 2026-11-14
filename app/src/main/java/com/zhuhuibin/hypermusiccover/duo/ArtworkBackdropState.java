@@ -11,6 +11,12 @@ final class ArtworkBackdropState {
         return selected && cover && awake && locked && !goingAway && onKeyguard;
     }
 
+    /** Full-screen background ownership is independent of the foreground clock's pose. */
+    static boolean eligibleAod(boolean cover, boolean awake, boolean fullScreenAod,
+                               boolean locked, boolean goingAway, boolean windowPresent) {
+        return cover && !awake && fullScreenAod && locked && !goingAway && windowPresent;
+    }
+
     /** A sampler may follow only pixels submitted for the current source, not an old wash. */
     static boolean presentedFrame(int current, int drawn, float alpha) {
         return current >= 0 && drawn == current && Float.isFinite(alpha) && alpha > .001f;

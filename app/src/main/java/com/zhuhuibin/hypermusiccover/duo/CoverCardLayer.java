@@ -196,7 +196,13 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
             if (v.wash.getParent() instanceof ViewGroup) {
                 ((ViewGroup) v.wash.getParent()).removeView(v.wash);
             }
-            host.addView(v.wash, host.indexOfChild(below), new ViewGroup.LayoutParams(
+            int index = host.indexOfChild(below);
+            // Match the awake renderer's ordering: background -> user dim -> foreground.
+            // The static AOD background must not bypass an already-created dim layer.
+            for (int i = 0; i < index; i++) {
+                if ("HMCWallpaperDim".equals(host.getChildAt(i).getTag())) { index = i; break; }
+            }
+            host.addView(v.wash, index, new ViewGroup.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         }
         v.style = sStyle;
@@ -1493,7 +1499,7 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
     }
 
     /**
-     * The full-screen AOD's faint colour wash, as a view of its own beside the square.
+     * The full-screen AOD's static artwork background, beside the square.
      *
      * The doze scales keyguard_root_view to 0.95 (`op cardstate` lists the chain). Drawn inside
      * it, the wash came out 5% short and framed by the dark wallpaper, and neither drawing past
@@ -1608,7 +1614,9 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
             if (moving) postInvalidateOnAnimation();
             if (p == null || p.aodBackdrop == null || p.aodBackdrop.isRecycled()) return;
             bounds.set(0f, 0f, getWidth(), getHeight());
-            int alpha = Math.round(64f * level);
+            // The system AOD and the existing user dim layer own darkening. Do not turn
+            // the chosen blur into a separate quarter-opacity tint when entering AOD.
+            int alpha = Math.round(255f * level);
             int saved = canvas.saveLayerAlpha(bounds, alpha);
             paint.setAlpha(255);
             if (!CoverBackdrop.hidden()) {

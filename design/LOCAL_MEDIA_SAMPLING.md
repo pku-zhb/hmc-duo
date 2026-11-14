@@ -113,3 +113,29 @@ the already existing `ShortcutDisc` behind each icon uses the same relay as pill
 A regression checks a deliberately short-named marker implementation and rejects
 plain objects, null and a spoofed original-name string. Native-frame/GPU material
 appearance still needs owner acceptance after the optimized APK is loaded.
+
+## Full-screen AOD background selection
+
+The owner reported that the blurred cover background disappeared in full-screen
+AOD although the awake music material could use it. Sampling permission alone
+could not repair this: `coverCardBackdropInAod` also required the foreground clock
+to enter its custom AOD phase and required its container to be shown. A native
+full-AOD scene can have neither, while the background's sibling window remains
+available. Background eligibility now uses the existing native doze/full-AOD
+scene latch and attached root-window visibility, independently of clock pose.
+Ordinary AOD, unlock/going-away, absent windows and disabled cover mode remain
+excluded. This does not change clock placement, lyric motion or transition hooks.
+
+The awake renderer intentionally stops at sleep. The AOD sibling renders the same
+prepared blurred bitmap statically, using the existing entry/exit level rather
+than the old hard-coded quarter-opacity colour wash. It does not start the dynamic
+mesh on AOD. Where both backgrounds share the dim host, insertion order is now
+backgrounds -> user dim -> foreground, regardless of which layer was created first.
+The existing video-wallpaper branch can have a different dim host; that host
+selection and all system AOD darkening remain unchanged in this iteration.
+
+Seven focused host tests cover source-frame evidence and background eligibility,
+including a full-AOD scene with no dependency on a custom foreground-clock pose.
+Visual background persistence, GPU sampling and dimming still require owner
+acceptance. First-frame flashes, transient old clock positions and lyric drift
+are explicitly deferred by the owner; this change does not claim to resolve them.
