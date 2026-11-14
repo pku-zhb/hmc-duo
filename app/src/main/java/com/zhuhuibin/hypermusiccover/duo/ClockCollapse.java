@@ -262,6 +262,8 @@ final class ClockCollapse {
     private static final float FALLBACK_FLOOR_DP = 246.7f;
 
     private static View sGuarded;
+    private static ViewTreeObserver sGuardObserver;
+    private static ViewTreeObserver.OnPreDrawListener sGuardCallback;
     private static final int[] LOC = new int[2];
 
     /**
@@ -666,6 +668,10 @@ final class ClockCollapse {
     static void toAod() {
         // A sleep callback already queued when direct unlock begins cannot retake the clock.
         if (MiniPlayerScene.INSTANCE.getKeyguardGoingAway()) return;
+        // Unlock releases the transforms but preserves the selected page. A direct desktop
+        // sleep must recreate that page's pose, including compact lyrics, before OEM capture.
+        if (sPhase == Phase.OFF && Main.clockHeld() && keepInAod())
+            prepareHeldAodPose("direct full-AOD entry");
         Main.prepareAodArtwork(keepInAod());
         sWaking = false;
         // The doze about to start has drawn nothing yet, so it has no pose to be steady against.
@@ -816,12 +822,18 @@ final class ClockCollapse {
                 || MiniPlayerScene.INSTANCE.getKeyguardGoingAway() || Main.sContainer == null) return;
         if (sPhase == Phase.AOD && sAodHeld && sPoseDrawn && Float.isFinite(sFromTop)) return;
         try {
-            enter(false, false, "navigation AOD priority", true);
-            frame();
-            if (sPoseDrawn) toAod();
+            if (prepareHeldAodPose("navigation AOD priority")) toAod();
         } catch (Throwable error) {
             Xp.w(TAG + "navigation AOD clock preparation unavailable: " + error);
         }
+    }
+
+    /** No guessed clock geometry: a late native bind waits for its first complete pre-draw. */
+    private static boolean prepareHeldAodPose(String source) {
+        if (Main.sContainer == null || !measure(LIVE)) return false;
+        enter(false, false, source, true);
+        frame();
+        return sPoseDrawn;
     }
 
     /** Everything of ours off the clock - the phone was unlocked, or cover mode went away. */
@@ -2087,10 +2099,17 @@ final class ClockCollapse {
 
     private static void install() {
         View v = Main.sContainer;
-        if (v == null || sGuarded == v) return;
+        if (v == null || sGuarded == v && sGuardObserver != null && sGuardObserver.isAlive()
+                && sGuardObserver == v.getViewTreeObserver()) return;
         uninstall();
         try {
-            v.getViewTreeObserver().addOnPreDrawListener(PRE_DRAW);
+            ViewTreeObserver observer = v.getViewTreeObserver();
+            ViewTreeObserver.OnPreDrawListener callback = () ->
+                    sGuarded != v || sGuardObserver != observer || !v.isAttachedToWindow()
+                            || PRE_DRAW.onPreDraw();
+            sGuardObserver = observer;
+            sGuardCallback = callback;
+            observer.addOnPreDrawListener(callback);
             sGuarded = v;
         } catch (Throwable t) {
             Xp.log(TAG + "clock: pre-draw not installed: " + t);
@@ -2099,10 +2118,14 @@ final class ClockCollapse {
 
     private static void uninstall() {
         View v = sGuarded;
+        ViewTreeObserver observer = sGuardObserver;
+        ViewTreeObserver.OnPreDrawListener callback = sGuardCallback;
         sGuarded = null;
-        if (v == null) return;
+        sGuardObserver = null;
+        sGuardCallback = null;
+        if (v == null || observer == null || callback == null) return;
         try {
-            v.getViewTreeObserver().removeOnPreDrawListener(PRE_DRAW);
+            if (observer.isAlive()) observer.removeOnPreDrawListener(callback);
         } catch (Throwable ignored) {
         }
     }
@@ -2120,6 +2143,7 @@ final class ClockCollapse {
             new ViewTreeObserver.OnPreDrawListener() {
         @Override
         public boolean onPreDraw() { android.os.Trace.beginSection("MC clockPreDraw"); try {
+            if (sGuarded == null || sGuarded != Main.sContainer || !sGuarded.isAttachedToWindow()) return true;
             long t0 = System.nanoTime();
             try {
                 frame();
@@ -2748,6 +2772,13 @@ final class ClockCollapse {
         try { measured = measure(m); } finally { android.os.Trace.endSection(); }
         if (!measured) {
             CompactClockRowRuntime.clear();
+            return;
+        }
+        if (phase == Phase.AOD && !sAodHeld && !sWaking && Main.clockHeld() && keepInAod()
+                && !MiniPlayerScene.INSTANCE.getKeyguardGoingAway()) {
+            // A desktop sleep can report AOD before its keyguard clock has attached or been
+            // measured. Repair the hold in this same pre-draw, never one drawn frame later.
+            if (prepareHeldAodPose("first measured full-AOD frame")) toAod();
             return;
         }
         if (!CompactClockRowRuntime.supportsDisplay() && (compactRowMoving() || statusClockMoving())) {

@@ -41,4 +41,13 @@ public class LyricPresentationStateTest {
         assertTrue(LyricPresentationState.waitsForBlur(true, false));
         assertFalse(LyricPresentationState.waitsForBlur(false, false));
     }
+
+    @Test public void aPresentedLocalBackdropDoesNotWaitForAnUnrelatedWallpaperAcknowledgement() {
+        assertFalse(LyricPresentationState.waitsForBlur(true, false, true));
+        assertTrue(LyricPresentationState.waitsForBlur(true, false, false));
+        // A setting or prepared bitmap without pixels is insufficient to bypass the gate.
+        assertFalse(ArtworkBackdropState.presentedFrame(5, 4, 1f));
+        assertTrue(LyricPresentationState.waitsForBlur(true, false,
+                ArtworkBackdropState.presentedFrame(5, 4, 1f)));
+    }
 }

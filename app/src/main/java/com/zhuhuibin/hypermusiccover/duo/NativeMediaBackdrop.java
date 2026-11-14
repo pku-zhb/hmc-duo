@@ -150,7 +150,10 @@ final class NativeMediaBackdrop {
             return;
         }
         try {
-            boolean local = consumesBlur && VideoBackdropMesh.samplingBackdropIn(source);
+            // Full-screen AOD draws the same source through its still Wash, not the awake
+            // mesh. Following only the mesh restored desktop sampling on every sleep.
+            boolean local = consumesBlur && (VideoBackdropMesh.samplingBackdropIn(source)
+                    || CoverCardLayer.samplingAodBackdropIn(source));
             if (lease.needsApply(local)) {
                 write(source, local);
                 if (local) ++switches;

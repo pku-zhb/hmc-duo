@@ -11,6 +11,11 @@ final class ArtworkBackdropState {
         return selected && cover && awake && locked && !goingAway && onKeyguard;
     }
 
+    /** A sampler may follow only pixels submitted for the current source, not an old wash. */
+    static boolean presentedFrame(int current, int drawn, float alpha) {
+        return current >= 0 && drawn == current && Float.isFinite(alpha) && alpha > .001f;
+    }
+
     void select(int generation) {
         if (!active) { active = true; epoch++; }
         if (source != generation) { source = generation; drawn = -1; }

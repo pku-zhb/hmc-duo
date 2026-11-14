@@ -451,7 +451,8 @@ final class LockLyrics {
     static boolean blurSettled() {
         // Duo's compact rail uses the native wallpaper. Waiting for the hidden artwork's
         // frosting acknowledgement delayed a ready lyric page by up to 1.2 seconds.
-        if (!LyricPresentationState.waitsForBlur(blurWanted(), CoverBackdrop.hidden())) return true;
+        if (!LyricPresentationState.waitsForBlur(blurWanted(), CoverBackdrop.hidden(),
+                VideoBackdropMesh.backdropPresented())) return true;
         long now = SystemClock.uptimeMillis();
         if (!Main.sVideoWallpaper) {
             // A still cover frosts on the composer and then waits out the fade in the air, so
