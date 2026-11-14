@@ -343,6 +343,8 @@ final class LyricsButton {
         return view == card ? value : Float.NaN;
     }
 
+    static View viewForDiagnostics() { return button; }
+
     static String describe() {
         return "requested=" + requested + " beside=" + besideControls + " progress=" + progress
                 + " created=" + creations + " released=" + releases

@@ -12,6 +12,11 @@ final class LockScreenLayoutDiagnostics {
     static String describe() {
         JSONObject out = new JSONObject();
         try {
+            // Capture these values before any other consumer can validate/repair its holder.
+            out.put("playerGuard", view(Main.guardedMediaCardForDiagnostics()));
+            out.put("playerBinding", Main.mediaCardBindingState());
+            out.put("playerPageControl", view(LyricsButton.viewForDiagnostics()));
+            out.put("playerPageControlState", LyricsButton.describe());
             ScreenGeometry g = Main.screenGeometry();
             out.put("cachedWindow", new JSONArray(new int[]{g.width, g.height}));
             out.put("revision", g.revision);
@@ -50,7 +55,7 @@ final class LockScreenLayoutDiagnostics {
             android.graphics.RectF ink = Main.glyphBox();
             if (ink != null) out.put("clockInk", new JSONArray(new float[]{ink.left, ink.top, ink.right, ink.bottom}));
             out.put("date", view(Main.visibleDate()));
-            View card = Main.findLockScreenView("mi_media_controls");
+            View card = Main.nativeMediaCardForDiagnostics();
             out.put("player", view(card));
             out.put("playerMaterial", view(named(card, "media_bg")));
             JSONObject controls = new JSONObject();
@@ -92,6 +97,9 @@ final class LockScreenLayoutDiagnostics {
         if (v == null) return JSONObject.NULL;
         JSONObject out = new JSONObject();
         out.put("class", v.getClass().getName());
+        out.put("identity", Integer.toHexString(System.identityHashCode(v)));
+        out.put("clickable", v.isClickable());
+        out.put("enabled", v.isEnabled());
         try { out.put("id", v.getResources().getResourceEntryName(v.getId())); }
         catch (Exception ignored) {}
         int[] at = new int[2]; v.getLocationOnScreen(at);
