@@ -1033,6 +1033,7 @@ public class Main extends XposedModule {
         if ("com.miui.aod".equals(pkg)) {
             installModuleUpdateReceiver();
             HyperTweaks.aod(param.getDefaultClassLoader());
+            InnerScreenAod.installAod(param.getDefaultClassLoader());
             return;
         }
         // The control centre plugin. Usually loaded into SystemUI's own loader, in which case
@@ -2628,7 +2629,10 @@ public class Main extends XposedModule {
                                 sArtworkClockRow = sArtworkClockDestination == ArtworkClockDestination.DATE_ROW;
                             }
                             else if ("hideLockStatusBar".equals(key)) { sHideLockStatusBar = on; LockscreenStatusBar.refresh(); }
-                            else if ("innerFullScreenAod".equals(key)) sInnerFullScreenAod = on;
+                            else if ("innerFullScreenAod".equals(key)) {
+                                sInnerFullScreenAod = on;
+                                InnerScreenAod.publishOptIn();
+                            }
                             else if ("artworkClockRow".equals(key)) {
                                 sArtworkClockRow = on;
                                 sArtworkClockDestination = ArtworkClockDestination.fromLegacy(on);
@@ -3635,6 +3639,7 @@ public class Main extends XposedModule {
             Xp.w(TAG + "hello to the wallpaper process failed: " + t);
         }
         loadState();
+        InnerScreenAod.publishOptIn();
         LockScreenChargingHint.INSTANCE.refresh();
         // Again at startup, not only when the switch is touched: the flag the always-on display
         // reads is written by this process, and a phone that was rebooted with the switch on has

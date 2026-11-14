@@ -29,6 +29,23 @@ folded-device inner display when the native global answer already permits it.
 
 ## Ownership and lifecycle
 
+The AOD plugin has a second, independent gate:
+`com.miui.aod.Utils.isCurrentScreenSupportFsAod(Context)` returns
+`!inLargeScreen(context) || isInnerScreenSupportFsAod()`. Extending the SystemUI
+gate alone admits lock-screen rendering but leaves the physical inner display
+OFF. This was observed on the phone in 0.2.13; an outer-display reference remained
+ON with the same full-AOD configuration.
+
+0.2.14 extends both native display eligibility checks using the same explicit
+choice. SystemUI publishes only that boolean to its own Global setting key. The
+plugin observes it once per process with a change listener, not a frame-time
+provider query. Its gate is extended only on a fold device whose native display
+eligibility was negative; its callers retain full-AOD master, template, schedule,
+brightness and power-state policy. The actual plugin loader is discovered from
+the typed `MiuiDozeService.onPluginConnected` callback as well as the AOD package
+callback, and each actual utility class is hooked once. No global class-loader
+hook is introduced.
+
 - The exact no-argument boolean native method is intercepted. A native positive
   answer is preserved; only an opted-in inner display with native master true can
   extend a negative answer.
