@@ -91,3 +91,24 @@ Do not recreate older acceptance documents that the owner has deleted. Do not
 write Markdown into the personal Miduo APK archive. The APK retention rule never
 retires or renames this rolling document even when its filename contains older
 versions. Device work follows the standing authorization above.
+
+## Independent visual review
+
+The owner authorizes screenshots and screen recordings for visual investigation.
+For a requested visual review, delegate capture and inspection to a fresh agent
+without inherited conversation history. Give it the test protocol, expected
+interaction contract and device constraints, without feeding it old diagnoses.
+The coordinating root should receive text findings rather than view the captures.
+That reviewer may hold the exclusive phone-operation lease; root and other
+agents must not contend for the device. Preserve temporary settings, playback
+state and the owner's floating-window task. Never reboot or bypass authentication.
+
+Review whole transitions first, then slow down or compare selected frames around
+visible discontinuities; exhaustive frame-by-frame review is not required. Check
+capture fidelity, especially AOD and glass, before treating video artifacts as bugs.
+Keep raw captures and technical evidence in owning DevCache, outside synced Drive
+and Git. Use the existing rolling document for the readable findings. Separate
+visual observations, user reports, source-confirmed defects and hypotheses.
+When the owner requests research before fixes, agree on that report before app
+implementation. Successful tests or settled endpoint diagnostics do not establish
+visual smoothness, readable contrast or good layout composition.
