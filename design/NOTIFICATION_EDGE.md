@@ -95,14 +95,13 @@ remain unmasked. The incoming native effect is the new chain baseline, and the
 existing post-native lease commit remains authoritative. Shelf clipping, per-card
 isolation and the original native drawing path are unchanged.
 
-Both inner-screen orientations now retain the OEM stack's measurement, frame and
-translation. The old 453 dp landscape cap and the inner portrait forced column
-are removed from the native stack owner. Only the outer screen retains its fixed
-Duo content slot. Edge observation is independent of this width policy and maps
-the actual native stack viewport on the inner screen. Owned artwork/lyric rooms
-can still have their own layout bounds without resizing notifications or live
-cards. Folding between policies restores the last owned X and asks for a fresh
-native layout; native-only X values are never restored from a stale outer lease.
+The 0.2.6 native-width experiment has been superseded by 0.2.7 owner feedback.
+Both inner orientations now use their current Duo content frame, with the same
+center as the clock/artwork rather than the OEM full-window axis. This may be
+wider than the OEM card column, deliberately preserving common alignment. The
+frame is computed from the current window and fixed rail reserve, never from an
+animated card width. Native vertical stacking and swipe behavior remain unchanged;
+geometry is released outside keyguard. The edge renderer uses that actual viewport.
 
 ## Verification boundary
 

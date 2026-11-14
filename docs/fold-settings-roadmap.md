@@ -13,11 +13,24 @@ not automatically verified on every device, display or OS version.
 | Capsules | HyperOS spring/fusion/split motion and bounded switching; ColorOS switching; automatic size reduction and top overflow hiding. Short two/three-seat capsules retain their summary and primary action; single-seat bubbles remain icon-only. |
 | Notifications | Independent lock-screen visibility/retention, per-category collapse defaults and last-state restoration. Native visibility is tracked separately from shared-stack state; capsule animation follows native movement while exposure verification retains retry ownership. |
 | Clock and status | Independent status-bar visibility. Artwork/lyrics on outer and inner screens can shrink the clock, join it to the date row with a side preference, or fade the time into the display-only battery/network cluster. Full-screen AOD retains the selected compact presentation; ordinary AOD uses native presentation. Status and capsule columns share their horizontal AOD/wake anchor. |
-| Inner screen | Portrait/landscape handling, fixed bounded landscape card widths, category defaults and an explicit combined artwork/lyrics page. Preview 12 layout changes await device acceptance. |
+| Inner screen | Portrait/landscape handling, a common clock/artwork/card content axis, category defaults and an explicit combined artwork/lyrics page. Compact player height has shared portrait and independent landscape profiles. |
 | Delivery | Duo release identity, preview-compatible signing path, guarded official signing and the project's own update feed. Production key configuration remains a separate owner setup step. |
 | Settings | Export/import with legacy normalization; credentials stay on-device. About → Support Duo shows the owner-provided WeChat code and exports the original image to the gallery. |
 
 ## Current acceptance scope
+
+### 0.2.7 direct AOD, fold lifecycle and compact player continuity
+
+Owner feedback on 0.2.6 confirmed working height controls and no new loss of
+control-center corner settings, but exposed direct-AOD sampling/clock overlap,
+folded page-button failures and unmatched compact animation endpoints. This
+iteration recognizes the actual static full-AOD backdrop, retires old view-tree
+callbacks, recovers verified same-node material commits and removes the old
+wallpaper acknowledgment delay once local pixels are drawn. The inner native
+stack returns to the shared content axis per owner preference. Height now spans
+75–100%, including proportional header art and one native stack-height timeline.
+See [the 0.2.7 source record](releases/0.2.7.md). Host checks do not establish
+visual acceptance; all owner-facing checks stay in the single rolling document.
 
 ### 0.2.6 holder reuse, predictable reopening and native card geometry
 

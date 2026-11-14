@@ -10,11 +10,11 @@ and [HyperMusicCover](https://github.com/zyl6932/HyperMusicCover).
 Device coverage is focused on the maintainer's foldable phone; compatibility with
 other devices is not established.
 
-Version 0.2.6 repairs holder-reuse artwork sampling, same-track lyric reentry and
-navigation's AOD clock ordering. Music expansion follows the selected portrait
-or landscape page; native inner card widths are restored and height can be
-adjusted by compressing whitespace. About adds a companion link and complete
-offline legal notices. See the [0.2.6 record](docs/releases/0.2.6.md).
+Version 0.2.7 repairs direct-AOD artwork sampling/clock ordering, stale fold-view
+callbacks and same-material relay recovery. Inner notifications, player and live
+cards share the clock/artwork content axis. Height is adjustable from 75–100% with
+smaller header art, rebalanced spacing and native AOD animation targets. See the
+[0.2.7 record](docs/releases/0.2.7.md) for confirmed causes and acceptance limits.
 
 Version 0.2.5 was the preceding candidate. It includes all 0.2.4
 fixes, including last-lockscreen state recovery after AMap, and adds the
