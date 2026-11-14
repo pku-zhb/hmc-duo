@@ -7183,6 +7183,7 @@ public class Main extends XposedModule {
 
     /** Cancel old-size artwork now, then compose once after layout/configuration has settled. */
     static void refreshCoverGeometry() {
+        CoverCardLayer.recomposeBackdrop();
         // Never supersede a pending cover-off message: it restores the user's wallpaper.
         if (sCoverMode) ++sPushGen;
         main().removeCallbacks(sGeometryRefresh);
