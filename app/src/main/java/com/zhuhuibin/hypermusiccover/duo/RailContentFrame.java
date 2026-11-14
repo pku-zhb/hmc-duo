@@ -20,8 +20,8 @@ final class RailContentFrame {
 
     static RailContentFrame inWindow(FoldMusicLayout.Box content, float density, int parentLeft,
                                      float windowWidth, float windowHeight, boolean combined) {
-        // Inner cards always retain the OEM width. Combined artwork/lyrics may move
-        // that native column, but must not turn an outer rail width into a size override.
+        // Single inner pages retain OEM widths. Combined mode uses its separately
+        // calculated player frame, never an outer-display width as a substitute.
         return ownsNativeBounds(windowWidth, windowHeight, density) ? in(content, density, parentLeft) : null;
     }
 
@@ -33,8 +33,18 @@ final class RailContentFrame {
 
     static FoldMusicLayout.Box presentation(FoldMusicLayout.Box rail, float width, float height,
                                             float density, float rightInset, boolean combined) {
-        if (rail == null || ownsNativeBounds(width, height, density) || combined) return rail;
-        return new FoldMusicLayout.Box(rail.left, rail.top, width - rightInset, rail.bottom);
+        // The right sidebar is occupied in every page and on every display. Native card
+        // width remains a separate policy; it must not change this shared center axis.
+        return rail;
+    }
+
+    static RailContentFrame aroundCard(FoldMusicLayout.Box player, int parentLeft,
+                                       float leading, float trailing) {
+        if (player == null || !FoldMusicLayout.finite(player.left, player.right, leading, trailing)
+                || leading < 0f || trailing < 0f || player.width() <= 0f) return null;
+        int left = Math.round(player.left - leading);
+        int right = Math.round(player.right + trailing);
+        return right > left ? new RailContentFrame(left - parentLeft, right - left) : null;
     }
 
     /** Move a native-width column without borrowing its animated width as a new baseline. */
