@@ -1953,12 +1953,12 @@ public class Main extends XposedModule {
             for (String m : new String[]{"setSizeInternal", "setWidth", "setHeight", "setWeight"}) {
                 Xp.hookAll(timeView, m, axisLog);
             }
-            // Its bounds are computed inside its own draw; see ClockCollapse.onGlyphDrawn().
+            // Its bounds are computed inside its own draw; see ClockCollapse.noteGlyphMeasurement().
             Xp.hookAll(timeView, "onDraw", chain -> {
                 View glyph = (View) chain.getThisObject();
                 ClockArtworkColor.apply(glyph, glassStyleFor(glyph) ? coverTint() : 0);
                 Object result = chain.proceed();
-                ClockCollapse.onGlyphDrawn((View) chain.getThisObject());
+                ClockCollapse.noteGlyphMeasurement((View) chain.getThisObject());
                 return result;
             });
 
@@ -3663,10 +3663,6 @@ public class Main extends XposedModule {
                 // Every one of these three changes the answer to one of the two cached readings,
                 // so the timer below is not what anyone waits on at the moments that matter.
                 forgetSysReads();
-                StatusBarArtwork.refresh();
-                // The lyric window's heartbeat stops while the phone is unlocked; a screen going
-                // off or on is where the lock screen can be back. See LockLyrics.WATCH.
-                if (!Intent.ACTION_USER_PRESENT.equals(a)) LockLyrics.resumeWatch();
                 if (Intent.ACTION_SCREEN_ON.equals(a)) {
                     sScreenOn = true;
                     restoreAwakeArtwork();
@@ -3682,6 +3678,9 @@ public class Main extends XposedModule {
                     // is gone; whatever was going to cancel it cannot arrive now.
                     cancelPendingTap("screen off");
                 }
+                // Publish awake state before consumers resume or inspect the lock surface.
+                if (!Intent.ACTION_USER_PRESENT.equals(a)) LockLyrics.resumeWatch();
+                StatusBarArtwork.refresh();
                 CoverBackdrop.refreshVisibility();
                 if (Intent.ACTION_USER_PRESENT.equals(a)) {
                     sArtVeil.clear();
@@ -7683,14 +7682,15 @@ public class Main extends XposedModule {
 
     /** The wake reached the clock before the SCREEN_ON broadcast did. */
     static void noteAwake() {
-        CoverBackdrop.refreshVisibility();
-        if (sScreenOn) return;
+        boolean alreadyAwake = sScreenOn;
         sScreenOn = true;
+        forgetSysReads();
+        if (alreadyAwake) { CoverBackdrop.refreshVisibility(); return; }
         restoreAwakeArtwork();
         sAodGrey = Float.NaN;
         applyGlassBrightness();
-        forgetSysReads();
         recolorClock();
+        CoverBackdrop.refreshVisibility();
     }
 
     /** The card's progress into the cover look, as last written. */
@@ -11554,6 +11554,8 @@ public class Main extends XposedModule {
         // page waits for its content, and the next click can still return to the native clock.
         if (lyrics && !LockLyrics.sEnabled) return;
         boolean wasCompact = LockLyrics.wantsCompactArtwork();
+        boolean wasFullComposition = CoverCardLayer.fullScene();
+        boolean wasCombined = FoldMusicRuntime.combinedRequested();
         FoldMusicRuntime.selectPage(page);
         boolean compact = lyrics && !(page == RailMusicPagePolicy.ARTWORK_AND_LYRICS
                 && FoldMusicRuntime.supportsCombinedPage());
@@ -11573,7 +11575,9 @@ public class Main extends XposedModule {
             LockLyrics.selectPage(lyrics, key, sWatched);
             sTapSuppressed = false;
             if (!sCoverMode) setCoverEnabled(true, true, false);
-            else refreshCoverGeometry();
+            else if (wasFullComposition != CoverCardLayer.fullScene()
+                    || wasCombined != FoldMusicRuntime.combinedRequested()) refreshCoverGeometry();
+            else CoverCardLayer.refresh();
         }
         CoverBackdrop.sync(false);
         applyMediaCard();

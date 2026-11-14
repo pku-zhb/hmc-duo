@@ -51,6 +51,7 @@ final class VideoBackdropMesh extends View implements Choreographer.FrameCallbac
     private float fullArtworkAlpha;
     private long lastFrameAt;
     private float lastVideoAlpha = Float.NaN;
+    private float lastPresentedAlpha, shaderTime;
     private ViewGroup ownerLayer;
     private ViewTreeObserver observer;
     private ViewTreeObserver.OnPreDrawListener guard;
@@ -76,7 +77,8 @@ final class VideoBackdropMesh extends View implements Choreographer.FrameCallbac
                 + " shown=" + v.isShown() + " mode=" + (v.dynamic ? "dynamic" : "artwork")
                 + " source=" + v.state.source() + " drawn=" + v.state.drawn()
                 + " ready=" + v.state.revealed() + " epoch=" + v.state.epoch()
-                + " alpha=" + v.renderAlpha + " frames=" + v.frames + " lastDraw=" + v.lastDrawAt
+                + " alpha=" + v.renderAlpha + " drawnAlpha=" + v.lastPresentedAlpha
+                + " frames=" + v.frames + " lastDraw=" + v.lastDrawAt
                 + " host=" + (v.getParent() == null ? "none" : v.getParent().getClass().getSimpleName())
                 + " bounds=" + location[0] + "," + location[1] + "," + v.getWidth() + "x" + v.getHeight()
                 + " bitmap=" + (source == null ? "none" : source.getWidth() + "x" + source.getHeight())
@@ -89,7 +91,8 @@ final class VideoBackdropMesh extends View implements Choreographer.FrameCallbac
 
     static void show(boolean on, boolean moving, float[] spec) {
         if (!on) {
-            if (view != null) { view.wanted = false; view.hide(); }
+            if (view != null) view.wanted = false;
+            CoverBackdrop.refreshVisibility();
             return;
         }
         ViewGroup layer = CoverPush.coverLayer();
@@ -109,7 +112,7 @@ final class VideoBackdropMesh extends View implements Choreographer.FrameCallbac
                 view.prepareShader();
             }
             view.wanted = true;
-            refreshVisibility();
+            CoverBackdrop.refreshVisibility();
             if (changed && view.getVisibility() == VISIBLE) view.invalidate();
         } catch (Throwable error) {
             if (view != null) view.hide();
@@ -184,7 +187,7 @@ final class VideoBackdropMesh extends View implements Choreographer.FrameCallbac
         if (observer == host.getViewTreeObserver() && guard != null) return;
         unwatch();
         observer = host.getViewTreeObserver();
-        guard = () -> { refreshVisibility(); return true; };
+        guard = () -> { CoverBackdrop.refreshVisibility(); return true; };
         observer.addOnPreDrawListener(guard);
     }
 
@@ -207,20 +210,26 @@ final class VideoBackdropMesh extends View implements Choreographer.FrameCallbac
         }
     }
 
-    private boolean eligible() {
-        return wanted && isAttachedToWindow() && ownerLayer == CoverPush.coverLayer()
+    private boolean eligible(CoverBackdrop.Snapshot scene) {
+        boolean retained = CoverBackdrop.retains(ArtworkBackdropState.MESH, scene);
+        return isAttachedToWindow() && ownerLayer == CoverPush.coverLayer()
                 && ownerLayer.isAttachedToWindow() && CoverCardLayer.currentBackdrop() != null
-                && ArtworkBackdropState.eligible(!CoverBackdrop.hidden() || CoverCardLayer.fullScene(),
-                        Main.coverModeOn(),
-                        Main.screenOnCached() && ClockCollapse.phase() != ClockCollapse.Phase.AOD,
-                        Main.keyguardLocked(), MiniPlayerScene.INSTANCE.getKeyguardGoingAway(),
-                        Main.onKeyguardNow());
+                && getRootView() == scene.window && (retained || wanted && scene.cover
+                    && !scene.navigation && scene.surface == CoverBackdrop.SURFACE_LIT
+                    && (scene.backgroundWanted || scene.fullComposition));
     }
 
-    static void refreshVisibility() {
+    static void refreshVisibility(CoverBackdrop.Snapshot scene) {
         VideoBackdropMesh v = view;
-        if (v == null) { NativeMediaBackdrop.refresh(); return; }
-        if (!v.eligible()) { v.hide(); return; }
+        if (v == null) return;
+        if (!v.eligible(scene)) { v.hide(); return; }
+        if (CoverBackdrop.retains(ArtworkBackdropState.MESH, scene)) {
+            // The last submitted display list bridges to the still renderer. It is not
+            // another animated AOD background, and cannot outlive its generation/window.
+            if (v.scheduled) Choreographer.getInstance().removeFrameCallback(v);
+            v.scheduled = false;
+            return;
+        }
         int generation = CoverCardLayer.backdropGeneration();
         boolean changed = v.state.source() != generation;
         if (Main.sVideoWallpaper && Main.sCover != null
@@ -235,24 +244,11 @@ final class VideoBackdropMesh extends View implements Choreographer.FrameCallbac
         }
         if (changed) v.invalidate();
         if (v.needsFrames()) v.schedule();
-        NativeMediaBackdrop.refresh();
-    }
-
-    /** Local pixels, not a requested setting, select the native card's sampling domain. */
-    static boolean samplingBackdropIn(View source) {
-        VideoBackdropMesh v = view;
-        // A full-screen foreground band may still draw over native wallpaper. Its presence
-        // does not authorize the media sampler after the artwork background relinquishes it.
-        return source != null && !CoverBackdrop.hidden() && backdropPresented()
-                && v.getRootView() == source.getRootView();
     }
 
     /** The local renderer needs no acknowledgement from the separate wallpaper process. */
     static boolean backdropPresented() {
-        VideoBackdropMesh v = view;
-        return v != null && v.eligible() && v.isShown() && v.state.revealed()
-                && ArtworkBackdropState.presentedFrame(CoverCardLayer.backdropGeneration(),
-                    v.state.drawn(), v.renderAlpha);
+        return CoverBackdrop.backdropPresented();
     }
 
     private boolean needsFrames() {
@@ -267,14 +263,14 @@ final class VideoBackdropMesh extends View implements Choreographer.FrameCallbac
 
     static boolean fullSceneHandoffReady(int generation) {
         VideoBackdropMesh v = view;
-        return v != null && v.eligible() && v.state.source() == generation
+        return v != null && v.eligible(CoverBackdrop.snapshot()) && v.state.source() == generation
                 && v.state.drawn() == generation && v.state.revealed()
                 && v.renderAlpha >= .995f && v.fullArtworkAlpha >= .995f;
     }
 
     static boolean artworkAt(float x, float y) {
         VideoBackdropMesh v = view;
-        if (v == null || !v.eligible() || !v.isShown() || v.fullArtworkAlpha < .5f) return false;
+        if (v == null || !v.eligible(CoverBackdrop.snapshot()) || !v.isShown() || v.fullArtworkAlpha < .5f) return false;
         int[] at = new int[2];
         v.getLocationOnScreen(at);
         return x >= at[0] && y >= at[1] && x < at[0] + v.getWidth()
@@ -295,17 +291,20 @@ final class VideoBackdropMesh extends View implements Choreographer.FrameCallbac
         revealPending = false;
         fadeStarted = 0L;
         renderAlpha = 0f;
+        lastPresentedAlpha = 0f;
         fullArtworkAlpha = 0f;
         lastFrameAt = 0L;
         lastVideoAlpha = Float.NaN;
         state.hide();
         if (getVisibility() != INVISIBLE) setVisibility(INVISIBLE);
-        NativeMediaBackdrop.refresh();
+        CoverBackdrop.rendererHidden(ArtworkBackdropState.MESH);
     }
 
     @Override public void doFrame(long now) {
         scheduled = false;
-        if (!eligible()) { hide(); return; }
+        CoverBackdrop.Snapshot scene = CoverBackdrop.snapshot();
+        if (!eligible(scene)) { hide(); return; }
+        if (CoverBackdrop.retains(ArtworkBackdropState.MESH, scene)) return;
         float dt = lastFrameAt == 0L ? 1f / 60f
                 : Math.min(.05f, Math.max(0f, (now - lastFrameAt) / 1e9f));
         lastFrameAt = now;
@@ -321,7 +320,8 @@ final class VideoBackdropMesh extends View implements Choreographer.FrameCallbac
     }
 
     @Override protected void onDraw(Canvas canvas) {
-        if (!eligible() || getWidth() <= 0 || getHeight() <= 0) { hide(); return; }
+        CoverBackdrop.Snapshot scene = CoverBackdrop.snapshot();
+        if (!eligible(scene) || getWidth() <= 0 || getHeight() <= 0) { hide(); return; }
         int generation = CoverCardLayer.backdropGeneration();
         state.select(generation);
         bounds.set(0f, 0f, getWidth(), getHeight());
@@ -337,11 +337,13 @@ final class VideoBackdropMesh extends View implements Choreographer.FrameCallbac
         try {
             // FULL consists of a sharp feathered band over a separate fill. Native-background
             // mode omits only the fill; it does not remove the user's foreground artwork.
-            drawn = CoverBackdrop.hidden() || CoverCardLayer.drawBackdrop(canvas, bounds, paint);
-            if (drawn && !CoverBackdrop.hidden() && dynamic && shader != null) {
+            drawn = scene.hidden || CoverCardLayer.drawBackdrop(canvas, bounds, paint);
+            if (drawn && !scene.hidden && dynamic && shader != null) {
                 try {
                     shader.setFloatUniform("size", getWidth(), getHeight());
-                    shader.setFloatUniform("time", (SystemClock.uptimeMillis() % 600_000L) / 1000f);
+                    if (!CoverBackdrop.retains(ArtworkBackdropState.MESH, scene))
+                        shaderTime = (SystemClock.uptimeMillis() % 600_000L) / 1000f;
+                    shader.setFloatUniform("time", shaderTime);
                     paint.setShader(shader);
                     paint.setAlpha(255);
                     canvas.drawRect(bounds, paint);
@@ -358,13 +360,15 @@ final class VideoBackdropMesh extends View implements Choreographer.FrameCallbac
         frames++;
         lastDrawAt = SystemClock.uptimeMillis();
         state.drawn(generation);
+        lastPresentedAlpha = scene.hidden ? 0f : alpha;
+        CoverBackdrop.drawn(ArtworkBackdropState.MESH, scene, this, generation, lastPresentedAlpha);
         if (!state.revealed() && !revealPending) {
             long epoch = state.epoch();
             revealPending = true;
             reveal = () -> {
                 reveal = null;
                 revealPending = false;
-                if (!eligible() || !state.reveal(epoch, generation)) return;
+                if (!eligible(CoverBackdrop.snapshot()) || !state.reveal(epoch, generation)) return;
                 fadeStarted = SystemClock.uptimeMillis();
                 schedule();
             };

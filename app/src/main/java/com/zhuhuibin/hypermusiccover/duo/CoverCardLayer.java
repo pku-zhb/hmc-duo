@@ -432,9 +432,9 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
     }
 
     private static boolean layerVisible() {
-        return LockscreenSurfacePolicy.visible(Main.keyguardLocked(),
-                MiniPlayerScene.INSTANCE.getKeyguardGoingAway())
-                && (Main.coverCardVisible() || Main.coverCardBackdropInAod());
+        CoverBackdrop.Snapshot scene = CoverBackdrop.snapshot();
+        return scene.locked && !scene.goingAway && (Main.coverCardVisible()
+                || scene.cover && scene.surface == CoverBackdrop.SURFACE_FULL_AOD);
     }
 
     static void clear() {
@@ -688,16 +688,23 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
         return p == null || p.aodBackdrop == null || p.aodBackdrop.isRecycled() ? null : p.aodBackdrop;
     }
 
-    /** Keep the native media glass on the actually drawn, same-window full-AOD backdrop. */
-    static boolean samplingAodBackdropIn(View source) {
+    /** The background arbiter updates the static renderer before committing any sampler. */
+    static void refreshBackdrop(CoverBackdrop.Snapshot scene) {
         CoverCardLayer v = sView;
-        if (source == null || v == null || !Main.coverCardBackdropInAod()
-                || CoverBackdrop.hidden() || MiniPlayerScene.INSTANCE.getKeyguardGoingAway()) return false;
-        Wash wash = v.wash;
-        return wash.want && wash.isAttachedToWindow() && wash.isShown()
-                && wash.getRootView() == source.getRootView()
-                && ArtworkBackdropState.presentedFrame(backdropGeneration(),
-                    wash.lastBackdropGeneration, wash.lastBackdropAlpha / 255f);
+        if (v == null) return;
+        boolean retained = CoverBackdrop.retains(ArtworkBackdropState.STILL, scene);
+        boolean fullForeground = !scene.navigation && scene.surface == CoverBackdrop.SURFACE_FULL_AOD
+                && fullSceneArtworkVisible();
+        boolean on = scene.desiredRenderer == ArtworkBackdropState.STILL || retained || fullForeground;
+        if (v.current == null || v.current.aodBackdrop == null
+                || !v.wash.isAttachedToWindow() || v.wash.getRootView() != scene.window) {
+            v.wash.hideNow();
+        } else if (on) {
+            v.wash.show(true);
+            if (v.wash.lastBackdropGeneration != scene.generation) v.wash.invalidate();
+        } else if (scene.backgroundWanted && scene.desiredRenderer == ArtworkBackdropState.MESH) {
+            v.wash.show(false);
+        } else v.wash.hideNow();
     }
 
     static int backdropGeneration() {
@@ -1349,11 +1356,7 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
             previous.recycle();
             previous = null;
         }
-        boolean backdrop = Main.coverCardBackdropInAod() && current != null
-                && current.aodBackdrop != null;
-        // Native wallpaper owns its AOD background; never overlay an artwork wash.
-        if (CoverBackdrop.hidden() && !fullSceneArtworkVisible()) wash.hideNow();
-        else wash.show(backdrop);
+        CoverBackdrop.refreshVisibility();
         int visibility = opacity > 0f || target > 0f ? VISIBLE : GONE;
         if (getVisibility() != visibility) setVisibility(visibility);
         if (visibility == VISIBLE) invalidate();
@@ -1544,15 +1547,17 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
         }
 
         void show(boolean on) {
+            boolean changed = false;
             if (on != want) {
                 from = getVisibility() == VISIBLE ? level() : 0f;
                 want = on;
                 changedAt = SystemClock.uptimeMillis();
+                changed = true;
             }
-            if (on && getVisibility() != VISIBLE) setVisibility(VISIBLE);
+            if (on && getVisibility() != VISIBLE) { setVisibility(VISIBLE); changed = true; }
             if (getVisibility() == VISIBLE) {
                 if (on) fit();
-                invalidate();
+                if (changed) invalidate();
             }
         }
 
@@ -1563,7 +1568,7 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
             lastBackdropAlpha = 0;
             lastBackdropGeneration = -1;
             if (getVisibility() != GONE) setVisibility(GONE);
-            NativeMediaBackdrop.refresh();
+            CoverBackdrop.rendererHidden(ArtworkBackdropState.STILL);
         }
 
         /** Scales this view so that its bounds land on the whole display. */
@@ -1600,6 +1605,18 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
         }
 
         @Override protected void onDraw(Canvas canvas) {
+            CoverBackdrop.Snapshot scene = CoverBackdrop.snapshot();
+            boolean retained = CoverBackdrop.retains(ArtworkBackdropState.STILL, scene);
+            boolean foreground = !scene.navigation && scene.surface == CoverBackdrop.SURFACE_FULL_AOD
+                    && fullSceneArtworkVisible();
+            boolean fadingOut = scene.backgroundWanted && !want
+                    && scene.desiredRenderer == ArtworkBackdropState.MESH;
+            if ((!scene.backgroundWanted && !foreground) || scene.window != getRootView()
+                    || (scene.desiredRenderer != ArtworkBackdropState.STILL
+                        && !retained && !foreground && !fadingOut)) {
+                hideNow();
+                return;
+            }
             CoverCardLayer v = sView;
             Prepared p = v == null ? null : v.current;
             float level = level();
@@ -1619,19 +1636,16 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
             int alpha = Math.round(255f * level);
             int saved = canvas.saveLayerAlpha(bounds, alpha);
             paint.setAlpha(255);
-            if (!CoverBackdrop.hidden()) {
+            if (scene.backgroundWanted) {
                 canvas.drawBitmap(p.aodBackdrop, null, bounds, paint);
                 // Record only when pixels enter the display list; VISIBLE alone is not proof.
-                boolean firstPresented = !ArtworkBackdropState.presentedFrame(p.generation,
-                        lastBackdropGeneration, lastBackdropAlpha / 255f) && alpha > 0;
                 backdropDraws++;
                 lastBackdropDraw = SystemClock.uptimeMillis();
                 lastBackdropAlpha = alpha;
                 lastBackdropGeneration = p.generation;
-                // Apply at the next frame boundary, after this source entered the display list.
-                if (firstPresented) postOnAnimation(NativeMediaBackdrop::refresh);
+                CoverBackdrop.drawn(ArtworkBackdropState.STILL, scene, this, p.generation, alpha / 255f);
             }
-            if (fullSceneArtworkVisible()) drawFullSceneArtwork(canvas, bounds, paint, 1f);
+            if (foreground) drawFullSceneArtwork(canvas, bounds, paint, 1f);
             canvas.restoreToCount(saved);
         }
     }
