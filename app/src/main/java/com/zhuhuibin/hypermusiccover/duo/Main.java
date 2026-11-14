@@ -632,6 +632,8 @@ public class Main extends XposedModule {
      * off. `op aodclock` still moves it for the rest of the session.
      */
     static volatile boolean sAodSmall = true;
+    /** Opt-in extension of the native inner-display full-screen AOD eligibility gate. */
+    static volatile boolean sInnerFullScreenAod;
     /**
      * Whether the wallpaper process is sizing the keyguard texture to the SCREEN rather than to
      * the wallpaper file, which is its default and is the same switch as WallpaperProbe.sTexFit
@@ -1066,6 +1068,7 @@ public class Main extends XposedModule {
         HyperTweaks.systemUi(cl);
         LockScreenChargingHint.INSTANCE.install(cl);
         LockscreenStatusBar.install(cl);
+        InnerScreenAod.install(cl);
         StatusBarArtwork.install(cl);
         NativeMediaArtworkLease.install();
         // The home screen magnified behind the shade, after the lock screen (PassBlurScaleFix).
@@ -2141,6 +2144,7 @@ public class Main extends XposedModule {
                     + "\nreflowLockContent=" + (sReflowLockContent ? 1 : 0)
                     + "\nfollowNativeMaterial=" + (sFollowNativeMaterial ? 1 : 0)
                     + "\nhideLockStatusBar=" + (sHideLockStatusBar ? 1 : 0)
+                    + "\ninnerFullScreenAod=" + (sInnerFullScreenAod ? 1 : 0)
                     + "\nartworkClockRow=" + (sArtworkClockRow ? 1 : 0)
                     + "\nartworkClockDestination=" + sArtworkClockDestination
                     + "\nartworkClockBeforeDate=" + (sArtworkClockBeforeDate ? 1 : 0)
@@ -2324,6 +2328,7 @@ public class Main extends XposedModule {
                         else if ("reflowLockContent".equals(k)) sReflowLockContent = "1".equals(v);
                         else if ("followNativeMaterial".equals(k)) sFollowNativeMaterial = "1".equals(v);
                         else if ("hideLockStatusBar".equals(k)) sHideLockStatusBar = "1".equals(v);
+                        else if ("innerFullScreenAod".equals(k)) sInnerFullScreenAod = "1".equals(v);
                         else if ("artworkClockRow".equals(k)) {
                             sArtworkClockRow = "1".equals(v);
                             sArtworkClockDestination = ArtworkClockDestination.fromLegacy(sArtworkClockRow);
@@ -2623,6 +2628,7 @@ public class Main extends XposedModule {
                                 sArtworkClockRow = sArtworkClockDestination == ArtworkClockDestination.DATE_ROW;
                             }
                             else if ("hideLockStatusBar".equals(key)) { sHideLockStatusBar = on; LockscreenStatusBar.refresh(); }
+                            else if ("innerFullScreenAod".equals(key)) sInnerFullScreenAod = on;
                             else if ("artworkClockRow".equals(key)) {
                                 sArtworkClockRow = on;
                                 sArtworkClockDestination = ArtworkClockDestination.fromLegacy(on);
@@ -3364,6 +3370,7 @@ public class Main extends XposedModule {
                         out.putBoolean("reflowLockContent", sReflowLockContent);
                         out.putBoolean("followNativeMaterial", sFollowNativeMaterial);
                         out.putBoolean("hideLockStatusBar", sHideLockStatusBar);
+                        out.putBoolean("innerFullScreenAod", sInnerFullScreenAod);
                         out.putBoolean("artworkClockRow", sArtworkClockRow);
                         out.putInt("artworkClockDestination", sArtworkClockDestination);
                         out.putBoolean("artworkClockBeforeDate", sArtworkClockBeforeDate);
@@ -7172,6 +7179,7 @@ public class Main extends XposedModule {
             // A recorded media rectangle belongs to its previous screen form.
             sCardW = sCardH = 0;
             sCardSampleAt = 0;
+            MiniPlayerScene.INSTANCE.geometryChanged();
             CoverCardLayer.geometryChanged();
             FoldMusicRuntime.refresh();
             Xp.log(TAG + "screen geometry " + next.width + "x" + next.height
@@ -11936,15 +11944,17 @@ public class Main extends XposedModule {
      * Whether the always-on display in play is the FULL-SCREEN one - the whole lock screen shown
      * dimmed - as opposed to the plain one that shows only a clock.
      *
-     * The OEM's own answer rather than the secure setting: `fullAodEnable()` ANDs the user's
-     * switch with the device support, the doze master switch and whether the current wallpaper and
-     * template allow it, and any one of those going off is a phone whose AOD is not this mode. The
-     * settings are the fallback for a build whose interfaces-manager does not have the impl.
+     * Prefer the OEM's current-display answer. Its global manager can be enabled while the
+     * inner display explicitly refuses full-screen AOD. The opt-in inner extension lives in
+     * that native display gate; it never overrides the master, wallpaper or clock-style checks.
+     * Older ROMs without this contract retain the global manager/settings fallback.
      *
      * Asked once per sleep, from ClockCollapse.keepInAod(), so the reflection is not on any
      * per-frame path.
      */
     static boolean fullAodOn() {
+        Boolean display = InnerScreenAod.currentScreenEnabled();
+        if (display != null) return display;
         View c = sContainer;
         if (c != null) {
             try {

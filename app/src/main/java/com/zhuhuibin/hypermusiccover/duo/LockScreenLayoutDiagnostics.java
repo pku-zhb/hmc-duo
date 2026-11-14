@@ -26,6 +26,7 @@ final class LockScreenLayoutDiagnostics {
             out.put("screenOn", Main.screenOnCached());
             out.put("aod", MiniPlayerScene.INSTANCE.getAodActive());
             out.put("fullScreenAod", MiniPlayerScene.INSTANCE.getFullScreenAodActive());
+            out.put("innerScreenAod", InnerScreenAod.describe());
             out.put("customAod", MiniPlayerScene.INSTANCE.getCustomAodActive());
             out.put("keyguardVisible", Main.onKeyguardNow());
             out.put("bouncer", Main.bouncerShown());
