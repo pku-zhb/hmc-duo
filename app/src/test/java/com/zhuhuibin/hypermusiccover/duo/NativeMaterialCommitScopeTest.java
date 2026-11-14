@@ -68,10 +68,8 @@ public class NativeMaterialCommitScopeTest {
         assertFalse(NativeMaterialSource.ownedTarget(null));
     }
 
-    private static final class a implements NativeMaterialTarget {}
-
     @Test public void aRepackagedViewKeepsItsExplicitDestinationIdentity() {
-        assertFalse(a.class.getSimpleName().startsWith("Material"));
-        assertTrue(NativeMaterialSource.ownedTarget(new a()));
+        assertFalse(repacked.a.class.getName().startsWith("com.zhuhuibin.hypermusiccover.duo."));
+        assertTrue(NativeMaterialSource.ownedTarget(new repacked.a()));
     }
 }
