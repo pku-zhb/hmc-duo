@@ -10,6 +10,16 @@ and [HyperMusicCover](https://github.com/zyl6932/HyperMusicCover).
 Device coverage is focused on the maintainer's foldable phone; compatibility with
 other devices is not established.
 
+Version 0.2.13 aligns inner-screen content inside the right-rail safe frame.
+Landscape artwork+lyrics use equal usable columns, with the player matching the
+artwork width; inner dates move upward. A default-off inner full-screen-AOD option
+extends the native per-display gate while preserving master/style policy.
+Artwork, clock and lyric presentation consume the native AOD progress and a
+shared post-clock geometry boundary. Backdrop handoffs keep outgoing pixels
+opaque until the incoming renderer is ready, and compact seek visibility follows
+actual player height. See the [0.2.13 record](docs/releases/0.2.13.md) for scope
+and the distinction between host checks and device/visual acceptance.
+
 Version 0.2.12 publishes complete clock poses atomically and requires a valid,
 committed pose before treating AOD as held. It includes 0.2.11's replacement-time
 acquisition during direct full-AOD entry when its
