@@ -1,6 +1,11 @@
 package com.zhuhuibin.hypermusiccover.duo;
 
 import android.content.Context;
+import android.content.ContentResolver;
+import android.database.ContentObserver;
+import android.os.Handler;
+import android.os.Looper;
+import android.provider.Settings;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -12,8 +17,83 @@ final class InnerScreenAod {
     private static Class<?> hostInterface;
     private static String error = "none";
     private static long extendedCalls;
+    private static final String SHARED_OPT_IN = "hmc_duo_inner_full_screen_aod";
+    private static boolean aodInstalled;
+    private static final java.util.Set<Class<?>> aodTypes = java.util.Collections.newSetFromMap(
+            new java.util.WeakHashMap<Class<?>, Boolean>());
+    private static volatile boolean aodOptIn;
+    private static ContentResolver aodResolver;
+    private static ContentObserver aodObserver;
+    private static long aodExtensions;
 
     private InnerScreenAod() {}
+
+    /** The AOD plugin has its own copy of the per-display eligibility gate. */
+    static void installAod(ClassLoader loader) {
+        Class<?> target = null;
+        try {
+            Class<?> utils = Xp.findClass("com.miui.aod.Utils", loader);
+            synchronized (aodTypes) { if (!aodTypes.add(utils)) return; }
+            target = utils;
+            Method gate = Xp.findMethodExact(utils, "isCurrentScreenSupportFsAod", Context.class);
+            Method fold = Xp.findMethodExact(utils, "isFoldDevice");
+            if (gate.getReturnType() != boolean.class || fold.getReturnType() != boolean.class)
+                throw new NoSuchMethodException("AOD display eligibility contract");
+            Xp.hook(gate, chain -> {
+                Object nativeAnswer = chain.proceed();
+                if (!Boolean.FALSE.equals(nativeAnswer)) return nativeAnswer;
+                try {
+                    observeOptIn((Context) chain.getArg(0));
+                    // A negative native answer already proves the current large display.
+                    // Masters, clock style, scheduling and brightness stay with native callers.
+                    if (aodOptIn && Boolean.TRUE.equals(fold.invoke(null))) {
+                        aodExtensions++;
+                        return true;
+                    }
+                } catch (Throwable failure) { error = failure.getClass().getSimpleName(); }
+                return nativeAnswer;
+            });
+            aodInstalled = true;
+            Xp.log("MCInnerAod: native AOD plugin display extension installed");
+        } catch (Throwable failure) {
+            if (target != null) synchronized (aodTypes) { aodTypes.remove(target); }
+            error = failure.getClass().getSimpleName();
+            Xp.w("MCInnerAod: AOD plugin contract unavailable: " + failure);
+        }
+    }
+
+    /** One explicit cross-process choice, watched by the plugin without a frame-time query. */
+    private static synchronized void observeOptIn(Context context) {
+        if (aodResolver != null || context == null) return;
+        ContentResolver resolver = context.getContentResolver();
+        ContentObserver observer = new ContentObserver(new Handler(Looper.getMainLooper())) {
+            @Override public void onChange(boolean selfChange) { readOptIn(resolver); }
+        };
+        resolver.registerContentObserver(Settings.Global.getUriFor(SHARED_OPT_IN), false, observer);
+        aodObserver = observer;
+        aodResolver = resolver;
+        readOptIn(resolver);
+    }
+
+    private static void readOptIn(ContentResolver resolver) {
+        try { aodOptIn = Settings.Global.getInt(resolver, SHARED_OPT_IN, 0) == 1; }
+        catch (Throwable failure) { aodOptIn = false; error = failure.getClass().getSimpleName(); }
+    }
+
+    static void publishOptIn() {
+        Context context = Main.sAppCtx;
+        if (context == null) return;
+        try {
+            ContentResolver resolver = context.getContentResolver();
+            int desired = Main.sInnerFullScreenAod ? 1 : 0;
+            if (Settings.Global.getInt(resolver, SHARED_OPT_IN, 0) != desired
+                    && !Settings.Global.putInt(resolver, SHARED_OPT_IN, desired))
+                throw new IllegalStateException("AOD choice publication refused");
+        } catch (Throwable failure) {
+            error = failure.getClass().getSimpleName();
+            Xp.w("MCInnerAod: choice publication unavailable: " + failure);
+        }
+    }
 
     static void install(ClassLoader loader) {
         if (currentScreen != null) return;
@@ -55,10 +135,29 @@ final class InnerScreenAod {
             hostInterface = iface;
             getImpl = lookup;
             currentScreen = gate;
+            installPluginLifecycle(loader);
             Xp.log("MCInnerAod: native current-display extension installed");
         } catch (Throwable failure) {
             error = failure.getClass().getSimpleName();
             Xp.w("MCInnerAod: native current-display contract unavailable: " + failure);
+        }
+    }
+
+    /** The live plugin can use a loader distinct from the AOD settings application's loader. */
+    private static void installPluginLifecycle(ClassLoader loader) {
+        try {
+            Class<?> owner = Xp.findClass("com.android.keyguard.doze.MiuiDozeService", loader);
+            for (Method method : owner.getDeclaredMethods()) {
+                if (!method.getName().equals("onPluginConnected") || method.getParameterCount() != 2
+                        || method.getParameterTypes()[1] != Context.class || method.getReturnType() != void.class) continue;
+                Xp.hook(method, chain -> {
+                    Object plugin = chain.getArg(0);
+                    if (plugin != null) installAod(plugin.getClass().getClassLoader());
+                    return chain.proceed();
+                });
+            }
+        } catch (Throwable failure) {
+            Xp.w("MCInnerAod: live plugin lifecycle unavailable: " + failure);
         }
     }
 
@@ -82,6 +181,7 @@ final class InnerScreenAod {
                     + " inner=" + innerDisplay.invoke(null, context.get(host))
                     + " current=" + currentScreen.invoke(host);
         } catch (Throwable failure) { error = failure.getClass().getSimpleName(); }
-        return state + " extensions=" + extendedCalls + " error=" + error;
+        return state + " extensions=" + extendedCalls + " plugin=" + aodInstalled
+                + " pluginOptIn=" + aodOptIn + " pluginExtensions=" + aodExtensions + " error=" + error;
     }
 }

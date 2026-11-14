@@ -10,7 +10,9 @@ and [HyperMusicCover](https://github.com/zyl6932/HyperMusicCover).
 Device coverage is focused on the maintainer's foldable phone; compatibility with
 other devices is not established.
 
-Version 0.2.13 aligns inner-screen content inside the right-rail safe frame.
+Version 0.2.14 connects the inner-screen AOD option to the native AOD plugin's
+independent display eligibility check. See the [0.2.14 record](docs/releases/0.2.14.md).
+It includes 0.2.13, which aligns inner-screen content inside the right-rail safe frame.
 Landscape artwork+lyrics use equal usable columns, with the player matching the
 artwork width; inner dates move upward. A default-off inner full-screen-AOD option
 extends the native per-display gate while preserving master/style policy.
