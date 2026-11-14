@@ -125,7 +125,9 @@ final class CoverBackdrop {
             int index = below != null ? parent.indexOfChild(below) : parent.getChildCount();
             for (int i = 0; i < index; i++) {
                 android.view.View child = parent.getChildAt(i);
-                if (child instanceof CoverCardLayer || "HMCCoverWash".equals(child.getTag())) {
+                // Both local backgrounds (awake mesh and static AOD wash) belong below
+                // this dim layer. Only the foreground square is an insertion boundary.
+                if (child instanceof CoverCardLayer) {
                     index = i;
                     break;
                 }
