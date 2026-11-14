@@ -22,6 +22,7 @@ final class NativeGlassRelay {
     private static final Map<View, GlassProfile.Blur> committedBlur = Collections.synchronizedMap(new WeakHashMap<>());
     private static final Map<View, GlassProfile.Background> committedBackground = Collections.synchronizedMap(new WeakHashMap<>());
     private static final NativeMaterialCommitScope<View> scopes = new NativeMaterialCommitScope<>();
+    private static final NativeMaterialNodeCache<Object> nodeCommits = new NativeMaterialNodeCache<>();
     private static final NativeMaterialSourceBinding<View> sourceBinding = new NativeMaterialSourceBinding<>();
     private static final NativePaletteBatch<View> palettes = new NativePaletteBatch<>();
     private static final ThreadLocal<View> paletteReplay = new ThreadLocal<>();
@@ -74,16 +75,18 @@ final class NativeGlassRelay {
             Xp.api().hook(commit).intercept(chain -> {
                 Object node = chain.getThisObject();
                 NativeMaterialCommitScope.Frame<View> frame = scopes.matching(node);
-                if (frame == null) return chain.proceed();
+                if (frame == null && !nodeCommits.tracked(node)) return chain.proceed();
                 Object[] args = chain.getArgs().toArray();
                 if (frame != null && (frame.role & GLASS_TARGET) != 0 && followsNow() && profile != null) {
                     float[] values = profile.forScene(frame.nightMode, frame.awake);
                     if (values != null) { args[0] = values; ++applications; }
                 }
                 Object result = chain.proceed(args);
-                frame = scopes.committed(node, Boolean.TRUE.equals(result));
-                if (frame != null && frame.role == SOURCE && args[0] instanceof float[]) {
-                    GlassProfile next = GlassProfile.capture((float[]) args[0], frame.nightMode, frame.awake);
+                float[] accepted = nodeCommits.glass(node, args[0] instanceof float[] ? (float[]) args[0] : null,
+                        Boolean.TRUE.equals(result));
+                frame = scopes.matching(node);
+                if (frame != null && frame.role == SOURCE && accepted != null) {
+                    GlassProfile next = GlassProfile.capture(accepted, frame.nightMode, frame.awake);
                     if (next != null) {
                         committedGlass.put(frame.target, next);
                         if (!next.same(profile)) { profile = next; ++captures; refreshTargets(); }
@@ -100,16 +103,18 @@ final class NativeGlassRelay {
             Xp.api().hook(commit).intercept(chain -> {
                 Object node = chain.getThisObject();
                 NativeMaterialCommitScope.Frame<View> frame = scopes.matching(node);
-                if (frame == null) return chain.proceed();
+                if (frame == null && !nodeCommits.tracked(node)) return chain.proceed();
                 Object[] args = chain.getArgs().toArray();
                 if (frame != null && (frame.role & BLUR_TARGET) != 0 && followsNow() && blur != null) {
                     int[] values = blur.forScene(frame.nightMode, frame.awake);
                     if (values != null) { args[0] = values[0]; args[1] = values[1]; ++blurApplications; }
                 }
                 Object result = chain.proceed(args);
-                frame = scopes.committed(node, Boolean.TRUE.equals(result));
-                if (frame != null && frame.role == SOURCE) {
-                    GlassProfile.Blur next = GlassProfile.Blur.capture((Integer) args[0], (Integer) args[1],
+                int[] accepted = nodeCommits.blur(node, (Integer) args[0], (Integer) args[1],
+                        Boolean.TRUE.equals(result));
+                frame = scopes.matching(node);
+                if (frame != null && frame.role == SOURCE && accepted != null) {
+                    GlassProfile.Blur next = GlassProfile.Blur.capture(accepted[0], accepted[1],
                             frame.nightMode, frame.awake);
                     if (next != null) {
                         committedBlur.put(frame.target, next);
@@ -307,6 +312,11 @@ final class NativeGlassRelay {
     static boolean bindNativePlayerBackground(View view, View owner) {
         Object parent = view == null ? null : view.getParent();
         Object ownerParent = owner == null ? null : owner.getParent();
+        // Observe only successful lower-level writes on a structurally verified OEM node,
+        // even if its first material is installed in the shade before keyguard is visible.
+        if (!nativePlayerBackgroundShape(view, owner)) return false;
+        try { if (renderNode != null) nodeCommits.track(renderNode.get(view)); }
+        catch (Throwable ignored) { return false; }
         if (!relaySceneNow()) { NativeMediaBackdrop.suspend(); return false; }
         boolean sameSource = sourceBinding.isSource(view);
         boolean bound = sourceBinding.bind(view, parent, owner, ownerParent,
@@ -340,7 +350,14 @@ final class NativeGlassRelay {
     }
 
     private static boolean nativePlayerBackground(View view, View owner) {
-        if (view == null || view.getId() == View.NO_ID || !Main.keyguardLocked() || !Main.onKeyguardNow()) return false;
+        View container = Main.sContainer;
+        return relaySceneNow() && container != null && view != null
+                && view.getRootView() == container.getRootView() && nativePlayerBackgroundShape(view, owner);
+    }
+
+    private static boolean nativePlayerBackgroundShape(View view, View owner) {
+        if (view == null || owner == null || view.getId() == View.NO_ID
+                || view.getRootView() != owner.getRootView()) return false;
         String id;
         try { id = view.getResources().getResourceEntryName(view.getId()); }
         catch (Throwable ignored) { return false; }
