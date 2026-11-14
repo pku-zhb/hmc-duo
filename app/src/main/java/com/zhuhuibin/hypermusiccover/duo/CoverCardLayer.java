@@ -25,6 +25,40 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
     private static volatile int sGeneration;
     private static volatile CoverCardStyle sStyle = CoverCardStyle.defaults();
     private static volatile boolean sPlayingState;
+    private static final ArtworkCompositionState COMPOSITION = new ArtworkCompositionState();
+    private static final java.util.concurrent.atomic.AtomicLong SOURCE_IDS = new java.util.concurrent.atomic.AtomicLong();
+    private static volatile Source retainedSource;
+    private static final Object COMPOSE_WORK = new Object();
+    private static CompositionRequest queuedComposition;
+    private static boolean composing;
+
+    private static final class CompositionRequest {
+        final Source source;
+        final ArtworkCompositionKey key;
+        final int generation;
+        CompositionRequest(Source source, ArtworkCompositionKey key, int generation) {
+            this.source = source; this.key = key; this.generation = generation;
+        }
+    }
+
+    /** Uncropped local source, independent of screen form and of a media-session refresh. */
+    private static final class Source {
+        final Bitmap bitmap;
+        final long identity;
+        final boolean temporary;
+        final String track;
+        long equivalentIdentity = -1L;
+        private int references = 1;
+        Source(Bitmap bitmap, boolean temporary, String track) {
+            this.bitmap = bitmap;
+            this.temporary = temporary; this.track = track;
+            identity = SOURCE_IDS.incrementAndGet();
+        }
+        synchronized boolean retain() { if (references == 0) return false; references++; return true; }
+        synchronized void release() { if (--references == 0) bitmap.recycle(); }
+    }
+
+    private static synchronized int nextGeneration() { return ++sGeneration; }
 
     private static final class Prepared {
         final Bitmap art;
@@ -33,21 +67,22 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
         final float fullBias;
         final boolean cardComposition;
         final int generation;
-        final int pushGeneration;
         final boolean temporaryThumbnail;
         final String trackKey;
+        final ArtworkCompositionKey composition;
+        final ArtworkFrameLifetime frames = new ArtworkFrameLifetime();
         Prepared(Bitmap art, Bitmap aodBackdrop, Bitmap fullBand, float fullBias, boolean cardComposition,
-                 int generation, int pushGeneration,
-                 boolean temporaryThumbnail, String trackKey) {
+                 int generation,
+                 boolean temporaryThumbnail, String trackKey, ArtworkCompositionKey composition) {
             this.art = art;
             this.aodBackdrop = aodBackdrop;
             this.fullBand = fullBand;
             this.fullBias = fullBias;
             this.cardComposition = cardComposition;
             this.generation = generation;
-            this.pushGeneration = pushGeneration;
             this.temporaryThumbnail = temporaryThumbnail;
             this.trackKey = trackKey;
+            this.composition = composition;
         }
         void recycle() {
             art.recycle();
@@ -57,6 +92,7 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
     }
 
     private Prepared current, previous;
+    private boolean compositionReplacement;
     private long changedAt;
     private long lastFrame;
     private boolean ticking;
@@ -208,6 +244,7 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
         v.style = sStyle;
         v.playing = sPlayingState;
         v.watchGeometry(layer);
+        recomposeBackdrop();
         v.adoptPending();
         v.start();
     }
@@ -292,6 +329,7 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
 
     static void style(CoverCardStyle config) {
         sStyle = config;
+        recomposeBackdrop();
         CoverCardLayer v = sView;
         if (v != null) {
             boolean shapeChanged = v.style.mode != config.mode;
@@ -322,15 +360,138 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
 
     static void publish(Bitmap source, boolean temporaryThumbnail, int pushGeneration,
                         String expectedKey, boolean cardComposition) {
-        final int generation = ++sGeneration;
-        final String trackKey = expectedKey == null ? Main.sTrackKey : expectedKey;
-        if (source == null || source.isRecycled()) return;
-        Bitmap readable = null, art = null, aodBackdrop = null, fullBand = null;
-        final boolean full = Main.effectiveCoverStyle().mode == CoverCardStyle.FULL;
-        final float bias = Main.sBias;
+        String track = expectedKey == null ? Main.sTrackKey : expectedKey;
+        if (source == null || source.isRecycled() || !CoverPush.currentPush(pushGeneration, track)) return;
+        Source candidate = null;
         try {
-            readable = source.getConfig() == Bitmap.Config.HARDWARE
-                    ? source.copy(Bitmap.Config.ARGB_8888, false) : source;
+            candidate = new Source(retainOriginal(source), temporaryThumbnail, track);
+            Source prior = retainedSource;
+            if (prior != null && prior.retain()) {
+                try {
+                    if (prior.temporary == temporaryThumbnail && Main.sameTrack(prior.track, track)
+                            && prior.bitmap.sameAs(candidate.bitmap)) candidate.equivalentIdentity = prior.identity;
+                } finally { prior.release(); }
+            }
+        } catch (Throwable error) {
+            if (candidate != null) candidate.release();
+            Xp.w("[MCCard] retaining artwork source failed: " + error);
+            return;
+        }
+        final Source accepted = candidate;
+        Main.main().post(() -> {
+            if (!CoverPush.currentPush(pushGeneration, track)) { accepted.release(); return; }
+            Source prior = retainedSource;
+            if (prior != null && accepted.equivalentIdentity == prior.identity) accepted.release();
+            else {
+                retainedSource = accepted;
+                if (prior != null) prior.release();
+            }
+            recomposeBackdrop();
+            CoverBackdrop.refreshVisibility();
+        });
+    }
+
+    private static Bitmap retainOriginal(Bitmap source) {
+        // The owned copy remains uncropped; 1280px covers the maximum local output (sharp band
+        // is at most 1024px), without pinning a player's multi-megapixel backing allocation.
+        Bitmap readable = source, result = null;
+        try {
+            if (source.getConfig() == Bitmap.Config.HARDWARE)
+                readable = source.copy(Bitmap.Config.ARGB_8888, false);
+            float down = Math.min(1f, 1280f / Math.max(readable.getWidth(), readable.getHeight()));
+            result = down < 1f ? Bitmap.createScaledBitmap(readable,
+                    Math.max(1, Math.round(readable.getWidth() * down)),
+                    Math.max(1, Math.round(readable.getHeight() * down)), true)
+                    : readable != source ? readable : readable.copy(Bitmap.Config.ARGB_8888, false);
+            if (result == null) throw new IllegalStateException("source copy unavailable");
+            return result;
+        } finally {
+            if (readable != null && readable != source && readable != result) readable.recycle();
+        }
+    }
+
+    /** Schedule only changed composition inputs. Paused playback and hidden pages need no metadata. */
+    static void recomposeBackdrop() {
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            Main.main().post(CoverCardLayer::recomposeBackdrop);
+            return;
+        }
+        Source source = retainedSource;
+        if (source == null) return;
+        CoverBackdrop.Snapshot scene = CoverBackdrop.snapshot();
+        ArtworkCompositionKey key = compositionKey(scene, source.identity);
+        if (!COMPOSITION.request(key)) return;
+        if (sView != null && sView.current != null && sView.current.composition.same(key)) {
+            COMPOSITION.commit(key);
+            return;
+        }
+        if (!source.retain()) { COMPOSITION.cancel(key); return; }
+        CompositionRequest request = new CompositionRequest(source, key, nextGeneration());
+        synchronized (COMPOSE_WORK) {
+            if (queuedComposition != null) queuedComposition.source.release();
+            queuedComposition = request;
+            if (composing) return;
+            composing = true;
+        }
+        Main.worker().post(CoverCardLayer::composeLatest);
+    }
+
+    /** One active job and one replaceable request, rather than a queue for every orientation. */
+    private static void composeLatest() {
+        while (true) {
+            CompositionRequest request;
+            synchronized (COMPOSE_WORK) {
+                request = queuedComposition;
+                queuedComposition = null;
+                if (request == null) { composing = false; return; }
+            }
+            Prepared prepared = null;
+            try {
+                if (COMPOSITION.accepts(request.key))
+                    prepared = prepare(request.source, request.key, request.generation);
+            } finally { request.source.release(); }
+            final Prepared result = prepared;
+            Main.main().post(() -> {
+                if (result == null) { COMPOSITION.cancel(request.key); return; }
+                publishPrepared(result);
+            });
+        }
+    }
+
+    private static void publishPrepared(Prepared result) {
+        ArtworkCompositionKey key = result.composition;
+        Source source = retainedSource;
+        if (!COMPOSITION.accepts(key) || source == null || source.identity != key.source
+                || !key.same(compositionKey(CoverBackdrop.snapshot(), source.identity))) {
+            result.recycle();
+            COMPOSITION.cancel(key);
+            return;
+        }
+        Prepared old = sPending;
+        sPending = result;
+        CoverCardLayer view = sView;
+        if (old != null && old != sPending && (view == null
+                || old != view.current && old != view.previous)) old.recycle();
+        if (view == null) return;
+        Main.main().removeCallbacks(ADOPT_HELD);
+        // Same-source geometry/mode work has no wallpaper acknowledgement to wait for.
+        if (view.current == null || view.current.composition.source == key.source
+                || view.isReadyRectangularUpgrade(result)
+                || view.current.cardComposition != result.cardComposition) view.adoptPending();
+        else Main.main().postDelayed(ADOPT_HELD, HOLD_MAX_MS);
+    }
+
+    private static ArtworkCompositionKey compositionKey(CoverBackdrop.Snapshot scene, long source) {
+        return new ArtworkCompositionKey(scene.window, scene.geometryRevision, scene.width, scene.height,
+                Main.effectiveCoverStyle().mode, !scene.fullComposition, source, scene.blur, scene.bias);
+    }
+
+    private static Prepared prepare(Source source, ArtworkCompositionKey key, int generation) {
+        Bitmap readable = null, art = null, aodBackdrop = null, fullBand = null;
+        final boolean full = key.mode == CoverCardStyle.FULL;
+        final float bias = key.bias;
+        try {
+            readable = source.bitmap;
             int w = readable.getWidth(), h = readable.getHeight();
             // The artwork's own shape, cropped only past CoverCardStyle.MAX_ASPECT. It was
             // cropped to a square here, which cut the sides off a video's cover.
@@ -346,20 +507,20 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
                     new Rect(0, 0, art.getWidth(), art.getHeight()),
                     new Paint(Paint.FILTER_BITMAP_FLAG));
             // Shade only the large cover's copy; wallpaper and AOD backdrops keep their brightness.
-            if (temporaryThumbnail) new Canvas(art).drawColor(0x33000000);
+            if (source.temporary) new Canvas(art).drawColor(0x33000000);
             // One owned, generation-matched backdrop serves the local lock-screen layer and
             // the existing faint full-AOD wash. Some Flip builds have no keyguard image engine;
             // preparing locally cannot depend on that engine accepting a wallpaper upload.
             try {
-                int screenW = Math.max(1, Main.screenWidth());
-                int screenH = Math.max(1, Main.screenHeight());
-                float fit = Math.min(1f, (Main.sFullBlur <= 0 ? 1280f : 768f)
+                int screenW = key.width;
+                int screenH = key.height;
+                float fit = Math.min(1f, (key.blur <= 0 ? 1280f : 768f)
                         / Math.max(screenW, screenH));
                 int backdropW = Math.max(1, Math.round(screenW * fit));
                 int backdropH = Math.max(1, Math.round(screenH * fit));
-                aodBackdrop = full && !cardComposition
-                        ? CoverCompose.composedBackdrop(readable, backdropW, backdropH, bias, Main.sFullBlur)
-                        : CoverCompose.cardBackground(readable, backdropW, backdropH, Main.sFullBlur);
+                aodBackdrop = full && !key.cardComposition
+                        ? CoverCompose.composedBackdrop(readable, backdropW, backdropH, bias, key.blur)
+                        : CoverCompose.cardBackground(readable, backdropW, backdropH, key.blur);
                 if (full) {
                     // Keep the original full-width composition separate from its blurred fill.
                     // A native background can then retain the sharp band, and the animated mesh
@@ -368,40 +529,19 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
                             CoverFullScenePolicy.feather(art.getWidth(), art.getHeight(), screenW));
                 }
             } catch (Throwable t) {
-                Xp.w("[MCCard] local/AOD backdrop preparation failed: " + t);
+                throw new IllegalStateException("local backdrop preparation failed", t);
             }
-            final Prepared p = new Prepared(art, aodBackdrop, fullBand, bias, cardComposition,
-                    generation, pushGeneration,
-                    temporaryThumbnail, trackKey);
+            final Prepared p = new Prepared(art, aodBackdrop, fullBand, bias, key.cardComposition,
+                    generation,
+                    source.temporary, source.track, key);
             art = null;
             aodBackdrop = null;
             fullBand = null;
-            final Prepared old = sPending;
-            sPending = p;
-            Main.main().post(new Runnable() {
-                @Override public void run() {
-                    CoverCardLayer v = sView;
-                    // Decided here, on the thread that adopts: read from the worker, `current`
-                    // could become `old` between the check and the recycle, and the next draw
-                    // would throw inside SystemUI.
-                    if (old != null && old != sPending && (v == null
-                            || (old != v.current && old != v.previous))) old.recycle();
-                    if (v == null) return;
-                    // The first art has nothing to keep pace with. A swap waits for the
-                    // wallpaper to start its own - see releaseHeld() - with a ceiling in case
-                    // that word never comes. A page's composition change is already visible
-                    // locally, so do not hold it on a wallpaper acknowledgement for 400ms.
-                    Main.main().removeCallbacks(ADOPT_HELD);
-                    if (v.current == null || v.isReadyRectangularUpgrade(sPending)
-                            || sPending != null && v.current.cardComposition != sPending.cardComposition)
-                        v.adoptPending();
-                    else Main.main().postDelayed(ADOPT_HELD, HOLD_MAX_MS);
-                }
-            });
-        } catch (Throwable t) {
-            Xp.w("[MCCard] artwork preparation failed: " + t);
+            return p;
+        } catch (Throwable error) {
+            Xp.w("[MCCard] artwork preparation failed: " + error);
+            return null;
         } finally {
-            if (readable != null && readable != source) readable.recycle();
             if (art != null) art.recycle();
             if (aodBackdrop != null) aodBackdrop.recycle();
             if (fullBand != null) fullBand.recycle();
@@ -438,7 +578,8 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
     }
 
     static void clear() {
-        ++sGeneration;
+        nextGeneration();
+        COMPOSITION.clear();
         Main.main().post(new Runnable() {
             @Override public void run() {
                 CoverCardLayer v = sView;
@@ -457,6 +598,7 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
 
     /** Resting/AOD poses belong to one window shape and must not survive a display handoff. */
     static void geometryChanged() {
+        recomposeBackdrop();
         CoverCardLayer v = sView;
         if (v == null) return;
         v.lockPlace = v.bigCoverPlace = v.restPlace = v.lastGoal = v.aodUnshrunkGoal = null;
@@ -651,6 +793,7 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
     }
 
     static void entering() {
+        recomposeBackdrop();
         CoverCardLayer v = sView;
         if (v != null) v.exitWithCard = false;
     }
@@ -707,6 +850,36 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
         } else v.wash.hideNow();
     }
 
+    static long backdropSourceIdentity() {
+        Source source = retainedSource;
+        return source == null ? -1L : source.identity;
+    }
+
+    static boolean backdropCompositionMatches(CoverBackdrop.Snapshot scene) {
+        CoverCardLayer view = sView;
+        return view != null && backdropCompositionMatches(view.current, scene);
+    }
+
+    private static boolean backdropCompositionMatches(Prepared prepared, CoverBackdrop.Snapshot scene) {
+        return prepared != null && prepared.aodBackdrop != null && !prepared.aodBackdrop.isRecycled()
+                && scene.sourceIdentity == backdropSourceIdentity()
+                && prepared.composition.same(compositionKey(scene, scene.sourceIdentity));
+    }
+
+    static String compositionDescription() {
+        ArtworkCompositionKey desired = COMPOSITION.desired();
+        Prepared current = sView == null ? null : sView.current;
+        ArtworkCompositionKey actual = current == null ? null : current.composition;
+        return "source=" + backdropSourceIdentity() + " desired=" + compositionLabel(desired)
+                + " actual=" + compositionLabel(actual) + " pending=" + (COMPOSITION.pending() != null);
+    }
+
+    private static String compositionLabel(ArtworkCompositionKey key) {
+        return key == null ? "none" : Integer.toHexString(System.identityHashCode(key.window))
+                + ":" + key.revision + ":" + key.width + "x" + key.height + ":" + key.mode
+                + ":" + key.cardComposition + ":" + key.blur + ":" + key.bias + ":" + key.source;
+    }
+
     static int backdropGeneration() {
         CoverCardLayer v = sView;
         return v == null || v.current == null ? -1 : v.current.generation;
@@ -757,7 +930,7 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
     static boolean fullSceneHandoffReady() {
         CoverCardLayer v = sView;
         return fullScene() && hasFullSceneArtwork() && !v.current.cardComposition && v.previous == null
-                && CoverPush.currentPush(v.current.pushGeneration, v.current.trackKey)
+                && backdropCompositionMatches(v.current, CoverBackdrop.snapshot())
                 && VideoBackdropMesh.fullSceneHandoffReady(v.current.generation);
     }
 
@@ -766,7 +939,8 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
         CoverCardLayer v = sView;
         if (v == null || !hasFullSceneArtwork() || alpha <= 0f) return false;
         Prepared old = v.previous;
-        boolean crossfade = old != null && old.fullBand != null && !old.fullBand.isRecycled();
+        boolean crossfade = old != null && old.fullBand != null && !old.fullBand.isRecycled()
+                && !v.compositionReplacement && v.fadeFraction() < 1f;
         float fade = crossfade ? v.fadeFraction() : 1f;
         if (crossfade) drawFullBand(canvas, bounds, paint, old, alpha * (1f - fade));
         drawFullBand(canvas, bounds, paint, v.current, alpha * fade);
@@ -795,9 +969,10 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
         paint.setColor(0xFFFFFFFF);
         Prepared old = v.previous;
         Bitmap previous = old == null ? null : old.aodBackdrop;
-        boolean crossfade = previous != null && !previous.isRecycled();
+        boolean crossfade = previous != null && !previous.isRecycled()
+                && !v.compositionReplacement && v.fadeFraction() < 1f;
         paint.setAlpha(255);
-        if (crossfade) canvas.drawBitmap(previous, null, bounds, paint);
+        if (crossfade && !v.compositionReplacement) canvas.drawBitmap(previous, null, bounds, paint);
         paint.setAlpha(crossfade ? Math.round(255f * v.fadeFraction()) : 255);
         canvas.drawBitmap(current, null, bounds, paint);
         paint.setAlpha(255);
@@ -886,11 +1061,22 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
 
     private void adoptPending() {
         Prepared p = sPending;
-        if (p == null || p == current || p.generation != sGeneration
-                || !CoverPush.currentPush(p.pushGeneration, p.trackKey)) return;
+        if (p == null || p == current || !COMPOSITION.accepts(p.composition)
+                || !backdropCompositionMatches(p, CoverBackdrop.snapshot())) return;
         boolean revealReady = isReadyRectangularUpgrade(p);
-        if (previous != null) previous.recycle();
-        previous = current;
+        // At most one outgoing frame and one latest pending result. Do not recycle pixels
+        // still referenced by an incoming frame that has only partially drawn.
+        if (previous != null && current != null && current.frames.recorded() && !previousCanRetire()) return;
+        if (!COMPOSITION.commit(p.composition)) return;
+        if (previous != null && current != null && !current.frames.recorded()) {
+            current.recycle();
+        } else {
+            if (previous != null) previous.recycle();
+            previous = current;
+        }
+        compositionReplacement = previous != null
+                && previous.composition.source == p.composition.source
+                && !previous.composition.same(p.composition);
         current = p;
         boolean newTrack = previous != null && !Main.sameTrack(previous.trackKey, p.trackKey);
         boolean flip = !fullScene() && Main.sCoverFlip && newTrack;
@@ -905,7 +1091,49 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
         }
         ClockCollapse.refreshArtworkSize();
         changedAt = SystemClock.uptimeMillis();
+        CoverBackdrop.refreshVisibility();
         start();
+    }
+
+    private boolean foregroundNeeded() {
+        return !fullScene() && opacity > .001f && layerVisible()
+                && !CoverMorphLayer.cardSuppressed()
+                && !(Main.coverCardInAod() && LockLyrics.wantsCompactArtwork());
+    }
+
+    private boolean previousCanRetire() {
+        if (current == null) return true;
+        CoverBackdrop.Snapshot scene = CoverBackdrop.snapshot();
+        return current.frames.canRetirePrevious(scene.backgroundWanted || fullSceneArtworkVisible(),
+                foregroundNeeded());
+    }
+
+    /** A completed draw, rather than a composition result or elapsed timer, releases old pixels. */
+    private void recordPreparedFrame(Prepared prepared, boolean backdrop, float coverage, View presenter) {
+        if (prepared == null || !prepared.frames.record(backdrop, coverage)) return;
+        View window = presenter.getRootView();
+        presenter.postOnAnimation(() -> {
+            if (sView != this || current != prepared || !presenter.isAttachedToWindow()
+                    || presenter.getRootView() != window) { prepared.frames.cancel(backdrop); return; }
+            prepared.frames.acknowledge(backdrop);
+            if (previous != null && previousCanRetire()) { previous.recycle(); previous = null; }
+            if (sPending != current) adoptPending();
+            start();
+        });
+    }
+
+    static void recordBackdropFrame(View presenter) {
+        CoverCardLayer view = sView;
+        if (view != null && view.current != null) {
+            if (view.previous != null && !view.compositionReplacement && view.fadeFraction() < 1f) {
+                view.current.frames.used();
+            } else view.recordPreparedFrame(view.current, true, 1f, presenter);
+        }
+    }
+
+    static float backdropContribution() {
+        CoverCardLayer view = sView;
+        return view == null || view.current == null ? 0f : view.fadeFraction();
     }
 
     private void start() {
@@ -1350,8 +1578,8 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
             flipVelocity = 0f;
         }
         boolean turning = stepFlip(dt);
-        if (previous != null && (phase == ClockCollapse.Phase.AOD
-                || (flipSwap && !flipShowsPrevious())
+        if (previous != null && previousCanRetire() && (compositionReplacement
+                || phase == ClockCollapse.Phase.AOD || (flipSwap && !flipShowsPrevious())
                 || SystemClock.uptimeMillis() - changedAt > trackFadeMs)) {
             previous.recycle();
             previous = null;
@@ -1408,7 +1636,8 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
             drawWaitingArt(canvas, old ? previous : current, 1f, skipTreatment,
                     old ? outgoingWaitNode : currentWaitNode);
         } else {
-            drawWaitingArt(canvas, previous, 1f, skipTreatment, outgoingWaitNode);
+            if (!compositionReplacement && fadeFraction() < 1f)
+                drawWaitingArt(canvas, previous, 1f, skipTreatment, outgoingWaitNode);
             drawWaitingArt(canvas, current, fadeFraction(), skipTreatment, currentWaitNode);
         }
         canvas.restoreToCount(save);
@@ -1421,6 +1650,10 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
             paint.setStyle(Paint.Style.FILL);
         }
         canvas.restoreToCount(turned);
+        if (flipSwap && flipShowsPrevious()) return;
+        if (previous != null && !compositionReplacement && !flipSwap && fadeFraction() < 1f)
+            current.frames.used();
+        else recordPreparedFrame(current, false, 1f, this);
     }
 
     /**
@@ -1643,9 +1876,14 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
                 lastBackdropDraw = SystemClock.uptimeMillis();
                 lastBackdropAlpha = alpha;
                 lastBackdropGeneration = p.generation;
+                // Resource retirement concerns clean draw commands, not the layer's fade alpha.
+                if (!foreground) v.recordPreparedFrame(p, true, 1f, this);
                 CoverBackdrop.drawn(ArtworkBackdropState.STILL, scene, this, p.generation, alpha / 255f);
             }
-            if (foreground) drawFullSceneArtwork(canvas, bounds, paint, 1f);
+            if (foreground) {
+                drawFullSceneArtwork(canvas, bounds, paint, 1f);
+                recordBackdropFrame(this);
+            }
             canvas.restoreToCount(saved);
         }
     }
@@ -1731,7 +1969,7 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
     }
 
     private float fadeFraction() {
-        if (previous == null) return 1f;
+        if (previous == null || compositionReplacement) return 1f;
         float t = Math.min(1f, (SystemClock.uptimeMillis() - changedAt) / (float) trackFadeMs);
         return 1f - (1f - t) * (1f - t) * (1f - t);
     }

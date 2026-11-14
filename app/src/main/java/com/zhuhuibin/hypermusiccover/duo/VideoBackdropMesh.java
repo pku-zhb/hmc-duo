@@ -361,7 +361,10 @@ final class VideoBackdropMesh extends View implements Choreographer.FrameCallbac
         lastDrawAt = SystemClock.uptimeMillis();
         state.drawn(generation);
         lastPresentedAlpha = scene.hidden ? 0f : alpha;
-        CoverBackdrop.drawn(ArtworkBackdropState.MESH, scene, this, generation, lastPresentedAlpha);
+        float contribution = lastPresentedAlpha * CoverCardLayer.backdropContribution();
+        CoverCardLayer.recordBackdropFrame(this);
+        CoverBackdrop.drawn(ArtworkBackdropState.MESH, scene, this, generation,
+                contribution, lastPresentedAlpha);
         if (!state.revealed() && !revealPending) {
             long epoch = state.epoch();
             revealPending = true;
