@@ -187,8 +187,12 @@ final class RailStackBounds {
         if (parent != root) { release(); return false; }
         float density = root.getResources().getDisplayMetrics().density;
         boolean fixedBounds = RailContentFrame.ownsNativeBounds(root.getWidth(), root.getHeight(), density);
-        RailContentFrame target = RailContentFrame.inWindow(content, density, parentLeft,
-                root.getWidth(), root.getHeight(), FoldMusicRuntime.combinedRequested() && Main.coverModeOn());
+        boolean combined = !fixedBounds && FoldMusicRuntime.combinedRequested() && Main.coverModeOn();
+        FoldMusicLayout.Box combinedPlayer = combined ? FoldMusicRuntime.combinedPlayer(root, content) : null;
+        RailContentFrame target = combinedPlayer != null
+                ? RailContentFrame.aroundCard(combinedPlayer, parentLeft, 0f, 0f)
+                : RailContentFrame.inWindow(content, density, parentLeft,
+                    root.getWidth(), root.getHeight(), combined);
         if (fixedBounds && target == null) { release(); return false; }
         if (stack != next) {
             release();
@@ -200,9 +204,8 @@ final class RailStackBounds {
         boolean hadX = wasFixed || Float.isFinite(columnX);
         boolean changed = wasFixed != (target != null) || target != null && !target.matches(frame.left, frame.width);
         frame = target;
-        boolean combined = target == null && FoldMusicRuntime.combinedRequested() && Main.coverModeOn();
-        float moved = combined ? combinedColumnX(next, root, content) : Float.NaN;
-        if (combined && !Float.isFinite(moved) && !wasFixed) moved = columnX;
+        float moved = target == null ? centeredColumnX(next, root, content) : Float.NaN;
+        if (target == null && !Float.isFinite(moved) && !wasFixed) moved = columnX;
         columnX = moved;
         if (edgeInstalled && edge != null) edge.configure(next, target == null ? next.getWidth() : target.width, next.getHeight(),
                 next.getResources().getDisplayMetrics().density);
@@ -216,10 +219,24 @@ final class RailStackBounds {
         return target != null || Float.isFinite(columnX);
     }
 
-    /** Only the combined page moves the whole native column; its width remains OEM-owned. */
-    private static float combinedColumnX(View next, View root, FoldMusicLayout.Box content) {
+    /** Keep native-width single pages on the same rail-safe center as artwork and the clock. */
+    private static float centeredColumnX(View next, View root, FoldMusicLayout.Box content) {
         int id = next.getResources().getIdentifier("mi_media_controls", "id", "com.android.systemui");
         View player = id == 0 ? null : next.findViewById(id);
+        if (player == null && next instanceof android.view.ViewGroup) {
+            android.view.ViewGroup group = (android.view.ViewGroup) next;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                View child = group.getChildAt(i);
+                if (child.getVisibility() != View.VISIBLE || child.getWidth() <= 0) continue;
+                boolean row = false;
+                for (Class<?> type = child.getClass(); type != null; type = type.getSuperclass()) {
+                    if (type.getName().equals("com.android.systemui.statusbar.notification.row.ExpandableNotificationRow")) {
+                        row = true; break;
+                    }
+                }
+                if (row) { player = child; break; }
+            }
+        }
         if (player == null || !player.isAttachedToWindow() || player.getWidth() <= 0
                 || !(next.getParent() instanceof View)) return Float.NaN;
         columnMatrix.reset(); player.transformMatrixToGlobal(columnMatrix);
@@ -232,8 +249,8 @@ final class RailStackBounds {
         columnMatrix.postConcat(columnInverse);
         columnUnit[0] = columnUnit[1] = columnUnit[3] = 0f; columnUnit[2] = 1f;
         columnMatrix.mapPoints(columnUnit);
-        float desiredLeft = content.left + FoldMusicLayout.GAP_DP * root.getResources().getDisplayMetrics().density;
-        return RailContentFrame.columnTranslation(next.getTranslationX(), columnBox.left, desiredLeft,
+        float desiredCenter = (content.left + content.right) / 2f;
+        return RailContentFrame.columnTranslation(next.getTranslationX(), columnBox.centerX(), desiredCenter,
                 columnUnit[2] - columnUnit[0]);
     }
 

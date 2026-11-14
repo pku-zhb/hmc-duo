@@ -148,26 +148,10 @@ final class FoldMusicRuntime {
             if (card == null) card = Main.findLockScreenView("mi_media_controls");
             if (card != null && card.isAttachedToWindow() && card.isShown()
                     && card.getHeight() > 0 && card.getParent() instanceof View) {
-                v.getLocationOnScreen(at);
-                float clock = ClockCollapse.contentBottomFor(v) - at[1];
-                // Use the same stable cutout/navigation domain as the native stack owner.
-                Insets insets = RailWindowInsets.read(v);
-                // Keep the native shortcut row's space. A missing row gets a conservative margin.
-                float shortcutTop = LockScreenRailRuntime.reflowing() && Main.sForceNotificationFloor ? Float.NaN
-                        : v.getHeight() - insets.bottom - 80f * v.getResources().getDisplayMetrics().density;
-                float contentWidth = LockScreenRailRuntime.reflowing()
-                        ? LockScreenRailRuntime.contentWidth() : v.getWidth();
-                // Read the entire native header's placement; never translate its child away
-                // from the parent's clipping/touch frame or the live rows below it.
-                if (map(card, v, new FoldMusicLayout.Box(0, 0, card.getWidth(), card.getHeight()), scratch)) {
-                    FoldMusicLayout.Box nativePlayer = new FoldMusicLayout.Box(
-                            scratch.left, scratch.top, scratch.right, scratch.bottom);
-                    next = FoldMusicLayout.columns(contentWidth, v.getHeight(),
-                            v.getResources().getDisplayMetrics().density,
-                            v.getResources().getConfiguration().smallestScreenWidthDp,
-                            insets.left, insets.top, LockScreenRailRuntime.reflowing() ? 0 : insets.right,
-                            insets.bottom, clock, nativePlayer, shortcutTop);
-                }
+                FoldMusicLayout.Box area = LockScreenRailRuntime.content(v, scratch)
+                        ? new FoldMusicLayout.Box(scratch.left, scratch.top, scratch.right, scratch.bottom)
+                        : new FoldMusicLayout.Box(0, 0, v.getWidth(), v.getHeight());
+                next = measureColumns(v, area, card);
             }
             if (!failed) reason = next == null ? "waiting for measured clock/player room" : "combined artwork and lyrics";
         } else if (!failed) {
@@ -175,6 +159,34 @@ final class FoldMusicRuntime {
                     ? "single-column window" : "outside wide lyric scene";
         }
         publish(next);
+    }
+
+    /** The stack and both artwork/lyric renderers consume the same absolute column plan. */
+    static FoldMusicLayout.Box combinedPlayer(View window, FoldMusicLayout.Box content) {
+        if (!combinedRequested() || !Main.coverModeOn() || window == null || content == null) return null;
+        FoldMusicLayout.Columns c = columns;
+        if (c != null && columnsRevision == Main.screenGeometry().revision
+                && (MiniPlayerScene.INSTANCE.getFullScreenAodActive() || MiniPlayerRuntime.railMediaExitActive()))
+            return c.player;
+        FoldMusicLayout.Columns measured = measureColumns(window, content, currentNativeCard());
+        return measured == null ? null : measured.player;
+    }
+
+    private static FoldMusicLayout.Columns measureColumns(View window, FoldMusicLayout.Box content, View card) {
+        if (card == null || !card.isAttachedToWindow() || card.getHeight() <= 0
+                || !map(card, window, new FoldMusicLayout.Box(0, 0, card.getWidth(), card.getHeight()), scratch))
+            return null;
+        FoldMusicLayout.Box nativePlayer = new FoldMusicLayout.Box(
+                scratch.left, scratch.top, scratch.right, scratch.bottom);
+        window.getLocationOnScreen(at);
+        float clock = ClockCollapse.contentBottomFor(window) - at[1];
+        Insets insets = RailWindowInsets.read(window);
+        float density = window.getResources().getDisplayMetrics().density;
+        float shortcutTop = LockScreenRailRuntime.active() && Main.sForceNotificationFloor ? Float.NaN
+                : window.getHeight() - insets.bottom - 80f * density;
+        return FoldMusicLayout.columns(content.right, window.getHeight(), density,
+                window.getResources().getConfiguration().smallestScreenWidthDp,
+                content.left, content.top, 0f, insets.bottom, clock, nativePlayer, shortcutTop);
     }
 
     private static void publish(FoldMusicLayout.Columns next) {
