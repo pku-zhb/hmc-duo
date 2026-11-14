@@ -11,15 +11,27 @@ class MediaCardConfigTest {
         assertEquals(100, MediaCardConfig.parse("""{"island.height":85}""").getValue("island.height"))
     }
     @Test fun playerHeightProfilesAreIndependentBoundedAndBackedUp() {
-        val values = MediaCardConfig.parse("""{"notification.height":90,"notification.heightLandscape":95}""")
-        assertEquals(90, values.getValue("notification.height"))
-        assertEquals(95, values.getValue("notification.heightLandscape"))
+        val values = MediaCardConfig.parse("""{"notification.height":85,"notification.heightLandscape":95}""")
+        assertEquals(75, values.getValue("notification.height"))
+        assertEquals(100, values.getValue("notification.heightLandscape"))
         assertEquals(values, MediaCardConfig.parse(MediaCardConfig.encode(values)))
         assertTrue(MediaCardConfig.followsNativeMaterial(values))
         val bounded = MediaCardConfig.parse("""{"notification.height":1,"notification.heightLandscape":999}""")
         assertEquals(75, bounded.getValue("notification.height"))
         assertEquals(100, bounded.getValue("notification.heightLandscape"))
     }
+    @Test fun oldContinuousHeightsNormalizeToTheNearestOfTwoChoices() {
+        for (value in -10..150) {
+            val expected = if (value < 88) 75 else 100
+            assertEquals(expected, MediaCardConfig.limit("height", value))
+            assertEquals(expected, MediaCardConfig.limit("heightLandscape", value))
+        }
+        val saved = MediaCardConfig.parse("""{"notification.height":87,"notification.heightLandscape":88}""")
+        assertEquals(75, saved.getValue("notification.height"))
+        assertEquals(100, saved.getValue("notification.heightLandscape"))
+        assertEquals(saved, MediaCardConfig.parse(MediaCardConfig.encode(saved)))
+    }
+
     @Test fun nativeMaterialIsIndependentOfContentAndGeometryChoices() {
         val defaults = MediaCardConfig.parse(null)
         assertTrue(MediaCardConfig.followsNativeMaterial(defaults))

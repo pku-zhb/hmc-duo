@@ -68,11 +68,10 @@ internal fun MediaCardPageView(isBlurEnabled: Boolean, refreshKey: Int, onBack: 
                 MediaSwitch("notification", "hideDevice", R.string.media_hide_device, values, module.alive, push)
                 for ((name, title) in listOf("height" to R.string.media_height_portrait,
                     "heightLandscape" to R.string.media_height_landscape)) {
-                    ValueSlider(title = stringResource(title),
-                        summary = stringResource(R.string.media_height_summary),
-                        value = values.getValue("notification.$name").toFloat(), valueRange = 75f..100f,
-                        enabled = module.alive, detent = 100f, label = { "${it.toInt()}%" },
-                        onValueChange = { push("notification.$name", it.toInt()) })
+                    WindowDropdownPreference(title = stringResource(title), items = listOf("75%", "100%"),
+                        selectedIndex = if (values.getValue("notification.$name") == 75) 0 else 1,
+                        enabled = module.alive,
+                        onSelectedIndexChange = { push("notification.$name", if (it == 0) 75 else 100) })
                 }
             }
         }

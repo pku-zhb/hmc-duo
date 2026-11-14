@@ -24,7 +24,7 @@ object MediaCardConfig {
         "theme" -> value.coerceIn(0, 2)
         "flow" -> value.coerceIn(0, 4)
         "blur" -> value.coerceIn(1, 20)
-        "height", "heightLandscape" -> value.coerceIn(75, 100)
+        "height", "heightLandscape" -> if (value < 88) 75 else 100
         else -> value.coerceIn(0, 1)
     }
 
