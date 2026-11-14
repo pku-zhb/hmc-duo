@@ -611,7 +611,9 @@ final class LyricView extends View {
         // thread gets to a frame varies by a few ms with whatever else the keyguard is doing, and
         // stepping on the wall clock put that jitter straight into the scroll and the word fill.
         long now = now();
-        if (now == lastStep) return false;
+        // A native pose may commit later in this same vsync. Integrate scroll/word physics once,
+        // but never suppress the later geometry publication along with the time integration.
+        if (now == lastStep) return syncPresentation();
         float dt = lastStep == 0L ? 0f : Math.min(0.05f, (now - lastStep) / 1000f);
         lastStep = now;
 
@@ -680,7 +682,7 @@ final class LyricView extends View {
         }
         // Leaving, the band is frozen where it was: following the clock as it grows would drag
         // the fading lines up through it.
-        if (LockLyrics.wantsShown() && updateBand()) {
+        if (LockLyrics.wantsShown() && updatePresentationBand()) {
             changed = true;
             why |= 2;
         }
@@ -1187,8 +1189,9 @@ final class LyricView extends View {
      */
     private boolean followSwipeZoom() {
         float want = 1f, pivotX = getPivotX(), pivotY = getPivotY();
-        boolean aod = ClockCollapse.phase() == ClockCollapse.Phase.AOD;
-        View s = aod ? null : swipeSource();
+        // Keep the same affine source through sleep and wake. Selecting another pivot merely
+        // because Phase changed moved the separate lyric window sideways at the endpoint.
+        View s = swipeSource();
         if (!LyricWindow.owns(this)) {
             if (s != null && getParent() instanceof View) {
                 View parent = (View) getParent();
@@ -1258,6 +1261,33 @@ final class LyricView extends View {
     }
 
     private final int[] winLoc = new int[2];
+
+    /** Geometry-only consumption, after ClockCollapse has written this pass's complete pose. */
+    void presentationCommitted() {
+        if (!isAttachedToWindow()) return;
+        if (syncPresentation()) invalidate();
+    }
+
+    private boolean syncPresentation() {
+        boolean changed = followAodDim() | followHostAlpha() | followSwipeZoom();
+        if (LockLyrics.wantsShown()) changed |= updatePresentationBand();
+        return changed;
+    }
+
+    private boolean updatePresentationBand() {
+        float oldTarget = bandOk && focus >= 0 && focus < lines.size()
+                ? anchorFixTarget() : Float.NaN;
+        if (!updateBand()) return false;
+        if (bandOk && focus >= 0 && focus < lines.size()) {
+            float target = anchorFixTarget();
+            // The focus may still be easing, but a moving clock/card is already animated.
+            // Carry just that geometry delta; otherwise a second low-pass filter lags and
+            // then snaps when the display enters its still-AOD endpoint.
+            anchorFix = LyricGeometryAnchor.rebase(anchorFix, oldTarget, target);
+            anchorFixWant = target;
+        }
+        return true;
+    }
 
     private static float chainScaleY(View v) {
         float k = 1f;
@@ -1520,7 +1550,8 @@ final class LyricView extends View {
         // correction half way.
         if (anchorFix != anchorFixWant) return true;
         ClockCollapse.Phase p = ClockCollapse.phase();
-        if (p == ClockCollapse.Phase.ENTER || p == ClockCollapse.Phase.EXIT) return true;
+        if ((p == ClockCollapse.Phase.ENTER || p == ClockCollapse.Phase.EXIT)
+                && !ClockCollapse.nativeAodFlight()) return true;
         if (lines.isEmpty()) {
             return show > 0f && !LockLyrics.still() && LockLyrics.companionAnimating();
         }
@@ -4004,6 +4035,7 @@ final class LyricView extends View {
                 + " band=" + (bandOk ? Math.round(bandTop) + ".." + Math.round(bandBottom)
                         + "(" + LockLyrics.bandSource() + ")" : "none")
                 + " looping=" + looping + " parent=" + (getParent() instanceof ViewGroup)
+                + " aodProgress=[" + AodTransitionRuntime.describe() + "]"
                 // The last few frames that moved, oldest first: what the page did while the lock
                 // screen was leaving, and which reading was late with it. Only frames that move
                 // are in it, so a burst is one event. See trace().

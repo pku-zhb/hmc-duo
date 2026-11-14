@@ -714,6 +714,8 @@ object MiniPlayerRuntime {
      */
     private var aodDimFlat = false
     private var aodController: WeakReference<Any>? = null
+    private var aodAnimatingField: java.lang.reflect.Field? = null
+    private var aodWillAnimateField: java.lang.reflect.Field? = null
     private var aodDimFrames = 0
     private var blendMethod: Method? = null
     private var glassMethod: Method? = null
@@ -737,10 +739,51 @@ object MiniPlayerRuntime {
                 .getDeclaredMethod("isBackgroundBlurOpened", Context::class.java).apply { isAccessible = true }
         }.getOrNull()
         val add = controller.getDeclaredMethod("addCallback", listener).apply { isAccessible = true }
+        val fraction = controller.getDeclaredField("mCurrentFraction").apply { isAccessible = true }
+        val enabled = controller.getDeclaredField("mEnableFullAod").apply { isAccessible = true }
+        aodAnimatingField = controller.getDeclaredField("mIsAnimating").apply { isAccessible = true }
+        aodWillAnimateField = controller.getDeclaredField("mWillDoAodAnim").apply { isAccessible = true }
+        val transition = Xp.findClass(
+            "com.android.systemui.statusbar.notification.fullaod.NotifiFullAodController\$FullAodTransitionListener",
+            classLoader)
+        Xp.hookAll(transition, "onBegin") { chain ->
+            AodTransitionRuntime.begin(enabled.getBoolean(null))
+            chain.proceed()
+        }
+        Xp.hookAll(transition, "onUpdate") { chain ->
+            val result = chain.proceed()
+            val owner = Xp.getObjectField(chain.thisObject, "this\$0")
+            // mCurrentFraction is local to the direction. Material projection is not a
+            // progress source: desktop entry starts from a different glass parameter array.
+            AodTransitionRuntime.frame(enabled.getBoolean(null), fraction.getFloat(owner))
+            result
+        }
+        Xp.hookAll(transition, "onCancel") { chain ->
+            val result = chain.proceed()
+            AodTransitionRuntime.cancel()
+            result
+        }
+        Xp.hookAll(transition, "onComplete") { chain ->
+            val result = chain.proceed()
+            // The native body commits media constraints and clears its animation flags after
+            // notifying material listeners. Publish the endpoint after that whole transaction.
+            AodTransitionRuntime.complete(enabled.getBoolean(null))
+            result
+        }
+        Xp.hookAll(controller, "completeFullAodAnim") { chain ->
+            val result = chain.proceed()
+            // This event also covers native resets without a per-frame animation. Completion
+            // resets mCurrentFraction before dispatch, so its value is not an endpoint proof.
+            if (aodAnimatingField?.getBoolean(chain.thisObject) != true)
+                AodTransitionRuntime.complete(enabled.getBoolean(null))
+            result
+        }
         val ours = java.lang.reflect.Proxy.newProxyInstance(classLoader, arrayOf(listener)) { self, m, args ->
             when (m.name) {
                 "updateFullAodAnimState" -> { runCatching { onAodDim(args!!) }; null }
-                "completeFullAodAnim" -> { dimNote("complete"); runCatching { settleAodDim() }; null }
+                "completeFullAodAnim" -> {
+                    dimNote("complete"); runCatching { settleAodDim() }; null
+                }
                 "onFullAodChange" -> { dimNote("change dark=${args?.getOrNull(0)} glass=${args?.getOrNull(1)}"); null }
                 "hashCode" -> System.identityHashCode(self)
                 "equals" -> self === args?.firstOrNull()
@@ -774,6 +817,15 @@ object MiniPlayerRuntime {
         // The run ends in completeFullAodAnim; should it be cut short, the last frame settles it.
         aodDimHandler.removeCallbacks(aodDimSettle)
         aodDimHandler.postDelayed(aodDimSettle, AOD_DIM_SETTLE_MS)
+    }
+
+    /** Native lifecycle intent, queried only on an explicit doze/display event. */
+    @JvmStatic
+    fun aodTransitionPlanned(): Boolean {
+        val owner = aodController?.get() ?: return false
+        return runCatching {
+            aodAnimatingField?.getBoolean(owner) == true || aodWillAnimateField?.getBoolean(owner) == true
+        }.getOrDefault(false)
     }
 
     /** One frame of the AOD's colours on one view, as the card's listener puts them on its media_bg. */

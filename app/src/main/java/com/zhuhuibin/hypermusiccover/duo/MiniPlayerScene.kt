@@ -19,6 +19,8 @@ internal object MiniPlayerScene {
     @Volatile var aodActive = false
         private set
     @Volatile private var fullScreenAod = false
+    private var aodWindow = java.lang.ref.WeakReference<android.view.View>(null)
+    private var aodGeometryRevision = -1L
     private val exitEvents = java.util.ArrayDeque<String>()
     private val exitState = KeyguardExitState()
 
@@ -99,14 +101,38 @@ internal object MiniPlayerScene {
 
     private fun setAodActive(active: Boolean) {
         // Asked once per change of the doze, not per frame: it reflects into the AOD manager.
-        val fullScreen = active && (aodActive && fullScreenAod || Main.fullAodOn())
-        if (aodActive == active && fullScreenAod == fullScreen) return
+        val window = Main.sContainer?.rootView
+        val revision = Main.screenGeometry().revision
+        val sameDisplay = aodWindow.get() === window && aodGeometryRevision == revision
+        val fullScreen = active && Main.fullAodOn()
+        if (aodActive == active && fullScreenAod == fullScreen && sameDisplay) return
+        aodWindow = java.lang.ref.WeakReference(window)
+        aodGeometryRevision = revision
         fullScreenAod = fullScreen
         aodActive = active
+        AodTransitionRuntime.scene(fullScreen)
         WallpaperHandoffDiagnostics.note("doze", "active=$active away=$keyguardGoingAway")
         StatusBarArtwork.refresh()
         if (!active) MiniPlayerRuntime.aodEnded()
         MiniPlayerRuntime.refresh()
+    }
+
+    /** Explicit geometry publication invalidates the display-scoped full-AOD capability. */
+    fun geometryChanged() {
+        val window = Main.sContainer?.rootView
+        val revision = Main.screenGeometry().revision
+        if (aodWindow.get() === window && aodGeometryRevision == revision) return
+        aodWindow = java.lang.ref.WeakReference(window)
+        aodGeometryRevision = revision
+        if (!aodActive) return
+        val fullScreen = Main.fullAodOn()
+        val changed = fullScreenAod != fullScreen
+        fullScreenAod = fullScreen
+        AodTransitionRuntime.scene(fullScreen)
+        if (changed) {
+            StatusBarArtwork.refresh()
+            MiniPlayerRuntime.refresh()
+        }
     }
 
     /** Shared by all verified exit hooks, including the binder-side exit animation route. */

@@ -74,6 +74,11 @@ final class LockLyrics {
     private static String sWhy = "";
 
     private static LyricView sView;
+
+    static void clockPoseCommitted() {
+        LyricView view = sView;
+        if (view != null) view.presentationCommitted();
+    }
     private static MediaController sController;
     private static volatile PlaybackState sState;
     private static long sStateReadAt;

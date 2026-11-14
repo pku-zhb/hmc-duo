@@ -95,5 +95,12 @@ final class CompactPlayerMetrics {
         return Math.round(aod + progress * (normal - aod));
     }
 
+    /** Conceal the seek pixels before the shrinking shell reaches them, in either direction. */
+    static float seekAlpha(int height, int normal, int aod) {
+        if (normal <= aod) return 1f;
+        float available = (height - aod) / (float) (normal - aod);
+        return Math.max(0f, Math.min(1f, 3f * available - 2f));
+    }
+
     private CompactPlayerMetrics() {}
 }

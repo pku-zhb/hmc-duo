@@ -182,6 +182,8 @@ final class ClockCollapse {
 
     /** Spring position (0 = where the transition started, 1 = its destination) and velocity. */
     private static float sT = 1f, sTv = 0f;
+    /** A held full-AOD wake follows the native fraction, rather than starting a second spring. */
+    private static boolean sNativeAodFlight;
     /** Native glyph motion, date reflow and the replacement time all use the same spring. */
     private static float sRowFrom, sRowProgress;
     private static boolean sRowTarget;
@@ -691,6 +693,15 @@ final class ClockCollapse {
         // are given the same tail. See TOGGLE_GLYPH_RESPONSE.
         sManualMotion = !wake && CompactClockRowRuntime.supportsDisplay() && sFlightFrom != null;
         start(Phase.ENTER, wake ? Float.NaN : TOGGLE_GLYPH_RESPONSE);
+        sNativeAodFlight = wake && fromAod && sAodHeld && sAodFullScreen;
+        if (sNativeAodFlight) {
+            // Native events already schedule every frame and the terminal endpoint. A second
+            // physics loop cannot finish a cancelled native run without inventing an endpoint.
+            Choreographer.FrameCallback own = sFrame;
+            sFrame = null;
+            if (own != null) Choreographer.getInstance().removeFrameCallback(own);
+            nativeAodProgressChanged();
+        }
         // The OEM's own ink box as last measured - the reading that says whether its wake
         // animation had already begun when this entry was taken. LIVE, never a measurement of
         // its own: the entry that matters is taken from inside the pre-draw, where LIVE is this
@@ -950,11 +961,10 @@ final class ClockCollapse {
     private static float sAodCoverZoom = 1f;
     /** The face's native unit as the cover last read it; see the AOD hold. */
     private static float sLastNativeUnit = Float.NaN;
-    private static android.animation.ValueAnimator sAodCoverZoomAnimator;
+    private static boolean sAodCoverZoomEnabled;
 
     private static void stopAodCoverZoom() {
-        if (sAodCoverZoomAnimator != null) sAodCoverZoomAnimator.cancel();
-        sAodCoverZoomAnimator = null;
+        sAodCoverZoomEnabled = false;
     }
 
     /** Expand the held clock alongside the AOD media card's contraction. */
@@ -973,19 +983,29 @@ final class ClockCollapse {
             if (Math.abs(aspect - 1f) > 0.01f
                     && ClockPageSize.nativeOrHeaded()) return;
         }
-        android.animation.ValueAnimator animator = android.animation.ValueAnimator.ofFloat(1f, 1.50f);
-        sAodCoverZoomAnimator = animator;
-        animator.setDuration(420L);
-        animator.setInterpolator(new android.view.animation.AccelerateDecelerateInterpolator());
-        animator.addUpdateListener(a -> {
-            if (sPhase != Phase.AOD || !sAodHeld) {
-                stopAodCoverZoom();
-                return;
-            }
-            sAodCoverZoom = (float) a.getAnimatedValue();
-            invalidate();
-        });
-        animator.start();
+        sAodCoverZoomEnabled = true;
+        sAodCoverZoom = 1f + .5f * AodTransitionRuntime.snapshot().fraction;
+    }
+
+    static boolean followsNativeAod() {
+        return sNativeAodFlight || sAodHeld && sAodFullScreen;
+    }
+
+    static boolean aodTransitioning() {
+        return sNativeAodFlight || followsNativeAod() && AodTransitionRuntime.moving();
+    }
+
+    static boolean nativeAodFlight() { return sNativeAodFlight; }
+
+    /** Native callback publication changes the font hold before the traversal measures it. */
+    static void nativeAodProgressChanged() {
+        if (!sNativeAodFlight || !SCENE.requested || !Main.clockHeld()
+                || MiniPlayerScene.INSTANCE.getKeyguardGoingAway() || !poseCurrent(sFromPose)) return;
+        sT = 1f - AodTransitionRuntime.snapshot().fraction;
+        sTv = 0f;
+        if (Float.isFinite(sYFrom) && Float.isFinite(sYTo))
+            hold(sYFrom + (sYTo - sYFrom) * sT);
+        invalidate();
     }
 
     private static final Live ARTWORK_FIT = new Live();
@@ -1356,6 +1376,7 @@ final class ClockCollapse {
                 + " statusProgress=" + Main.r2(STATUS.progress()) + " statusReady=" + statusClockAvailable()
                 + " manual=" + sManualMotion
                 + " row " + CompactClockRowRuntime.describe()
+                + " nativeAod={" + AodTransitionRuntime.describe() + " flight=" + sNativeAodFlight + "}"
                 + " scene={" + SCENE.describe() + " poseOwners=" + poseOwners()
                 + " glyphDirty=" + sGlyphGeometryDirty + "}"
                 + " | last flight: " + sLastFlight;
@@ -1550,9 +1571,6 @@ final class ClockCollapse {
      * cut-out and the status bar. The keyguard's layouts put the date anywhere from 233 to 455 on
      * this phone, and cover mode wants it up top in all of them.
      */
-    private static final float DATE_LINE_DP = 64f;
-    /** Air between the top inset and the date, when the inset is what decides the line. */
-    private static final float DATE_SAFE_GAP_DP = 8f;
     /**
      * Closer than this to the line and the date stays where it already was. That is the layout
      * whose date sits a few pixels off the line (233 against 228 here), where moving it reads as
@@ -1563,10 +1581,9 @@ final class ClockCollapse {
     /** The date line cover mode uses, for the app's preview as well. */
     static float coverDateY(View date) {
         float d = Main.density();
-        float line = DATE_LINE_DP * d;
-        float safe = safeTopPx();
-        if (safe > 0f) line = Math.max(line, safe + DATE_SAFE_GAP_DP * d);
-        if (date != null && date == sDateAnchorView && !Float.isNaN(sDateAnchor)
+        float line = FoldDateLayout.line(Main.screenWidth(), Main.screenHeight(), d, safeTopPx());
+        if (!FoldDateLayout.inner(Main.screenWidth(), Main.screenHeight(), d)
+                && date != null && date == sDateAnchorView && !Float.isNaN(sDateAnchor)
                 && Math.abs(sDateAnchor - line) <= DATE_SNAP_DP * d) {
             return sDateAnchor;
         }
@@ -2090,10 +2107,12 @@ final class ClockCollapse {
     private static void stopFrame() {
         Choreographer.FrameCallback f = sFrame;
         sFrame = null;
+        sNativeAodFlight = false;
         if (f != null) Choreographer.getInstance().removeFrameCallback(f);
     }
 
     private static void land() {
+        sNativeAodFlight = false;
         // Kept, not only logged: the module's log is dropped by the log daemon on some builds
         // (this phone keeps nothing below error level), and the frame gap is the one number
         // that says whether a transition stuttered. Read back by `op aodprobe`.
@@ -2939,6 +2958,10 @@ final class ClockCollapse {
         } finally {
             sFramePage = previous;
             sCommitting = false;
+            // Animation callbacks run before traversal; lyric/cover pre-draw listener order is
+            // unspecified. Publish geometry after the clock pose so all three draw this pass.
+            CoverCardLayer.clockPoseCommitted();
+            LockLyrics.clockPoseCommitted();
         }
     }
 
@@ -2946,6 +2969,12 @@ final class ClockCollapse {
         Phase phase = sPhase;
         boolean latchAodAfterCommit = false;
         if (phase == Phase.OFF) return;
+        if (sNativeAodFlight) {
+            // Native/Folme and our Choreographer callback have no ordering contract. The pose
+            // publication consumes the newest native sample, not the one physics saw earlier.
+            sT = 1f - AodTransitionRuntime.snapshot().fraction;
+            sTv = 0f;
+        }
         if (MiniPlayerScene.INSTANCE.getKeyguardGoingAway()) {
             // Keep the last committed pose under the native window's exit. USER_PRESENT or
             // detach releases its exact leases; no late pre-draw may start another owner.
@@ -3009,6 +3038,8 @@ final class ClockCollapse {
         refreshArtworkSize();
 
         if (phase == Phase.AOD) {
+            if (sAodCoverZoomEnabled)
+                sAodCoverZoom = 1f + .5f * AodTransitionRuntime.snapshot().fraction;
             if (sWaking && Main.clockHeld()) {
                 // The first lock screen frame of the wake, before it is drawn. Enter now, from the
                 // clock the AOD was showing, and place this very frame.
@@ -3229,7 +3260,8 @@ final class ClockCollapse {
             float railLift = !in && !sExitToAod ? LockScreenRailRuntime.nativeClockLift() : 0f;
             float toTop = in ? coverTop : m.inkTop + railLift;
             float toUnit = in ? coverUnit : m.unit;
-            float toDate = in ? coverDate : m.dateTop + railLift;
+            float toDate = in ? coverDate : !sExitToAod
+                    ? LockScreenRailRuntime.nativeDateTop(m.dateTop) : m.dateTop;
             sLastToUnit = toUnit;
             top = fromTop() + (toTop - fromTop()) * t;
             unit = fromUnit() + (toUnit - fromUnit()) * t;
@@ -3283,7 +3315,7 @@ final class ClockCollapse {
             float lift = LockScreenRailRuntime.nativeClockLift();
             top = m.inkTop + lift;
             unit = m.unit;
-            date = m.dateTop + lift;
+            date = LockScreenRailRuntime.nativeDateTop(m.dateTop);
         }
         boolean written;
         android.os.Trace.beginSection("MC c.write"); try { written = writePose(m, top, unit, date, phase == Phase.ENTER && sGlyphTail); } finally { android.os.Trace.endSection(); }
@@ -3308,6 +3340,10 @@ final class ClockCollapse {
         android.os.Trace.beginSection("MC c.glass"); try { Main.applyGlassMorph(glass); } finally { android.os.Trace.endSection(); }
         // The colour band describes the lock screen; the AOD's layout is not that.
         if (!(phase == Phase.EXIT && sExitToAod)) { android.os.Trace.beginSection("MC c.band"); try { Main.updateColorBand(); } finally { android.os.Trace.endSection(); } }
+        if (sNativeAodFlight) {
+            AodTransitionProgress.Snapshot nativeAod = AodTransitionRuntime.snapshot();
+            if (!nativeAod.running && !nativeAod.into && nativeAod.fraction <= .001f) land();
+        }
     }
 
     /**

@@ -46,6 +46,7 @@ final class VideoBackdropMesh extends View implements Choreographer.FrameCallbac
     private float[] colors;
     private boolean wanted, dynamic, scheduled;
     private boolean revealPending;
+    private boolean aodReveal;
     private long fadeStarted, frames, lastDrawAt;
     private float renderAlpha;
     private float fullArtworkAlpha;
@@ -236,6 +237,9 @@ final class VideoBackdropMesh extends View implements Choreographer.FrameCallbac
                 && Main.sCover.getAlpha() != v.lastVideoAlpha) changed = true;
         v.state.select(generation);
         if (v.getVisibility() != VISIBLE) {
+            AodTransitionProgress.Snapshot aod = AodTransitionRuntime.snapshot();
+            v.aodReveal = CoverBackdrop.retains(ArtworkBackdropState.STILL, scene)
+                    || aod.running && !aod.into;
             // Keep the View drawable while waiting. Alpha zero on its RenderNode can skip
             // onDraw forever, so the first source is submitted at one alpha step instead.
             v.renderAlpha = 1f / 255f;
@@ -291,6 +295,7 @@ final class VideoBackdropMesh extends View implements Choreographer.FrameCallbac
         revealPending = false;
         fadeStarted = 0L;
         renderAlpha = 0f;
+        aodReveal = false;
         lastPresentedAlpha = 0f;
         fullArtworkAlpha = 0f;
         lastFrameAt = 0L;
@@ -312,8 +317,12 @@ final class VideoBackdropMesh extends View implements Choreographer.FrameCallbac
         fullArtworkAlpha += (target - fullArtworkAlpha) * Math.min(1f, dt / .06f);
         if (Math.abs(target - fullArtworkAlpha) < .001f) fullArtworkAlpha = target;
         if (state.revealed()) {
-            float t = Math.min(1f, (SystemClock.uptimeMillis() - fadeStarted) / 240f);
-            renderAlpha = t * t * (3f - 2f * t);
+            if (aodReveal) renderAlpha = AodBackdropAlpha.value(false, true, false,
+                    AodTransitionRuntime.snapshot().fraction, renderAlpha);
+            else {
+                float t = Math.min(1f, (SystemClock.uptimeMillis() - fadeStarted) / 240f);
+                renderAlpha = t * t * (3f - 2f * t);
+            }
         }
         invalidate();
         if (needsFrames()) schedule();
@@ -324,6 +333,10 @@ final class VideoBackdropMesh extends View implements Choreographer.FrameCallbac
         if (!eligible(scene) || getWidth() <= 0 || getHeight() <= 0) { hide(); return; }
         int generation = CoverCardLayer.backdropGeneration();
         state.select(generation);
+        boolean retained = CoverBackdrop.retains(ArtworkBackdropState.MESH, scene);
+        if (retained || aodReveal && state.revealed())
+            renderAlpha = AodBackdropAlpha.value(retained, true, false,
+                    AodTransitionRuntime.snapshot().fraction, renderAlpha);
         bounds.set(0f, 0f, getWidth(), getHeight());
         float alpha = renderAlpha;
         // Preserve the video's existing first-frame hold/fade as well as our local draw gate.
@@ -384,5 +397,10 @@ final class VideoBackdropMesh extends View implements Choreographer.FrameCallbac
         hide();
         unwatch();
         super.onDetachedFromWindow();
+    }
+
+    static void aodProgressChanged() {
+        VideoBackdropMesh v = view;
+        if (v != null && v.isAttachedToWindow() && v.getVisibility() == VISIBLE) v.invalidate();
     }
 }
