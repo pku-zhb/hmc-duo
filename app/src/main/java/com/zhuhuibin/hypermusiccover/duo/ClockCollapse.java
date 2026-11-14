@@ -54,10 +54,7 @@ final class ClockCollapse {
     private static java.lang.ref.WeakReference<View> sMeasuredDate = new java.lang.ref.WeakReference<>(null);
     private static long sMeasuredRevision = -1L;
     private static boolean sMeasuredAnchored;
-    private static float sCommittedTop = Float.NaN, sCommittedUnit, sCommittedDate;
-    private static final ClockPoseSource COMMITTED_SOURCE = new ClockPoseSource();
-    private static int sCommittedPage = -1, sCommittedDestination = -1;
-    private static boolean sCommittedNavigation;
+    private static ClockPoseSnapshot sCommittedPose;
     /** This EXIT is the fall into the AOD, and lands in AOD rather than OFF. */
     private static boolean sExitToAod;
 
@@ -145,19 +142,36 @@ final class ClockCollapse {
         SCENE.update(page.epoch, page.window, page.geometryRevision, page.page, requested);
     }
 
-    private static boolean poseSourceCurrent(ClockPoseSource source) {
-        View date = Main.visibleDate();
-        if (date == null) date = retainedDate();
-        return source.matches(SCENE.window, SCENE.revision, firstTarget(), date);
+    private static ClockPoseSnapshot poseSnapshot(Live measured, float top, float unit, float date) {
+        CoverBackdrop.Snapshot page = sceneSnapshot();
+        View clock = firstTarget();
+        if (clock == null || page.window != clock.getRootView()
+                || measured.date != null && page.window != measured.date.getRootView()) return null;
+        return ClockPoseSnapshot.capture(page.window, page.geometryRevision, clock, measured.date,
+                page.page, page.clockDestination, page.navigation, measured.anchored, top, unit, date);
     }
 
-    private static boolean committedPoseCurrent() {
+    private static boolean poseCurrent(ClockPoseSnapshot pose) {
+        if (pose == null) return false;
         CoverBackdrop.Snapshot page = sceneSnapshot();
-        return Float.isFinite(sCommittedTop) && sCommittedUnit > 0f
-                && poseSourceCurrent(COMMITTED_SOURCE)
-                && SCENE.page == sCommittedPage && page.navigation == sCommittedNavigation
-                && sceneSnapshot().clockDestination == sCommittedDestination;
+        View date = Main.visibleDate();
+        if (date == null) date = retainedDate();
+        return pose.current(page.window, page.geometryRevision, firstTarget(), date,
+                page.page, page.clockDestination, page.navigation, Main.anchoredStyle());
     }
+
+    private static boolean committedPoseCurrent() { return poseCurrent(sCommittedPose); }
+
+    private static boolean aodPoseReady() {
+        return SCENE.holdsPose(true, poseCurrent(sFromPose), committedPoseCurrent());
+    }
+
+    private static float fromTop() { return sFromPose == null ? Float.NaN : sFromPose.top; }
+    private static float fromUnit() { return sFromPose == null ? Float.NaN : sFromPose.unit; }
+    private static float fromDate() { return sFromPose == null ? Float.NaN : sFromPose.date; }
+    private static float aodTop() { return sAodPose == null ? Float.NaN : sAodPose.top; }
+    private static float aodUnit() { return sAodPose == null ? Float.NaN : sAodPose.unit; }
+    private static float aodDate() { return sAodPose == null ? Float.NaN : sAodPose.date; }
 
     /**
      * Set on the binder thread the moment the keyguard hears it is waking, before the OEM lays
@@ -270,15 +284,15 @@ final class ClockCollapse {
     private static final float DOZE_SETTLE_PX = 3f;
 
     /** The pose on screen when the transition started. NaN top = not captured yet. */
-    private static float sFromTop = Float.NaN, sFromUnit = Float.NaN, sFromDate = Float.NaN;
+    private static ClockPoseSnapshot sFromPose;
     /** The last pose the AOD drew, for the wake to start from. NaN top = none yet. */
-    private static float sAodTop = Float.NaN, sAodUnit = Float.NaN, sAodDate = Float.NaN;
+    private static ClockPoseSnapshot sAodPose;
 
     /**
      * The doze pose as the frame before last reported it, waiting for a frame that agrees.
      *
      * Not a pose anything is placed from: it is the previous reading, and a reading is only
-     * promoted to sAodTop/sAodUnit/sAodDate when the next one matches it.
+     * promoted to aodTop()/aodUnit()/aodDate() when the next one matches it.
      *
      * This is what fixed the wake that came out two different ways (reported 2026-09-21, and
      * again on 2026-09-22 when the first attempt turned out to be a no-op). A wake runs the
@@ -626,7 +640,7 @@ final class ClockCollapse {
         sPoseDrawn = false;
         if (!animate || Main.sContainer == null) {
             if (was == Phase.OFF && !wake && CompactClockRowRuntime.supportsDisplay()) {
-                captureFrom();
+                captureTransitionFrom();
                 captureNativePose(natural);
             }
             noteEntry(src, wake, false, false, Float.NaN, Float.NaN, Float.NaN, Float.NaN, LIVE.unit);
@@ -648,19 +662,17 @@ final class ClockCollapse {
         }
         // The pose the doze settled at, which is only ever written while the doze's clock is
         // standing still - see sAodPendTop.
-        boolean fromAod = was == Phase.AOD && !Float.isNaN(sAodTop);
+        boolean fromAod = was == Phase.AOD && poseCurrent(sAodPose);
         if (fromAod) {
-            sFromTop = sAodTop;
-            sFromUnit = sAodUnit;
-            sFromDate = sAodDate;
+            sFromPose = sAodPose;
         } else {
-            captureFrom();
-            if (was == Phase.OFF && !wake && !Float.isNaN(sFromTop)) {
+            captureTransitionFrom();
+            if (was == Phase.OFF && !wake && !Float.isNaN(fromTop())) {
                 noteNaturalUnit(LIVE.unit);
                 captureNativePose(natural);
             }
-            if (was == Phase.OFF && !wake && !Float.isNaN(sFromDate) && LIVE.date != null) {
-                sDateAnchor = sFromDate;
+            if (was == Phase.OFF && !wake && !Float.isNaN(fromDate()) && LIVE.date != null) {
+                sDateAnchor = fromDate();
                 sDateAnchorView = LIVE.date;
             }
         }
@@ -686,7 +698,7 @@ final class ClockCollapse {
         // one frame of the wake that has the least room for it (reported as a stutter in the
         // first frames, 2026-09-22). On the other routes it is a frame or two old, which is all
         // this field was ever read for. See noteEntry.
-        noteEntry(src, wake, animate, fromAod, sYFrom, sYTo, sFromTop, sFromUnit, LIVE.unit);
+        noteEntry(src, wake, animate, fromAod, sYFrom, sYTo, fromTop(), fromUnit(), LIVE.unit);
         Xp.log(TAG + "clock: enter" + (wake ? " from the AOD" : "") + " y " + Main.r1(sYFrom)
                 + " -> " + Main.r1(sYTo) + " from " + was);
     }
@@ -700,7 +712,7 @@ final class ClockCollapse {
             releaseNow("exit");
             return;
         }
-        captureFrom();
+        captureTransitionFrom();
         sCenterFrom = sCenterK;
         sCenterTo = 0f;
         sCardFrom = Main.cardProgress();
@@ -770,7 +782,12 @@ final class ClockCollapse {
         // once, and the transforms on the views still describe the old one - reading after would
         // start the spring from a clock several times the size of the one on screen.
         boolean flying = (sPhase == Phase.ENTER || sPhase == Phase.ON) && Main.sContainer != null;
-        if (flying) captureFrom();
+        if (flying) {
+            // Do not remeasure and destroy the endpoint just committed by this pre-draw.
+            if (sCommitting && SCENE.passCommits > 0 && committedPoseCurrent()) sFromPose = sCommittedPose;
+            else if (!captureFrom())
+                sFromPose = committedPoseCurrent() && SCENE.retainLease() ? sCommittedPose : null;
+        }
         // A compact page may have restored the native clock; the cover's resting pose is the AOD
         // target. So it is when the pose cannot be read at all: put to sleep from an unlocked
         // phone, the keyguard's clock is not laid out to be measured, the held doze kept a NaN
@@ -778,11 +795,9 @@ final class ClockCollapse {
         // from it handed the lock screen back - the player alone on the AOD, the cover on wake.
         // Or read off a keyguard clock no frame has posed since the cover look came on (cover
         // mode begun while unlocked): it measures as the OEM's native big clock.
-        if (flying && (Main.aodArtworkExpanded() || Float.isNaN(sFromTop) || !sPoseDrawn)
+        if (flying && (Main.aodArtworkExpanded() || Float.isNaN(fromTop()) || !sPoseDrawn)
                 && coverRestCurrent()) {
-            sFromTop = sCoverRestTop;
-            sFromUnit = sCoverRestUnit;
-            sFromDate = sCoverRestDate;
+            sFromPose = sCoverRestPose;
         }
         Float held = Main.sHoldY;
         // Kept for a held doze to put back on, one frame later - see sAodHoldY. ONLY when there
@@ -820,16 +835,15 @@ final class ClockCollapse {
                 if (!Main.clockHeld()) return;
                 // Cover mode without our clock - unlocked, say. Nothing to walk back; watch the
                 // AOD so the wake has a start.
-                sAodHeld = keepInAod() && committedPoseCurrent();
+                if (committedPoseCurrent()) sFromPose = sCommittedPose;
+                sAodHeld = keepInAod() && aodPoseReady();
                 if (sAodHeld) {
-                    sFromTop = sCommittedTop;
-                    sFromUnit = sCommittedUnit;
-                    sFromDate = sCommittedDate;
+                    sFromPose = sCommittedPose;
                     Main.captureAodGlass();
                     Main.setCardProgressFrom(1f);
                 }
                 sPhase = Phase.AOD;
-                sAodTop = Float.NaN;
+                sAodPose = null;
                 if (sAodHeld) startAodCoverZoom();
                 install();
                 CoverCardLayer.refresh();
@@ -845,7 +859,7 @@ final class ClockCollapse {
         }
         if (keepInAod()) {
             // The full-screen AOD keeps the cover's clock, so there is nothing to travel to:
-            // sFromTop/sFromUnit/sFromDate, captured above, ARE the pose on screen and the pose
+            // fromTop()/fromUnit()/fromDate(), captured above, ARE the pose on screen and the pose
             // this doze will keep. The transforms stay where they are - that they survive the
             // hand-over is the whole of the setting - and frame() re-applies them off the box
             // the doze draws, which is not the lock screen's.
@@ -853,7 +867,7 @@ final class ClockCollapse {
             // The OEM's y has been put back above and stays back: doAnimationToAod reads the
             // clock's translation and posts it to the AOD plugin, and the clock is held by our
             // own transforms on time_group, which the OEM does not read.
-            sAodHeld = true;
+            sAodHeld = aodPoseReady();
             // The colour too: a held doze is showing the lock screen's clock, so it holds the
             // lock screen's glass instead of the doze's neutral. Read here because this is the
             // last moment it is still the lock screen's - the doze inks its own over it.
@@ -863,12 +877,13 @@ final class ClockCollapse {
             sTv = 0f;
             sExitToAod = false;
             sPhase = Phase.AOD;
-            startAodCoverZoom();
+            if (sAodHeld) startAodCoverZoom();
+            else stopAodCoverZoom();
             sGlassFrom = sGlassTo = sGlassP;
             install();
-            Xp.log(TAG + "clock: into the AOD holding the cover pose (top="
-                    + Main.r1(sFromTop) + " unit=" + Main.r1(sFromUnit)
-                    + " date=" + Main.r1(sFromDate) + ")");
+            Xp.log(TAG + "clock: into the AOD held=" + sAodHeld + " (top="
+                    + Main.r1(fromTop()) + " unit=" + Main.r1(fromUnit())
+                    + " date=" + Main.r1(fromDate()) + ")");
             return;
         }
         sAodHeld = false;
@@ -881,7 +896,7 @@ final class ClockCollapse {
         sGlassTo = 0f;
         sYFrom = sYTo = Float.NaN;
         sExitToAod = true;
-        // sAodTop/sAodUnit/sAodDate are deliberately NOT cleared: they hold the pose the last
+        // aodTop()/aodUnit()/aodDate() are deliberately NOT cleared: they hold the pose the last
         // settled doze was drawn at, and this transition aims at it. It cannot aim at the OEM's
         // live clock - the y has just been put back in one step, so for the first frames that is
         // still the lock screen's clock, several hundred pixels taller than the doze. Measured
@@ -908,7 +923,7 @@ final class ClockCollapse {
     static void prepareNavigationAod() {
         if (!NavigationAodPolicy.keepClock(ImmersiveHost.navigationClock(), Main.fullAodOn())
                 || MiniPlayerScene.INSTANCE.getKeyguardGoingAway() || Main.sContainer == null) return;
-        if (sPhase == Phase.AOD && sAodHeld && sPoseDrawn && Float.isFinite(sFromTop)) return;
+        if (sPhase == Phase.AOD && sAodHeld && sPoseDrawn && aodPoseReady()) return;
         try {
             if (prepareHeldAodPose("navigation AOD priority")) toAod();
         } catch (Throwable error) {
@@ -946,9 +961,7 @@ final class ClockCollapse {
     private static void startAodCoverZoom() {
         stopAodCoverZoom();
         sAodCoverZoom = 1f;
-        sAodTop = sFromTop;
-        sAodUnit = sFromUnit;
-        sAodDate = sFromDate;
+        sAodPose = sFromPose;
         // The date/time row keeps its lit-screen size in full-screen AOD.
         if (compactRowMoving() || CompactClockRowRuntime.requested()) return;
         if (Main.effectiveCoverStyle().mode != CoverCardStyle.CARD || !Main.coverModeOn()
@@ -1123,6 +1136,7 @@ final class ClockCollapse {
     }
 
     static void onDetached() {
+        sAodHeld = false;
         CompactClockRowRuntime.detach();
         sPoseDrawn = false;
         uninstall();
@@ -1161,7 +1175,7 @@ final class ClockCollapse {
                 + " y=" + Main.r1(y0) + "->" + Main.r1(yTo)
                 + " top=" + Main.r1(top0) + " unit=" + Main.r1(unit0)
                 + " oemUnit=" + Main.r1(oemUnit)
-                + " aodUnit=" + Main.r1(sAodUnit);
+                + " aodUnit=" + Main.r1(aodUnit());
     }
 
     /**
@@ -1178,17 +1192,9 @@ final class ClockCollapse {
      */
     private static final String[] sPoseLog = new String[8];
     private static int sPoseN;
-    private static float sCoverRestTop = Float.NaN, sCoverRestUnit, sCoverRestDate;
-    private static final ClockPoseSource COVER_REST_SOURCE = new ClockPoseSource();
-    private static int sCoverRestDestination = -1;
-    private static boolean sCoverRestNavigation;
+    private static ClockPoseSnapshot sCoverRestPose;
 
-    private static boolean coverRestCurrent() {
-        CoverBackdrop.Snapshot page = sceneSnapshot();
-        return Float.isFinite(sCoverRestTop) && poseSourceCurrent(COVER_REST_SOURCE)
-                && page.navigation == sCoverRestNavigation
-                && sceneSnapshot().clockDestination == sCoverRestDestination;
-    }
+    private static boolean coverRestCurrent() { return poseCurrent(sCoverRestPose); }
     private static float sPoseTop = Float.NaN, sPoseUnit = Float.NaN, sPoseDate = Float.NaN;
 
     /** NaN counts as equal to NaN: a style with no date must not record a pose every frame. */
@@ -1205,12 +1211,8 @@ final class ClockCollapse {
                 && AodArtworkPolicy.canRememberPose(Main.keyguardLocked() && Main.onKeyguardNow(),
                         MiniPlayerScene.INSTANCE.getKeyguardGoingAway(), Main.screenOnCached(),
                         top, unit, date, Main.sScreenH)) {
-            sCoverRestTop = top;
-            sCoverRestUnit = unit;
-            sCoverRestDate = date;
-            COVER_REST_SOURCE.capture(SCENE.window, SCENE.revision, firstTarget(), m.date);
-            sCoverRestNavigation = sceneSnapshot().navigation;
-            sCoverRestDestination = sceneSnapshot().clockDestination;
+            ClockPoseSnapshot rest = poseSnapshot(m, top, unit, date);
+            if (rest != null) sCoverRestPose = rest;
         }
         if (samePose(top, sPoseTop) && samePose(unit, sPoseUnit) && samePose(date, sPoseDate)) {
             return;
@@ -1308,7 +1310,7 @@ final class ClockCollapse {
     /** The last fall into the AOD, frame by frame. See noteFall. */
     static String fall() {
         StringBuilder sb = new StringBuilder("flight " + sFallHow + " frames=" + sFallN
-                + " aodUnit=" + Main.r1(sAodUnit)
+                + " aodUnit=" + Main.r1(aodUnit())
                 + " | layout at the doze: " + sAodLayout
                 + " | layout now: " + layoutNow());
         for (int i = 0; i < sFallN; i++) {
@@ -1343,9 +1345,10 @@ final class ClockCollapse {
                 + " card " + Main.r2(sCardFrom) + "->" + Main.r2(sCardTo)
                 + " glass " + Main.r2(sGlassFrom) + "->" + Main.r2(sGlassTo)
                 + " heldY=" + Main.r1(sAodHoldY)
-                + " from top=" + Main.r1(sFromTop) + " unit=" + Main.r1(sFromUnit)
-                + " date=" + Main.r1(sFromDate)
-                + " aod top=" + Main.r1(sAodTop) + " unit=" + Main.r1(sAodUnit)
+                + " from top=" + Main.r1(fromTop()) + " unit=" + Main.r1(fromUnit())
+                + " date=" + Main.r1(fromDate())
+                + " fromCurrent=" + poseCurrent(sFromPose) + " holdReady=" + aodPoseReady()
+                + " aod top=" + Main.r1(aodTop()) + " unit=" + Main.r1(aodUnit())
                 + " scale own=" + Main.r3(sAodOwnScale) + " chain=" + Main.r3(sAodChainScale)
                 + " size " + ClockPageSize.describe()
                 + " destination=" + sceneSnapshot().clockDestination
@@ -2151,8 +2154,8 @@ final class ClockCollapse {
         forgetManualEndpoints();
         sNativeNatural = Float.NaN;
         sNativeRevision = -1L;
-        sFromTop = Float.NaN;
-        sAodTop = Float.NaN;
+        sFromPose = null;
+        sAodPose = null;
         clearAodPend();
         sGlassP = 0f;
         uninstall();
@@ -2221,6 +2224,7 @@ final class ClockCollapse {
     }
 
     private static void clearTransforms() {
+        sAodHeld = false;
         CompactClockRowRuntime.clear();
         for (java.util.Map.Entry<View, ClockPropertyLease[]> entry : POSE_LEASES.entrySet()) {
             View view = entry.getKey();
@@ -2902,22 +2906,25 @@ final class ClockCollapse {
     }
 
     /** What is on screen right now, from the transforms currently on the views. */
-    private static void captureFrom() {
+    private static void captureTransitionFrom() {
+        if (!captureFrom())
+            sFromPose = committedPoseCurrent() && SCENE.retainLease() ? sCommittedPose : null;
+    }
+
+    private static boolean captureFrom() {
         sFlightFrom = null;
         Live m = LIVE;
-        if (!measure(m)) {
-            sFromTop = Float.NaN;
-            return;
-        }
-        View g = firstTarget();
-        // In the same space writePose writes: the clock's own transform over the OEM's box,
-        // with the keyguard's shared zoom left in the ancestors where it belongs. Reading
-        // through that zoom instead (tried 2026-09-22) puts this route 5% below the one that
-        // reads a recorded doze pose, because that pose is a box.
-        sFromTop = m.inkTop + g.getTranslationY();
-        sFromUnit = m.unit * g.getScaleY();
-        sFromDate = m.date == null ? Float.NaN : m.dateTop + m.date.getTranslationY();
-        sFlightFrom = new ArtworkClockMotion.Pose(sFromTop, m.box.height() * g.getScaleY(), sFromDate);
+        if (!measure(m)) return false;
+        View clock = firstTarget();
+        if (clock == null) return false;
+        ClockPoseSnapshot captured = poseSnapshot(m, m.inkTop + clock.getTranslationY(),
+                m.unit * clock.getScaleY(),
+                m.date == null ? Float.NaN : m.dateTop + m.date.getTranslationY());
+        if (captured == null) return false;
+        sFromPose = captured;
+        sFlightFrom = new ArtworkClockMotion.Pose(captured.top,
+                m.box.height() * clock.getScaleY(), captured.date);
+        return true;
     }
 
     private static void frame() {
@@ -2960,7 +2967,9 @@ final class ClockCollapse {
         sGlyphGeometryDirty = false;
         boolean rowRequested = CompactClockRowRuntime.requested();
         sRowPlan = rowRequested || compactRowMoving() ? compactRowPlan(m.date) : null;
-        if (SCENE.needsAodDestinationCommit(phase == Phase.AOD, sWaking, sAodHeld,
+        boolean heldPoseCurrent = sAodHeld && aodPoseReady();
+        if (phase == Phase.AOD && !heldPoseCurrent) sAodHeld = false;
+        if (SCENE.needsAodDestinationCommit(phase == Phase.AOD, sWaking, heldPoseCurrent,
                 rowRequested, sRowPlan != null, CompactClockRowRuntime.presented())) {
             // A late coordinate destination needs its complete endpoint, even if a native pose
             // was already held. Commit the ready row here before latching that endpoint in AOD.
@@ -3006,7 +3015,7 @@ final class ClockCollapse {
                 enter(true, true, "predraw");
                 phase = sPhase;
                 if (phase != Phase.ENTER) return;
-            } else if (sAodHeld && !Float.isNaN(sFromTop) && m.unit > 0f) {
+            } else if (sAodHeld && aodPoseReady() && m.unit > 0f) {
                 // Asleep with the cover's clock kept: the pose the lock screen was showing is put
                 // back on the doze's own box, and nothing else of ours is touched - no card
                 // progress, no glass morph (that one is already a no-op with the screen off), no
@@ -3027,13 +3036,15 @@ final class ClockCollapse {
                 // of the screen - see parentTop().
                 // A face whose full clock was never measured (magazine B) is held to the native
                 // size the cover last read for it instead.
-                float heldUnit = ClockSizePolicy.aodHeldUnit(sFromUnit, sAodCoverZoom,
+                float heldUnit = ClockSizePolicy.aodHeldUnit(fromUnit(), sAodCoverZoom,
                         sFullNatural > 0f ? sFullNatural : sLastNativeUnit);
-                writePose(m, sFromTop, heldUnit, sFromDate, false);
+                if (!writePose(m, fromTop(), heldUnit, fromDate(), false)) {
+                    sAodHeld = false;
+                    return;
+                }
                 // The wake starts from what is on screen, including a partly completed zoom.
-                sAodTop = sFromTop;
-                sAodUnit = heldUnit;
-                sAodDate = sFromDate;
+                ClockPoseSnapshot shown = poseSnapshot(m, fromTop(), heldUnit, fromDate());
+                if (shown != null) sAodPose = shown;
                 return;
             } else {
                 // The OEM's clock as it is. What it looks like here is the wake's start.
@@ -3064,11 +3075,10 @@ final class ClockCollapse {
                 //
                 // Two readings that agree are a clock that is not being animated; one that is
                 // never agrees with itself. Both poses are gated together, because the box has a
-                // second consumer with the same need - the fall INTO the doze aims at sAodUnit.
+                // second consumer with the same need - the fall INTO the doze aims at aodUnit().
                 if (steady(m.inkTop, sAodPendTop) && steady(m.unit, sAodPendUnit)) {
-                    sAodTop = m.inkTop;
-                    sAodUnit = m.unit;
-                    sAodDate = m.dateTop;
+                    ClockPoseSnapshot shown = poseSnapshot(m, m.inkTop, m.unit, m.dateTop);
+                    if (shown != null) sAodPose = shown;
                     sAodLayout = layoutNow();
                 }
                 sAodPendTop = m.inkTop;
@@ -3085,13 +3095,13 @@ final class ClockCollapse {
             float f = floorY(naturalY());
             if (!Float.isNaN(sFloor)) hold(targetY(f, naturalY()));
         }
-        if (phase != Phase.ON && Float.isNaN(sFromTop)) {
+        if (phase != Phase.ON && !poseCurrent(sFromPose)) {
             // Nothing was measurable when the transition started. The pose on screen now is the
             // best start there is: the transforms are still whatever they were.
             View g = firstTarget();
-            sFromTop = m.inkTop + g.getTranslationY();
-            sFromUnit = m.unit * g.getScaleY();
-            sFromDate = m.date == null ? Float.NaN : m.dateTop + m.date.getTranslationY();
+            sFromPose = poseSnapshot(m, m.inkTop + g.getTranslationY(), m.unit * g.getScaleY(),
+                    m.date == null ? Float.NaN : m.dateTop + m.date.getTranslationY());
+            if (sFromPose == null) return;
         }
 
         // The cover pose, live.
@@ -3221,9 +3231,9 @@ final class ClockCollapse {
             float toUnit = in ? coverUnit : m.unit;
             float toDate = in ? coverDate : m.dateTop + railLift;
             sLastToUnit = toUnit;
-            top = sFromTop + (toTop - sFromTop) * t;
-            unit = sFromUnit + (toUnit - sFromUnit) * t;
-            date = Float.isNaN(sFromDate) ? toDate : sFromDate + (toDate - sFromDate) * t;
+            top = fromTop() + (toTop - fromTop()) * t;
+            unit = fromUnit() + (toUnit - fromUnit()) * t;
+            date = Float.isNaN(fromDate()) ? toDate : fromDate() + (toDate - fromDate()) * t;
             if (sManualMotion && sFlightFrom != null) {
                 ArtworkClockMotion.Pose destination;
                 if (in) {
@@ -3275,7 +3285,9 @@ final class ClockCollapse {
             unit = m.unit;
             date = m.dateTop + lift;
         }
-        android.os.Trace.beginSection("MC c.write"); try { writePose(m, top, unit, date, phase == Phase.ENTER && sGlyphTail); } finally { android.os.Trace.endSection(); }
+        boolean written;
+        android.os.Trace.beginSection("MC c.write"); try { written = writePose(m, top, unit, date, phase == Phase.ENTER && sGlyphTail); } finally { android.os.Trace.endSection(); }
+        if (!written) return;
         if (phase == Phase.ENTER || phase == Phase.ON) sPoseDrawn = true;
         if (phase == Phase.ON) { android.os.Trace.beginSection("MC c.note"); try { notePose(m, top, unit, date, full, room); } finally { android.os.Trace.endSection(); } }
         if (latchAodAfterCommit) toAod();
@@ -3310,7 +3322,9 @@ final class ClockCollapse {
      *
      * @param holdWidth keep the drawn width from growing - the entry's glyph tail; see the call
      */
-    private static void writePose(Live m, float top, float unit, float date, boolean holdWidth) {
+    private static boolean writePose(Live m, float top, float unit, float date, boolean holdWidth) {
+        ClockPoseSnapshot destination = poseSnapshot(m, top, unit, date);
+        if (destination == null) return false;
         // A pose is in the lock screen's OWN pixels, and the OEM is free to scale the lock
         // screen underneath it - the doze's 0.95 on keyguard_root_view, a swipe's zoom on the
         // clock's container. The clock rides those like the notifications, the media card and
@@ -3453,14 +3467,9 @@ final class ClockCollapse {
                     + sRowPlan.text.getPaint().getFontMetrics().descent * sRowPlan.date.getScaleY();
             if (Float.isFinite(rowBottom)) sInkBottom = Math.max(sInkBottom, rowBottom);
         }
+        sCommittedPose = destination;
         SCENE.committed();
-        if (Float.isFinite(top) && unit > 0f) {
-            sCommittedTop = top; sCommittedUnit = unit; sCommittedDate = date;
-            COMMITTED_SOURCE.capture(SCENE.window, SCENE.revision, firstTarget(), m.date);
-            sCommittedPage = SCENE.page;
-            sCommittedNavigation = sceneSnapshot().navigation;
-            sCommittedDestination = sceneSnapshot().clockDestination;
-        }
+        return true;
     }
 
     private static float compactClockX(View clock, RectF box, float pivot, float scale, float nativeX) {
@@ -3479,9 +3488,7 @@ final class ClockCollapse {
      * state a doze that has never settled is in, which falls back to the OEM's live clock.
      */
     static void forgetAodPose() {
-        sAodTop = Float.NaN;
-        sAodUnit = Float.NaN;
-        sAodDate = Float.NaN;
+        sAodPose = null;
         clearAodPend();
     }
 }

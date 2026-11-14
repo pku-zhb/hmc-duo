@@ -26,6 +26,30 @@ the first ready row is committed through the same pre-draw entry and AOD-latch p
 preparation is not presentation proof: the current date/overlay pose must actually have been
 applied. An already presented lit row remains held without re-entering each frame.
 
+## Complete held poses
+
+An actual 0.2.11 failure had STATUS target/progress/readiness all valid and a running pre-draw,
+but `held=true`, `fromTop=NaN`, no retained lease and no current pose commit. A failed capture
+had cleared only the top while retaining old unit/date values, and full-AOD intent alone then
+latched `held=true`. The held writer could not use that incomplete pose, while the acquisition
+policy skipped it because the boolean already said held.
+
+`ClockPoseSnapshot` replaces the separate from, committed, cover-rest and AOD coordinate
+triples and their detached cache labels. A factory accepts only a complete finite pose (plus a
+finite date and real date node for anchored faces). Each immutable sample retains its exact
+window/revision/page/destination/navigation/style and native-node identities. Failed capture
+publishes nothing. A handoff from the current pre-draw uses its just-committed sample rather
+than immediately measuring it again during native relayout; other capture fallbacks require a
+current sample and an actual retained scene lease.
+
+The held latch and recovery decision share one contract: a current complete source pose, a
+current committed pose and a retained lease. A raw held boolean cannot block recovery without
+that evidence. A ready STATUS destination with an invalid former held pose therefore commits
+once through the existing pre-draw entry; an unready date-row still waits for its coordinates.
+Valid commits require no transform mutation when the native values already match, so lease
+proof is the scene commit rather than a count of changed view properties. A domain change,
+detach or transform release cannot preserve an invalid held claim.
+
 ## One presentation commit
 
 Readiness arrival invalidates the existing clock pre-draw listener. It does not enter the
@@ -46,7 +70,7 @@ not evidence that the observed direct-AOD failure actually replaced its native n
 Pure JVM regression tests exercise direct entry followed by late readiness without another
 entry, parity with lit entry, a held native pose with no replacement commit, unfinished lit
 entry followed by held AOD, atomic inverse-alpha publication, no-owner/custom-AOD fallback,
-reverse transitions, cold/warm/late date-row destinations and window/revision/native-node replacement. Production Kotlin and Java
+reverse transitions, cold/warm/late date-row destinations, invalid-held recovery, atomic capture failure and window/revision/native-node replacement. Production Kotlin and Java
 are compiled together against the module interfaces before the full release build.
 
 The device pass should compare lit lock-screen to full AOD and desktop to full AOD with a

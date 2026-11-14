@@ -22,11 +22,17 @@ final class ClockSceneState {
         this.requested = requested;
     }
 
+    /** One contract is shared by the producer's latch and the consumer's recovery decision. */
+    boolean holdsPose(boolean held, boolean poseCurrent, boolean committedCurrent) {
+        return held && poseCurrent && committedCurrent && retainLease();
+    }
+
     /** A held native pose is not proof that a coordinate-based destination has committed. */
-    boolean needsAodDestinationCommit(boolean aod, boolean waking, boolean held,
+    boolean needsAodDestinationCommit(boolean aod, boolean waking, boolean heldPoseCurrent,
                                       boolean rowRequested, boolean rowReady, boolean rowPresented) {
         if (!requested || window == null || !aod || waking) return false;
-        return rowRequested ? rowReady && (!held || !rowPresented || !retainLease()) : !held;
+        return rowRequested ? rowReady && (!heldPoseCurrent || !rowPresented || !retainLease())
+                : !heldPoseCurrent || !retainLease();
     }
 
     void beginPass() { passes++; passCommits = 0; }
