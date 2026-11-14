@@ -21,6 +21,7 @@ final class LockScreenRailRuntime {
     private static volatile int notificationFloor;
     private static View keyguardCanvas;
     private static boolean railXPinned;
+    private static boolean wasCombined;
     private static long planRevision = -1;
     private static int planWidth, planHeight;
     private static final IdentityHashMap<View, ControlOffset> clockOffsets = new IdentityHashMap<>();
@@ -135,7 +136,7 @@ final class LockScreenRailRuntime {
             boolean stackOwned = RailStackBounds.bind(stack, root, next.content);
             View date = Main.visibleDate();
             if (date != null && !under(date, stack) && !ClockCollapse.compactRowMoving())
-                centerContentView(date, next.content);
+                centerContentView(date, presentedContent());
             centerClocks();
             contentActive = stackOwned || !owned.isEmpty();
             if (contentActive && Main.sForceNotificationFloor) NumState.INSTANCE.refreshRailFooter(notificationFloor, revision);
@@ -145,7 +146,9 @@ final class LockScreenRailRuntime {
         note(next == null ? "insufficient room for fixed rail"
                 : retained ? aodFrozen ? "fixed through AOD/wake" : "fixed Duo geometry"
                 : "fixed Duo geometry initialized");
-        if (wasActive != active() || wasContent != reflowing()) {
+        boolean combined = FoldMusicRuntime.combinedRequested();
+        if (wasActive != active() || wasContent != reflowing() || wasCombined != combined) {
+            wasCombined = combined;
             MiniPlayerRuntime.refresh();
             Main.refreshCoverGeometry();
         }
@@ -212,7 +215,7 @@ final class LockScreenRailRuntime {
         RightRailLayout.Plan p = plan;
         if (!reflowing() || p == null || root == null) return fallback;
         int[] origin = new int[2]; root.getLocationOnScreen(origin);
-        return RailAodArtwork.fit(p.content, fallback, clock - origin[1], media - origin[1],
+        return RailAodArtwork.fit(presentedContent(), fallback, clock - origin[1], media - origin[1],
                 root.getResources().getDisplayMetrics().density, aspect);
     }
 
@@ -271,8 +274,9 @@ final class LockScreenRailRuntime {
         if (p == null || !Main.sReflowLockContent || !active() || ink == null || target == null
                 || !(target.getParent() instanceof View)) return Float.NaN;
         float bias = clockOpticalOffset();
-        FoldMusicLayout.Box area = bias == 0f ? p.content : new FoldMusicLayout.Box(
-                p.content.left + bias, p.content.top, p.content.right + bias, p.content.bottom);
+        FoldMusicLayout.Box content = presentedContent();
+        FoldMusicLayout.Box area = bias == 0f ? content : new FoldMusicLayout.Box(
+                content.left + bias, content.top, content.right + bias, content.bottom);
         if (!map(root, (View) target.getParent(), area, box)) return Float.NaN;
         return ClockHorizontalPlacement.translation(ink.left, ink.right, target.getPivotX(),
                 target.getScaleX(), target.getLeft(), box.centerX());
@@ -394,9 +398,17 @@ final class LockScreenRailRuntime {
         RightRailLayout.Plan p = plan;
         return active() && p != null && map(root, host, p.strip, out);
     }
+    private static FoldMusicLayout.Box presentedContent() {
+        RightRailLayout.Plan p = plan;
+        if (p == null || root == null) return null;
+        return RailContentFrame.presentation(p.content, root.getWidth(), root.getHeight(),
+                root.getResources().getDisplayMetrics().density, RailWindowInsets.read(root).right,
+                FoldMusicRuntime.combinedRequested());
+    }
+
     static boolean content(View host, RectF out) {
         RightRailLayout.Plan p = plan;
-        return reflowing() && p != null && map(root, host, p.content, out);
+        return reflowing() && p != null && map(root, host, presentedContent(), out);
     }
     /** Empty space beside the rail follows content gestures; actual controls claim their own hits. */
     static boolean contentSwipeArea(View host, RectF out) {
@@ -407,12 +419,12 @@ final class LockScreenRailRuntime {
     }
     static float contentWidth() {
         RightRailLayout.Plan p = plan;
-        return reflowing() && p != null ? p.content.right : Main.screenWidth();
+        return reflowing() && p != null ? presentedContent().right : Main.screenWidth();
     }
     static float clockCenterX() {
         RightRailLayout.Plan p = plan;
         return reflowing() && p != null
-                ? (p.content.left + p.content.right) / 2 + clockOpticalOffset()
+                ? (presentedContent().left + presentedContent().right) / 2 + clockOpticalOffset()
                 : Main.screenWidth() / 2f;
     }
     static CoverCardStyle.Rect artwork(View view, CoverCardStyle style, float clock,

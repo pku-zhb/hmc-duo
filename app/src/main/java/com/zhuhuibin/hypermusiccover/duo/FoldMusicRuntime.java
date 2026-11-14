@@ -22,9 +22,11 @@ final class FoldMusicRuntime {
     private static boolean failed;
     private static int lastWidth, lastHeight;
     private static boolean lastEnabled;
+    private static long columnsRevision = -1;
 
     static boolean sideBySide() {
-        return columns != null && combinedRequested() && Main.screenOnCached();
+        return columns != null && columnsRevision == Main.screenGeometry().revision && combinedRequested()
+                && (Main.screenOnCached() || MiniPlayerScene.INSTANCE.getFullScreenAodActive());
     }
 
     static boolean wideCandidate() {
@@ -126,12 +128,19 @@ final class FoldMusicRuntime {
             lastWidth = v.getWidth();
             lastHeight = v.getHeight();
             lastEnabled = Main.sFoldMusicLayout;
+            publish(null);
         }
+        if (columns != null && columnsRevision != Main.screenGeometry().revision) publish(null);
+        // AOD changes visibility, not the same-window combined page's layout generation.
+        if (columns != null && combinedRequested() && MiniPlayerScene.INSTANCE.getFullScreenAodActive()
+                && Main.keyguardLocked() && !Main.bouncerShown()
+                && !MiniPlayerScene.INSTANCE.getKeyguardGoingAway()) return;
         // Keep the outgoing artwork/lyric plan until the native header leaves the screen.
         if (columns != null && MiniPlayerRuntime.railMediaExitActive() && Main.keyguardLocked()
                 && !MiniPlayerScene.INSTANCE.getKeyguardGoingAway()) return;
         boolean wanted = !failed && combinedRequested() && Main.coverModeOn()
-                && Main.screenOnCached() && Main.onKeyguardNow() && Main.keyguardLocked()
+                && (Main.screenOnCached() || MiniPlayerScene.INSTANCE.getFullScreenAodActive())
+                && (Main.onKeyguardNow() || MiniPlayerScene.INSTANCE.getFullScreenAodActive()) && Main.keyguardLocked()
                 && !Main.bouncerShown() && !LockIslands.INSTANCE.spreadingNow();
         FoldMusicLayout.Columns next = null;
         if (wanted) {
@@ -171,6 +180,7 @@ final class FoldMusicRuntime {
     private static void publish(FoldMusicLayout.Columns next) {
         boolean modeChanged = (columns == null) != (next == null);
         columns = next;
+        columnsRevision = next == null ? -1 : Main.screenGeometry().revision;
         if (modeChanged) Main.refreshCoverGeometry();
     }
 
@@ -205,7 +215,7 @@ final class FoldMusicRuntime {
         FoldMusicLayout.Columns c = columns;
         return "fold enabled=" + Main.sFoldMusicLayout + " combined=" + combinedRequested() + " active=" + (c != null)
                 + " reason=" + reason + " screen=" + Main.screenWidth() + "x" + Main.screenHeight()
-                + " revision=" + Main.screenGeometry().revision
+                + " revision=" + Main.screenGeometry().revision + " columnsRevision=" + columnsRevision
                 + " " + CompactPlayerRuntime.describe()
                 + " requestedMode=" + Main.sCoverCardStyle.mode
                 + " effectiveMode=" + Main.effectiveCoverStyle().mode

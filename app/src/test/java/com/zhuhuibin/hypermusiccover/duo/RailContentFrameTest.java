@@ -4,17 +4,15 @@ import org.junit.Test;
 import static org.junit.Assert.*;
 
 public class RailContentFrameTest {
-    @Test public void outerCardHasAnAbsoluteSlotRatherThanAProportionOfTheNativeWidth() {
+    @Test public void outerCardKeepsItsFixedRailSlot() {
         RightRailLayout.Plan p = RightRailLayout.plan(1168, 1712, 2.75f, 0, 126, 0, 0, 0);
-        RailContentFrame frame = RailContentFrame.in(p.content, 2.75f, 0);
+        RailContentFrame frame = RailContentFrame.inWindow(p.content, 2.75f, 0, 1168, 1712, false);
         assertEquals(31, frame.left);
         assertEquals(900, frame.width);
         assertEquals(931, frame.right());
-        assertFalse(frame.matches(44, 875));
-        assertTrue(frame.matches(31, 900));
     }
 
-    @Test public void changingParentOriginDoesNotChangeWidthOrAccumulateOffsets() {
+    @Test public void parentOriginDoesNotChangeOuterWidthOrAccumulateOffsets() {
         FoldMusicLayout.Box content = new FoldMusicLayout.Box(0, 0, 961.75f, 1712);
         for (int parentLeft : new int[]{0, 44, 88, -44, 198264, 0}) {
             RailContentFrame frame = RailContentFrame.in(content, 2.75f, parentLeft);
@@ -23,54 +21,53 @@ public class RailContentFrameTest {
         }
     }
 
-    @Test public void innerLandscapeUsesItsOwnContentAxisInsteadOfTheFullWindowAxis() {
-        RightRailLayout.Plan inner = RightRailLayout.plan(2364, 1672, 2.75f, 0, 164, 0, 0, 0);
-        RailContentFrame frame = RailContentFrame.inWindow(inner.content, 2.75f, 0, 2364, 1672, false);
-        assertEquals((inner.content.left + inner.content.right) / 2f, frame.left + frame.width / 2f, 0.5f);
-        assertTrue(frame.width > 900);
-        RailContentFrame inset = RailContentFrame.in(new FoldMusicLayout.Box(30, 0, 500, 850), 1, 0);
-        assertEquals(41, inset.left);
-        assertEquals(489, inset.right());
-    }
-
-    @Test public void unmeasuredAndInvalidAreasNeverProduceAForcedFrame() {
-        assertNull(RailContentFrame.in(null, 1, 0));
-        assertNull(RailContentFrame.in(new FoldMusicLayout.Box(0, 0, 20, 800), 1, 0));
-        assertNull(RailContentFrame.in(new FoldMusicLayout.Box(0, 0, 900, 800), Float.NaN, 0));
-    }
-    @Test public void combinedArtworkAndNativeInnerStackKeepTheSameContentAxis() {
-        RightRailLayout.Plan inner = RightRailLayout.plan(2364, 1672, 2.75f, 0, 164, 0, 0, 0);
-        for (int parent : new int[]{0, 559, -44, 10000}) {
-            RailContentFrame frame = RailContentFrame.inWindow(inner.content, 2.75f, parent, 2364, 1672, true);
-            assertEquals((inner.content.left + inner.content.right) / 2f, frame.left + parent + frame.width / 2f, 0.5f);
-        }
-    }
-
-    @Test public void smallerInnerWindowsKeepArtworkAndCardsOnOneAxis() {
-        RightRailLayout.Plan inner = RightRailLayout.plan(750, 650, 1, 0, 24, 0, 24, 0);
-        RailContentFrame frame = RailContentFrame.inWindow(inner.content, 1, 0, 750, 650, true);
-        assertEquals((inner.content.left + inner.content.right) / 2f, frame.left + frame.width / 2f, 0.5f);
-    }
-
-    @Test public void innerPortraitAndOuterBothKeepTheContentSlot() {
-        for (int[] size : new int[][]{{1168,1712}, {1672,2364}}) {
-            RightRailLayout.Plan plan = RightRailLayout.plan(size[0], size[1], 2.75f, 0, 126, 0, 0, 0);
-            RailContentFrame old = RailContentFrame.in(plan.content, 2.75f, 0);
+    @Test public void innerWidthIsAlwaysOwnedByTheSystemEvenOnTheCombinedPage() {
+        for (int[] window : new int[][]{{1672,2364},{2364,1672},{750,650}}) {
+            float density = window[0] == 750 ? 1f : 2.75f;
+            RightRailLayout.Plan p = RightRailLayout.plan(window[0], window[1], density, 0, 24, 0, 24, 0);
             for (boolean combined : new boolean[]{false, true}) {
-                RailContentFrame frame = RailContentFrame.inWindow(plan.content, 2.75f, 0, size[0], size[1], combined);
-                assertEquals(old.width, frame.width);
-                assertEquals(old.left, frame.left);
+                for (int parent : new int[]{0,559,-44})
+                    assertNull(RailContentFrame.inWindow(p.content, density, parent, window[0], window[1], combined));
             }
         }
     }
 
-    @Test public void innerClassificationDoesNotDependOnOrientationOrAnArtworkChoice() {
-        assertTrue(RailContentFrame.ownsNativeBounds(1168, 1712, 2.75f));
-        assertTrue(RailContentFrame.ownsNativeBounds(1672, 2364, 2.75f));
-        assertTrue(RailContentFrame.ownsNativeBounds(2364, 1672, 2.75f));
-        assertTrue(RailContentFrame.ownsNativeBounds(600, 800, 1f));
-        assertFalse(RailContentFrame.ownsNativeBounds(0, 800, 1f));
-        assertFalse(RailContentFrame.ownsNativeBounds(500, 800, Float.NaN));
+    @Test public void innerSinglePagesUseFullWindowCenterAndCombinedUsesTwoColumns() {
+        for (int[] window : new int[][]{{1672,2364},{2364,1672}}) {
+            RightRailLayout.Plan p = RightRailLayout.plan(window[0], window[1], 2.75f, 0, 126, 0, 0, 0);
+            FoldMusicLayout.Box single = RailContentFrame.presentation(p.content, window[0], window[1], 2.75f, 0, false);
+            assertEquals(window[0] / 2f, (single.left + single.right) / 2f, .01f);
+            assertSame(p.content, RailContentFrame.presentation(p.content, window[0], window[1], 2.75f, 0, true));
+        }
+        RightRailLayout.Plan outer = RightRailLayout.plan(1168,1712,2.75f,0,126,0,0,0);
+        assertSame(outer.content, RailContentFrame.presentation(outer.content,1168,1712,2.75f,0,false));
     }
 
+    @Test public void innerSinglePageCenterHonorsAsymmetricSafeInsets() {
+        FoldMusicLayout.Box rail = new FoldMusicLayout.Box(30,24,680,1000);
+        FoldMusicLayout.Box content = RailContentFrame.presentation(rail,800,1000,1,10,false);
+        assertEquals(410f,(content.left + content.right)/2f,0f);
+    }
+
+    @Test public void combinedColumnTranslationIsStableAtTheNativeAndZoomedScale() {
+        for (float scale : new float[]{1f,.95f,1.05f}) {
+            float first = RailContentFrame.columnTranslation(0,590,44,scale);
+            float nextLeft = 590 + first * scale;
+            assertEquals(44, nextLeft, .001f);
+            for (int i = 0; i < 100; i++) {
+                float next = RailContentFrame.columnTranslation(first,nextLeft,44,scale);
+                assertEquals(first,next,.001f);
+                nextLeft += (next - first) * scale;
+                first = next;
+            }
+        }
+        assertTrue(Float.isNaN(RailContentFrame.columnTranslation(0,590,44,0)));
+    }
+
+    @Test public void invalidWindowsNeverForceNativeMeasurement() {
+        assertNull(RailContentFrame.in(null,1,0));
+        assertNull(RailContentFrame.in(new FoldMusicLayout.Box(0,0,20,800),1,0));
+        assertFalse(RailContentFrame.ownsNativeBounds(0,800,1));
+        assertFalse(RailContentFrame.ownsNativeBounds(500,800,Float.NaN));
+    }
 }
