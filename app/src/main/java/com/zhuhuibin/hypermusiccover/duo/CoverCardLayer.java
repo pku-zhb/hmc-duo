@@ -601,6 +601,7 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
         recomposeBackdrop();
         CoverCardLayer v = sView;
         if (v == null) return;
+        v.wash.lastSurface = -1;
         v.lockPlace = v.bigCoverPlace = v.restPlace = v.lastGoal = v.aodUnshrunkGoal = null;
         v.railScreenPlace = null;
         v.railAodHolding = false;
@@ -835,6 +836,9 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
     static void refreshBackdrop(CoverBackdrop.Snapshot scene) {
         CoverCardLayer v = sView;
         if (v == null) return;
+        boolean enteredFullAod = v.wash.lastSurface != CoverBackdrop.SURFACE_FULL_AOD
+                && scene.surface == CoverBackdrop.SURFACE_FULL_AOD;
+        v.wash.lastSurface = scene.surface;
         boolean retained = CoverBackdrop.retains(ArtworkBackdropState.STILL, scene);
         boolean fullForeground = !scene.navigation && scene.surface == CoverBackdrop.SURFACE_FULL_AOD
                 && fullSceneArtworkVisible();
@@ -843,10 +847,11 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
                 || !v.wash.isAttachedToWindow() || v.wash.getRootView() != scene.window) {
             v.wash.hideNow();
         } else if (on) {
-            v.wash.show(true);
+            AodTransitionProgress.Snapshot aod = AodTransitionRuntime.snapshot();
+            v.wash.show(true, enteredFullAod || aod.running && aod.into);
             if (v.wash.lastBackdropGeneration != scene.generation) v.wash.invalidate();
         } else if (scene.backgroundWanted && scene.desiredRenderer == ArtworkBackdropState.MESH) {
-            v.wash.show(false);
+            v.wash.show(false, false);
         } else v.wash.hideNow();
     }
 
@@ -1325,6 +1330,21 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
                     : LockScreenRailRuntime.artworkOnScreen(this, goal);
             FoldMusicLayout.Box fitted = LockScreenRailRuntime.aodArtwork(fallback,
                     ClockCollapse.contentBottomDrawn(), Main.liveMediaTop(), shownAspect());
+            if (ClockCollapse.followsNativeAod()) {
+                // The lit endpoint must be the very same box used after the AOD lease ends.
+                // A separate screen-space fitter at fraction0 otherwise changes the endpoint
+                // when holdGeometry finally releases its parent-zoom compensation.
+                CoverCardStyle.Rect lit = placeNow();
+                FoldMusicLayout.Box normal = lit == null ? null
+                        : LockScreenRailRuntime.artworkOnScreen(this, lit);
+                if (normal != null && fitted != null) {
+                    float p = AodTransitionRuntime.snapshot().fraction;
+                    fitted = new FoldMusicLayout.Box(normal.left + (fitted.left - normal.left) * p,
+                            normal.top + (fitted.top - normal.top) * p,
+                            normal.right + (fitted.right - normal.right) * p,
+                            normal.bottom + (fitted.bottom - normal.bottom) * p);
+                }
+            }
             CoverCardStyle.Rect fixed = LockScreenRailRuntime.artworkFromScreen(this, fitted);
             fixed = FoldMusicRuntime.capPortraitArtwork(this, fixed);
             if (fixed != null) {
@@ -1340,7 +1360,7 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
             goal = FoldMusicRuntime.capPortraitArtwork(this, goal);
         if (goal == null) return false;
         carry(goal, carries(phase));
-        if (Float.isNaN(drawX) || opacity <= 0f) {
+        if (Float.isNaN(drawX) || opacity <= 0f || ClockCollapse.aodTransitioning()) {
             drawX = goal.x;
             drawY = goal.y;
             drawSide = goal.side;
@@ -1367,6 +1387,23 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
         railScreenPlace = LockScreenRailRuntime.artworkOnScreen(this,
                 new CoverCardStyle.Rect(drawX, drawY, drawSide));
         railScreenRevision = Main.screenGeometry().revision;
+    }
+
+    /** Consume the current clock/media geometry after the native and HMC pose writers. */
+    static void clockPoseCommitted() {
+        CoverCardLayer view = sView;
+        if (view == null || !view.isAttachedToWindow() || !ClockCollapse.followsNativeAod()
+                || view.opacity <= 0f || !view.layerVisible()) return;
+        float x = view.drawX, y = view.drawY, side = view.drawSide;
+        view.followPlace(ClockCollapse.phase(), 0f, Math.max(.18f, Main.sClockResponse), view.opacity);
+        if (x != view.drawX || y != view.drawY || side != view.drawSide) view.invalidate();
+    }
+
+    static void aodProgressChanged() {
+        CoverCardLayer view = sView;
+        if (view == null) return;
+        if (view.wash.getVisibility() == VISIBLE) view.wash.invalidate();
+        if (view.getVisibility() == VISIBLE) view.start();
     }
 
     /**
@@ -1766,6 +1803,8 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
          */
         private static final long IN_MS = 500L, OUT_MS = 250L;
         private boolean want;
+        private boolean nativeReveal;
+        private int lastSurface = -1;
         private float from;
         private long changedAt;
         private long backdropDraws, lastBackdropDraw;
@@ -1773,17 +1812,24 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
 
         /** 0..1, how much of the wash is up right now. */
         private float level() {
+            CoverBackdrop.Snapshot scene = CoverBackdrop.snapshot();
+            // Retained means these are the real committed outgoing pixels. Fading them out
+            // before incoming opaque proof breaks coverage despite retaining the sampling key.
             float t = Math.min(1f, (SystemClock.uptimeMillis() - changedAt)
                     / (float) (want ? IN_MS : OUT_MS));
             float e = t * t * (3f - 2f * t);
-            return from + ((want ? 1f : 0f) - from) * e;
+            float fallback = from + ((want ? 1f : 0f) - from) * e;
+            return AodBackdropAlpha.value(CoverBackdrop.retains(ArtworkBackdropState.STILL, scene),
+                    nativeReveal && want && scene.surface == CoverBackdrop.SURFACE_FULL_AOD, true,
+                    AodTransitionRuntime.snapshot().fraction, fallback);
         }
 
-        void show(boolean on) {
+        void show(boolean on, boolean nativeArrival) {
             boolean changed = false;
             if (on != want) {
                 from = getVisibility() == VISIBLE ? level() : 0f;
                 want = on;
+                nativeReveal = on && nativeArrival;
                 changedAt = SystemClock.uptimeMillis();
                 changed = true;
             }
@@ -1797,6 +1843,7 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
         /** Unlocked, or anywhere else the wash has no business: gone at once. */
         void hideNow() {
             want = false;
+            nativeReveal = false;
             from = 0f;
             lastBackdropAlpha = 0;
             lastBackdropGeneration = -1;
@@ -1853,11 +1900,16 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
             CoverCardLayer v = sView;
             Prepared p = v == null ? null : v.current;
             float level = level();
-            boolean moving = SystemClock.uptimeMillis() - changedAt < (want ? IN_MS : OUT_MS);
-            if (!want && !moving) {
+            boolean nativeAod = nativeReveal && want && scene.surface == CoverBackdrop.SURFACE_FULL_AOD;
+            boolean moving = nativeAod ? AodTransitionRuntime.moving()
+                    : SystemClock.uptimeMillis() - changedAt < (want ? IN_MS : OUT_MS);
+            if (!want && !moving && !retained) {
                 // Faded all the way out: off the draw list until it is wanted again.
                 post(new Runnable() {
-                    @Override public void run() { if (!want) setVisibility(GONE); }
+                    @Override public void run() {
+                        CoverBackdrop.Snapshot current = CoverBackdrop.snapshot();
+                        if (!want && !CoverBackdrop.retains(ArtworkBackdropState.STILL, current)) hideNow();
+                    }
                 });
                 return;
             }

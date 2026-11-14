@@ -4,6 +4,18 @@ import org.junit.Test;
 import static org.junit.Assert.*;
 
 public class CompactPlayerMetricsTest {
+    @Test public void seekVisibilityHasSameNativeHeightEndpointInBothDirections() {
+        assertEquals(1f, CompactPlayerMetrics.seekAlpha(279, 279, 210), 0f);
+        assertEquals(0f, CompactPlayerMetrics.seekAlpha(210, 279, 210), 0f);
+        float previous = 0f;
+        for (int height = 210; height <= 279; height++) {
+            float alpha = CompactPlayerMetrics.seekAlpha(height, 279, 210);
+            assertTrue(alpha >= previous);
+            previous = alpha;
+        }
+        // At this same shell height sleep must not be0 while wake is partially visible.
+        assertTrue(CompactPlayerMetrics.seekAlpha(270, 279, 210) > .5f);
+    }
     private CompactPlayerMetrics.Plan normal(int percent) {
         return CompactPlayerMetrics.plan(371, percent, 32, 22, 4, 32, 281, 105, 2f);
     }

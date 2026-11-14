@@ -383,11 +383,12 @@ final class CompactPlayerRuntime {
                 }
                 fullAod = requested == nativeAod;
                 animating = true;
-                // Native visibility changes only at completion. Conceal the seek row before
-                // the compact outline starts clipping it; waking reveals it as room returns.
-                applySeekAlpha(0f);
                 try { animatedHeight = (Integer) Xp.callMethod(view, "getActualHeight"); }
                 catch (Throwable ignored) { animatedHeight = fullAod ? currentPlan.height : compactAod; }
+                // Visibility follows the native physical room in both directions. Hiding at
+                // request time made the first sleep frame differ from the same wake height.
+                applySeekAlpha(CompactPlayerMetrics.seekAlpha(animatedHeight,
+                        currentPlan.height, compactAod));
                 int target = CompactPlayerMetrics.transitionHeight(requested, nativeNormal, nativeAod,
                         currentPlan.height, compactAod);
                 // Preserve the original request if our scope exits before native completion.
@@ -405,9 +406,8 @@ final class CompactPlayerRuntime {
                         Lease bg = lease(background);
                         bg.apply(background, animatedHeight, bg.top, bg.bottom, bg.minimum);
                     }
-                    float fraction = Math.max(0f, Math.min(1f,
-                            (animatedHeight - compactAod) / (float) Math.max(1, currentPlan.height - compactAod)));
-                    applySeekAlpha(fullAod ? 0f : Math.max(0f, Math.min(1f, 3f * fraction - 2f)));
+                    applySeekAlpha(CompactPlayerMetrics.seekAlpha(animatedHeight,
+                            currentPlan.height, compactAod));
                 }
                 return result;
             });
