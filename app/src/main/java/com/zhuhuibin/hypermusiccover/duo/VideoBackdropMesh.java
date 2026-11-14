@@ -241,9 +241,16 @@ final class VideoBackdropMesh extends View implements Choreographer.FrameCallbac
     /** Local pixels, not a requested setting, select the native card's sampling domain. */
     static boolean samplingBackdropIn(View source) {
         VideoBackdropMesh v = view;
-        return source != null && v != null && v.eligible() && v.isShown()
-                && v.getRootView() == source.getRootView() && v.state.revealed()
-                && v.state.drawn() == v.state.source() && v.renderAlpha > .001f;
+        return source != null && backdropPresented()
+                && v.getRootView() == source.getRootView();
+    }
+
+    /** The local renderer needs no acknowledgement from the separate wallpaper process. */
+    static boolean backdropPresented() {
+        VideoBackdropMesh v = view;
+        return v != null && v.eligible() && v.isShown() && v.state.revealed()
+                && ArtworkBackdropState.presentedFrame(CoverCardLayer.backdropGeneration(),
+                    v.state.drawn(), v.renderAlpha);
     }
 
     private boolean needsFrames() {

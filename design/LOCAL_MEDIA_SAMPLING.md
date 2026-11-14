@@ -58,6 +58,17 @@ cover. Glass should follow the visible background and restore normal native
 sampling when the HMC backdrop is absent. Also check a track change and unlock
 so neither the prior cover nor its sampling lease survives the current scene.
 
-This lease covers the lit local artwork renderer. On AOD or another scene where
-that renderer is ineligible, it restores native sampling rather than retaining a
-stale local source.
+The awake mesh and the full-screen AOD still wash are distinct renderers. The
+earlier lease recognized only the mesh; that renderer intentionally stops at
+sleep, so even a correctly drawn AOD artwork wash restored desktop sampling.
+The lease now also accepts the AOD wash after it has submitted visible pixels
+for the current prepared-source generation in the media card's root window.
+Prepared bitmaps, stale generations and zero-alpha frames do not authorize it.
+The wash's first submitted frame requests one sampling refresh; AOD does not
+start the mesh animation or an extra continuous draw loop. Hiding the wash clears
+its frame evidence, and native-wallpaper mode and unlock still restore native
+sampling.
+
+This AOD correction has host frame-evidence checks. The owner's reported
+desktop-to-AOD scene still needs acceptance; no screenshot or live setting change
+was used to infer GPU pixels.

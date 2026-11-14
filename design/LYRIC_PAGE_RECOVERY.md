@@ -29,3 +29,26 @@ installed or reloaded during this change. These source defects are confirmed;
 they do not establish that every reported absent lyric shares the same cause.
 Later owner acceptance should use a track with known lyrics across repeated
 artwork/lyrics switches and lock sessions, plus a genuinely lyricless track.
+
+## Local presentation and fold lifecycle
+
+The old frost-acknowledgement gate waited up to 1.2 seconds for a separate
+wallpaper process even when the local artwork backdrop had already submitted
+the current source. Such a presented local frame now releases that gate;
+prepared or stale bitmaps do not. Remote/video wallpaper retains its existing
+acknowledgement and bounded fallback. Provider lookup latency is unchanged.
+
+The native media card guard now retains the exact ViewTreeObserver used to
+register it. Looking the observer up after detach can address a different
+observer and leave an old-card callback alive. A stale callback is also rejected
+by current owner/listener identity before it can create or remove a page button.
+The lyric view similarly removes its listener from the original observer.
+A read-only desktop diagnostic in this round reported 5,479 button creations
+and releases while the current track already had 36 parsed lines; that supports
+checking holder churn rather than treating this report as a missing lyric source.
+It is not a synchronized reproduction of the owner's landscape failure.
+
+Explicit page cycling requires a live accepted card and its current attached,
+shown holder. It no longer depends on the OEM's transient top-card metadata flag
+during a fold rebind. Session invalidation and removed-card cleanup still gate
+the operation. Cross-fold four-page cycling remains owner acceptance.

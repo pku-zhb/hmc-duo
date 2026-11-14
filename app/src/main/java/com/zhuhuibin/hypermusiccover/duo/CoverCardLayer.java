@@ -682,6 +682,18 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
         return p == null || p.aodBackdrop == null || p.aodBackdrop.isRecycled() ? null : p.aodBackdrop;
     }
 
+    /** Keep the native media glass on the actually drawn, same-window full-AOD backdrop. */
+    static boolean samplingAodBackdropIn(View source) {
+        CoverCardLayer v = sView;
+        if (source == null || v == null || !Main.coverCardBackdropInAod()
+                || CoverBackdrop.hidden() || MiniPlayerScene.INSTANCE.getKeyguardGoingAway()) return false;
+        Wash wash = v.wash;
+        return wash.want && wash.isAttachedToWindow() && wash.isShown()
+                && wash.getRootView() == source.getRootView()
+                && ArtworkBackdropState.presentedFrame(backdropGeneration(),
+                    wash.lastBackdropGeneration, wash.lastBackdropAlpha / 255f);
+    }
+
     static int backdropGeneration() {
         CoverCardLayer v = sView;
         return v == null || v.current == null ? -1 : v.current.generation;
@@ -1542,7 +1554,10 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
         void hideNow() {
             want = false;
             from = 0f;
+            lastBackdropAlpha = 0;
+            lastBackdropGeneration = -1;
             if (getVisibility() != GONE) setVisibility(GONE);
+            NativeMediaBackdrop.refresh();
         }
 
         /** Scales this view so that its bounds land on the whole display. */
@@ -1599,10 +1614,14 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
             if (!CoverBackdrop.hidden()) {
                 canvas.drawBitmap(p.aodBackdrop, null, bounds, paint);
                 // Record only when pixels enter the display list; VISIBLE alone is not proof.
+                boolean firstPresented = !ArtworkBackdropState.presentedFrame(p.generation,
+                        lastBackdropGeneration, lastBackdropAlpha / 255f) && alpha > 0;
                 backdropDraws++;
                 lastBackdropDraw = SystemClock.uptimeMillis();
                 lastBackdropAlpha = alpha;
                 lastBackdropGeneration = p.generation;
+                // Apply at the next frame boundary, after this source entered the display list.
+                if (firstPresented) postOnAnimation(NativeMediaBackdrop::refresh);
             }
             if (fullSceneArtworkVisible()) drawFullSceneArtwork(canvas, bounds, paint, 1f);
             canvas.restoreToCount(saved);

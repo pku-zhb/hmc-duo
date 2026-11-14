@@ -41,6 +41,23 @@ AOD preference. Content arriving asynchronously is also posed before it is shown
 including after an expired hold. Plain AOD, missing cards, disabled maps, unlock and
 navigation completion retain their existing native/restoration paths.
 
+## Direct desktop sleep
+
+Unlock releases clock transforms while retaining the selected music page. The
+old OFF-to-AOD path only retained a prepared expanded-artwork pose, excluding a
+compact lyric page. Before full-screen AOD capture, it now poses any current
+clock-owning page from complete native clock measurements, then latches it.
+The native handoff invalidates the short keyguard-state cache before preparing
+navigation and clock ownership, so a cached desktop answer cannot defer it until
+SCREEN_OFF. If the keyguard clock attaches late, its first complete pre-draw
+prepares the held pose before that frame is drawn. This fallback has no timed
+polling and does not hide an unmeasurable clock.
+
+The clock pre-draw observer is also retained and removed by its original
+identity across keyguard rebuilds. These source corrections address the reported
+large-clock presence on direct lyric-page sleep and the navigation clock flash;
+the actual OEM capture and first visible frame require owner acceptance.
+
 ## Host verification and device boundary
 
 Focused JVM tests cover the shared portrait namespace, independent four-state

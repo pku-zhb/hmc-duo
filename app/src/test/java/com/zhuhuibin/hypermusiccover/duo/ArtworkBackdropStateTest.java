@@ -4,6 +4,15 @@ import org.junit.Test;
 import static org.junit.Assert.*;
 
 public class ArtworkBackdropStateTest {
+    @Test public void aodSamplingRequiresCurrentVisiblePixelsRatherThanAnOldVisibleWash() {
+        assertTrue(ArtworkBackdropState.presentedFrame(4, 4, 64f / 255f));
+        assertFalse(ArtworkBackdropState.presentedFrame(5, 4, 64f / 255f));
+        assertFalse(ArtworkBackdropState.presentedFrame(-1, -1, 1f));
+        assertFalse(ArtworkBackdropState.presentedFrame(4, 4, 0f));
+        assertFalse(ArtworkBackdropState.presentedFrame(4, 4, Float.NaN));
+        assertFalse(ArtworkBackdropState.presentedFrame(4, 4, Float.POSITIVE_INFINITY));
+    }
+
     @Test public void preparingASourceDoesNotRevealItBeforeAnActualDraw() {
         ArtworkBackdropState state = new ArtworkBackdropState();
         state.select(4);

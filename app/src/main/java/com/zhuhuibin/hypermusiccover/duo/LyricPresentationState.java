@@ -13,6 +13,10 @@ final class LyricPresentationState {
     }
 
     static boolean waitsForBlur(boolean blurRequested, boolean backdropHidden) {
-        return blurRequested && !backdropHidden;
+        return waitsForBlur(blurRequested, backdropHidden, false);
+    }
+
+    static boolean waitsForBlur(boolean blurRequested, boolean backdropHidden, boolean localPresented) {
+        return blurRequested && !backdropHidden && !localPresented;
     }
 }

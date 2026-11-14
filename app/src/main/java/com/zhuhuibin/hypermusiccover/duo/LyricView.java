@@ -460,6 +460,7 @@ final class LyricView extends View {
     private boolean hdrInk;
 
     private boolean looping;
+    private ViewTreeObserver attachedObserver;
     private final int[] loc = new int[2];
 
     private final Runnable frame = new Runnable() {
@@ -481,6 +482,7 @@ final class LyricView extends View {
             new ViewTreeObserver.OnPreDrawListener() {
                 @Override
                 public boolean onPreDraw() { android.os.Trace.beginSection("MC lyricPreDraw"); try {
+                    if (!isAttachedToWindow()) return true;
                     if (step()) invalidate();
                     if (!looping && needsFrames()) kick();
                     return true;
@@ -579,7 +581,8 @@ final class LyricView extends View {
     @Override
     protected void onAttachedToWindow() {
         super.onAttachedToWindow();
-        getViewTreeObserver().addOnPreDrawListener(preDraw);
+        attachedObserver = getViewTreeObserver();
+        attachedObserver.addOnPreDrawListener(preDraw);
         lastStep = 0L;
         LockLyrics.startTick();
         kick();
@@ -587,7 +590,9 @@ final class LyricView extends View {
 
     @Override
     protected void onDetachedFromWindow() {
-        getViewTreeObserver().removeOnPreDrawListener(preDraw);
+        ViewTreeObserver observer = attachedObserver;
+        attachedObserver = null;
+        if (observer != null && observer.isAlive()) observer.removeOnPreDrawListener(preDraw);
         removeCallbacks(frame);
         looping = false;
         lastLoopFrame = 0L;

@@ -669,6 +669,7 @@ public class Main extends XposedModule {
     private static long sCardSampleAt;
     private static ViewTreeObserver.OnPreDrawListener sCardGuard;
     private static View sCardGuarded, sCardArt, sCardTitle, sCardArtist;
+    private static ViewTreeObserver sCardObserver;
     private static final ArtworkThumbnailVeil sArtVeil = new ArtworkThumbnailVeil();
     /** The title carrying our play/pause listener, and what it was clickable-wise before. */
     private static View sCardTitleTapped;
@@ -1330,7 +1331,12 @@ public class Main extends XposedModule {
             Xp.hookAll(sContainerCls, "doAnimationToAod", chain -> {
                 Object[] args = chain.getArgs().toArray();
                 boolean toAod = args.length > 0 && Boolean.TRUE.equals(args[0]);
-                if (toAod) MiniPlayerRuntime.prepareForSleep();
+                if (toAod) {
+                    // Desktop-to-AOD changes the keyguard state before its usual cached
+                    // read expires. The OEM below captures the clock now, not on SCREEN_OFF.
+                    forgetSysReads();
+                    MiniPlayerRuntime.prepareForSleep();
+                }
                 if (clockHeld() && toAod) {
                     // Ahead of the broadcast, which is ~110ms behind: the display is no longer
                     // interactive, and any colour set in between must not get the cover's tint.
@@ -10215,12 +10221,16 @@ public class Main extends XposedModule {
     }
 
     private static void guardCard(final View card) {
-        if (sCardGuarded == card && sCardGuard != null) return;
+        if (sCardGuarded == card && sCardGuard != null && sCardObserver != null
+                && sCardObserver.isAlive() && sCardObserver == card.getViewTreeObserver()) return;
         releaseCardGuard();
         sCardGuard = new ViewTreeObserver.OnPreDrawListener() {
             private final MediaTextLayoutGate textLayoutGate = new MediaTextLayoutGate();
             @Override
             public boolean onPreDraw() { android.os.Trace.beginSection("MC cardGuard"); try {
+                // A detached/reparented card can leave a callback in its former window's
+                // observer. It must never release/recreate the new holder's page button.
+                if (sCardGuarded != card || sCardGuard != this || !card.isAttachedToWindow()) return true;
                 assertMediaCard(card);
                 boolean textLayoutChanged = MediaTextInset.consumeLayoutChange();
                 // Give a new bind one layout pass, never an unbounded drawing veto. The
@@ -10228,7 +10238,8 @@ public class Main extends XposedModule {
                 return textLayoutGate.allow(textLayoutChanged);
             } finally { android.os.Trace.endSection(); } }
         };
-        card.getViewTreeObserver().addOnPreDrawListener(sCardGuard);
+        sCardObserver = card.getViewTreeObserver();
+        sCardObserver.addOnPreDrawListener(sCardGuard);
         sCardGuarded = card;
         Xp.log(TAG + "media card guard installed");
     }
@@ -10236,8 +10247,10 @@ public class Main extends XposedModule {
     private static void releaseCardGuard() {
         View d = sCardGuarded;
         ViewTreeObserver.OnPreDrawListener g = sCardGuard;
+        ViewTreeObserver observer = sCardObserver;
         sCardGuarded = null;
         sCardGuard = null;
+        sCardObserver = null;
         // A frame asked for by kickCardFrame() may still be on its way, and it will find nothing
         // to assert into. Cleared here so the next cover, whose guard is a different card view,
         // is not told a frame is already posted when there is none.
@@ -10251,9 +10264,9 @@ public class Main extends XposedModule {
         if (d != null) MediaTextInset.releaseControls(d);
         sArtVeil.clear();
         LyricsButton.release();
-        if (d == null || g == null) return;
+        if (d == null || g == null || observer == null) return;
         try {
-            d.getViewTreeObserver().removeOnPreDrawListener(g);
+            if (observer.isAlive()) observer.removeOnPreDrawListener(g);
         } catch (Throwable ignored) {
         }
     }
@@ -11531,8 +11544,11 @@ public class Main extends XposedModule {
     }
 
     private static void selectRailMusicPage(int page, boolean expanding) {
+        View currentCard = sCardGuarded;
+        boolean pageCardVisible = currentCard != null && currentCard.isAttachedToWindow()
+                && currentCard.isShown();
         if (!screenOnCached() || !keyguardShowing() || !onKeyguardNow() || bouncerUp()
-                || controlCenterUp() || chargeAnimUp() || !(expanding ? sCardPresent : sCardShowing)
+                || controlCenterUp() || chargeAnimUp() || !sCardPresent || (!expanding && !pageCardVisible)
                 || MiniPlayerScene.INSTANCE.getKeyguardGoingAway()) return;
         boolean lyrics = RailMusicPagePolicy.showsLyrics(page);
         // A pending lyric lookup must not turn the first click into a no-op. The selected
