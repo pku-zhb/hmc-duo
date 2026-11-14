@@ -30,6 +30,33 @@ final class CompactPlayerRuntime {
         void restore(View view) { if (view.getAlpha() == written) view.setAlpha(base); }
     }
     private static final IdentityHashMap<View, Integer> seekDrawShifts = new IdentityHashMap<>();
+    private static final IdentityHashMap<View, ButtonPadding> buttonPaddings = new IdentityHashMap<>();
+    private static final android.graphics.RectF glyphBounds = new android.graphics.RectF();
+    private static final View[] actionButtons = new View[5];
+    private static final class ButtonPadding {
+        int top, bottom, topWritten, bottomWritten;
+        ButtonPadding(View view) { capture(view); }
+        void capture(View view) {
+            top = topWritten = view.getPaddingTop(); bottom = bottomWritten = view.getPaddingBottom();
+        }
+        void observe(View view) {
+            if (view.getPaddingTop() != topWritten || view.getPaddingBottom() != bottomWritten) capture(view);
+        }
+        void apply(View view, int shift) {
+            topWritten = top + shift; bottomWritten = bottom - shift;
+            write(view, topWritten, bottomWritten);
+        }
+        void write(View view, int nextTop, int nextBottom) {
+            if (view.getPaddingTop() == nextTop && view.getPaddingBottom() == nextBottom) return;
+            if (view.isPaddingRelative())
+                view.setPaddingRelative(view.getPaddingStart(), nextTop, view.getPaddingEnd(), nextBottom);
+            else view.setPadding(view.getPaddingLeft(), nextTop, view.getPaddingRight(), nextBottom);
+        }
+        void restore(View view) {
+            if (view.getPaddingTop() == topWritten && view.getPaddingBottom() == bottomWritten)
+                write(view, top, bottom);
+        }
+    }
     private static final IdentityHashMap<View, Offset> seekLabelOffsets = new IdentityHashMap<>();
     private static final class Offset {
         float base, written;
@@ -129,7 +156,7 @@ final class CompactPlayerRuntime {
         float density = root.getResources().getDisplayMetrics().density;
         int percent = MediaCardRuntime.heightPercent(CompactPlayerMetrics.innerLandscape(
                 root.getWidth(), root.getHeight(), density));
-        if (percent == 100) { restoreProperties(); return; }
+        if (percent >= 88) { restoreProperties(); return; }
         if (!ready(background) || !ready(album) || !ready(action) || !ready(seek)) {
             restoreProperties();
             resolveChildren();
@@ -153,15 +180,15 @@ final class CompactPlayerRuntime {
                 art.top, controls.top, track.top, track.bottom, controlHeight, art.height, density);
         currentPlan = plan;
         int headerFloor = textHeaderHeight();
-        if (headerFloor > plan.artwork) {
-            // Large fonts yield height rather than overlapping playback controls.
-            plan = CompactPlayerMetrics.plan(nativeNormal, Math.max(percent,
-                    100 - Math.round((art.height - headerFloor) / Math.max(1f, art.height * .24f) * 25f)),
-                    art.top, controls.top, track.top, track.bottom, controlHeight, art.height, density);
-            currentPlan = plan;
-        }
-        compactAod = CompactPlayerMetrics.aodHeight(nativeAod, plan, art.height, art.top,
-                controls.top, controls.height, card.getPaddingTop() + card.getPaddingBottom(), density);
+        plan = CompactPlayerMetrics.withHeaderFloor(plan, headerFloor, nativeNormal, art.height);
+        currentPlan = plan;
+        int actionShift = compactActionPixels(percent, density);
+        int actionBottom = playbackGlyphBottom(controls.height);
+        // Do not retarget an in-flight/AOD shell when a drawable first reports its bounds.
+        if (compactAod <= 0 || !fullAod && !animating)
+            compactAod = CompactPlayerMetrics.aodHeight(nativeAod, plan, art.height, art.top,
+                    controls.top, controls.height, actionBottom,
+                    card.getPaddingTop() + card.getPaddingBottom(), density);
         applyHeaderMinimum(fullAod ? compactAod : plan.height);
         int shell = animating && animatedHeight > 0 ? animatedHeight : fullAod ? compactAod : plan.height;
         bg.apply(background, shell, bg.top, bg.bottom, bg.minimum);
@@ -175,7 +202,7 @@ final class CompactPlayerRuntime {
         }
         controls.apply(action, controls.height, plan.action, controls.bottom, controls.minimum);
         track.apply(seek, track.height, plan.seekTop, plan.seekBottom, track.minimum);
-        compactSeekPixels(percent, density);
+        compactSeekPixels(percent, track.height, actionShift, density);
         alignHeader(title, plan.top + Math.max(0, (plan.artwork - headerFloor) / 2));
         if (ready(seamless)) alignHeader(seamless, plan.top + Math.max(0,
                 (plan.artwork - Math.max(0, seamless.getLayoutParams().height > 0 ? seamless.getLayoutParams().height : seamless.getMeasuredHeight())) / 2));
@@ -184,7 +211,7 @@ final class CompactPlayerRuntime {
         int height = container.height > 0 ? shell : container.height;
         container.apply(card, height, container.top, container.bottom,
                 Math.min(container.minimum, shell));
-        appliedPercent = percent;
+        appliedPercent = 75;
     }
 
     private static void resolveChildren() {
@@ -192,6 +219,7 @@ final class CompactPlayerRuntime {
         image = named(card, "album_art_image");
         title = named(card, "header_title"); artist = named(card, "header_artist"); seamless = named(card, "media_seamless");
         action = named(card, "action0"); seek = named(card, "media_progress_bar");
+        for (int i = 0; i < actionButtons.length; ++i) actionButtons[i] = named(card, "action" + i);
     }
 
     private static void alignHeader(View view, int top) {
@@ -240,9 +268,46 @@ final class CompactPlayerRuntime {
         heightHeader = null;
     }
 
-    private static void compactSeekPixels(int percent, float density) {
+    private static int compactActionPixels(int percent, float density) {
+        int shift = Math.round(5f * density);
+        boolean found = false;
+        for (View button : actionButtons) {
+            if (!ready(button) || button.getVisibility() == View.GONE) continue;
+            ButtonPadding padding = buttonPaddings.get(button);
+            if (padding == null) { padding = new ButtonPadding(button); buttonPaddings.put(button, padding); }
+            padding.observe(button);
+            shift = Math.min(shift, CompactPlayerMetrics.actionContentShift(percent, padding.bottom, density));
+            found = true;
+        }
+        if (!found) return 0;
+        for (java.util.Map.Entry<View, ButtonPadding> entry : buttonPaddings.entrySet())
+            entry.getValue().apply(entry.getKey(), shift);
+        return shift;
+    }
+
+    private static int playbackGlyphBottom(int rowHeight) {
+        float bottom = 0f;
+        for (View button : actionButtons) {
+            if (!(button instanceof android.widget.ImageView) || button.getVisibility() != View.VISIBLE) continue;
+            android.widget.ImageView image = (android.widget.ImageView) button;
+            android.graphics.drawable.Drawable drawable = image.getDrawable();
+            if (drawable == null || drawable.getBounds().isEmpty()) continue;
+            glyphBounds.set(drawable.getBounds());
+            image.getImageMatrix().mapRect(glyphBounds);
+            bottom = Math.max(bottom, glyphBounds.bottom + image.getPaddingTop());
+        }
+        return bottom > 0f ? Math.min(rowHeight, Math.round(bottom)) : rowHeight;
+    }
+
+    private static void compactSeekPixels(int percent, int rowHeight, int actionShift, float density) {
         if (!ready(seek)) return;
-        int shift = CompactPlayerMetrics.seekContentShift(percent, seek.getPaddingTop(), density);
+        int visibleHeight = Math.max(0, rowHeight - seek.getPaddingTop() - seek.getPaddingBottom());
+        for (String name : new String[]{"media_elapsed_time", "media_total_time"}) {
+            View label = named(card, name);
+            if (label != null) visibleHeight = Math.max(visibleHeight, label.getMeasuredHeight());
+        }
+        int shift = CompactPlayerMetrics.seekContentShift(percent, rowHeight, visibleHeight,
+                actionShift, seek.getPaddingTop(), density);
         Integer previous = seekDrawShifts.put(seek, shift);
         if (previous == null || previous != shift) seek.invalidate();
         for (String name : new String[]{"media_elapsed_time", "media_total_time"}) {
@@ -257,7 +322,8 @@ final class CompactPlayerRuntime {
     private static void restoreSeekPixels() {
         for (View view : seekDrawShifts.keySet()) view.invalidate();
         for (java.util.Map.Entry<View, Offset> e : seekLabelOffsets.entrySet()) e.getValue().restore(e.getKey());
-        seekDrawShifts.clear(); seekLabelOffsets.clear();
+        for (java.util.Map.Entry<View, ButtonPadding> e : buttonPaddings.entrySet()) e.getValue().restore(e.getKey());
+        seekDrawShifts.clear(); seekLabelOffsets.clear(); buttonPaddings.clear();
     }
 
     private static void applySeekAlpha(float factor) {
@@ -285,7 +351,7 @@ final class CompactPlayerRuntime {
         restoreHeaderMinimum();
         restoreSeekAlpha();
         restoreSeekPixels();
-        currentPlan = null;
+        currentPlan = null; compactAod = 0;
         animating = false; animatedHeight = 0;
         for (java.util.Map.Entry<View, Lease> entry : owned.entrySet()) entry.getValue().restore(entry.getKey());
         owned.clear();
@@ -393,7 +459,7 @@ final class CompactPlayerRuntime {
                 && !MiniPlayerScene.INSTANCE.getKeyguardGoingAway()
                 && MediaCardRuntime.heightPercent(CompactPlayerMetrics.innerLandscape(
                     view.getRootView().getWidth(), view.getRootView().getHeight(),
-                    view.getResources().getDisplayMetrics().density)) < 100;
+                    view.getResources().getDisplayMetrics().density)) < 88;
     }
 
     private static boolean matches(View header) {
@@ -412,6 +478,7 @@ final class CompactPlayerRuntime {
     static void restore() {
         restoreProperties();
         card = background = album = image = title = artist = seamless = action = seek = null;
+        java.util.Arrays.fill(actionButtons, null);
         animating = false; animatedHeight = 0;
     }
     static String describe() { return "playerHeight=" + appliedPercent + "% leases=" + owned.size(); }
