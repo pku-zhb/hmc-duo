@@ -10,7 +10,9 @@ and [HyperMusicCover](https://github.com/zyl6932/HyperMusicCover).
 Device coverage is focused on the maintainer's foldable phone; compatibility with
 other devices is not established.
 
-Version 0.2.10 rebuilds artwork backgrounds for the current window and orientation,
+Version 0.2.11 acquires replacement time during direct full-AOD entry when its
+resource becomes ready, with native and replacement visibility committed together.
+It includes 0.2.10's artwork backgrounds for the current window and orientation,
 stabilizes the paused lyric clock and keeps empty compact lyrics on the native
 background. It includes 0.2.9's rebinding of controls when the media card is replaced during
 folding, without metadata-dependent or timed retries. Notification-blocked pages
@@ -20,7 +22,7 @@ transitions instead of adding timing retries. Native inner card widths are prese
 single pages use the safe-window center and only the combined page moves the column.
 Player height has compact 75% and native 100% presets. Release-obfuscated capsules
 and shortcut plates can follow the final media material. See the
-[0.2.10 record](docs/releases/0.2.10.md) for causes and validation boundaries.
+[0.2.11 record](docs/releases/0.2.11.md) for causes and validation boundaries.
 
 Version 0.2.5 was the preceding candidate. It includes all 0.2.4
 fixes, including last-lockscreen state recovery after AMap, and adds the
