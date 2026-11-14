@@ -16,8 +16,8 @@ not the destination for project links, updates or bug reports.
   the retained APK under `releases/local/`.
 - Also deliver each APK to the phone's system Download directory (`/sdcard/Download`)
   when the device is reachable, retaining its versioned filename and verifying the
-  copied hash. If unavailable, report that delivery is pending. File delivery does
-  not authorize installation or scope reload; obtain installation confirmation.
+  copied hash. If unavailable, report that delivery is pending. Installation and
+  scope reload follow the current standing phone authorization below.
 - Use `tools/build.sh` for local Gradle tasks. Builds, test reports and temporary
   files belong on the mounted Harbor DevCache volume. Never create a missing mount.
 - Keep signing material outside source control and synced storage. A debug-signed
@@ -70,7 +70,15 @@ file hashes; on interruption inspect the actual result before retrying.
 Archive APKs locally and copy to the reachable phone Download directory. Do not
 send APK attachments through cc-connect. Do not create Markdown notes in the
 personal Miduo archive; keep acceptance work in the single rolling document below.
-Phone installation and scope reload require current explicit owner authorization.
+The owner has granted standing phone authorization until explicitly withdrawn.
+The root agent may install archived, verified ordinary replacement APKs, restart
+only the relevant scopes, and perform functional tests using background APIs or
+minimal necessary GUI interaction. Save and restore any temporary test settings.
+Never reboot the whole phone. Prefer logs, state and bounded traces; avoid
+screenshots and keep GUI screenshots out of the main conversation when possible.
+Ask the owner only for required personal authentication or repeated visual
+judgment that background evidence cannot establish. Coordinate all device work
+through the root agent so parallel agents never contend for the phone.
 
 ## Single rolling acceptance document
 
@@ -80,5 +88,6 @@ Update that same file in place, keeping the current pending checks, confirmed
 results and installation state together. Keep using this exact path across future
 versions; do not create per-version acceptance files or parallel checklists.
 Do not recreate older acceptance documents that the owner has deleted. Do not
-write Markdown into the personal Miduo APK archive. This documentation rule does
-not authorize phone changes, installations or scope reloads.
+write Markdown into the personal Miduo APK archive. The APK retention rule never
+retires or renames this rolling document even when its filename contains older
+versions. Device work follows the standing authorization above.
