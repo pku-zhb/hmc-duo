@@ -134,11 +134,10 @@ backgrounds -> user dim -> foreground, regardless of which layer was created fir
 The existing video-wallpaper branch can have a different dim host; that host
 selection and all system AOD darkening remain unchanged in this iteration.
 
-Seven focused host tests cover source-frame evidence and background eligibility,
+Focused host tests cover source-frame evidence and background eligibility,
 including a full-AOD scene with no dependency on a custom foreground-clock pose.
 Visual background persistence, GPU sampling and dimming still require owner
-acceptance. First-frame flashes, transient old clock positions and lyric drift
-are explicitly deferred by the owner; this change does not claim to resolve them.
+acceptance; host policies alone do not establish transition appearance.
 
 ## Notification-driven cover closure
 
@@ -149,17 +148,29 @@ so that temporary closure left the blurred artwork behind. A read-only owner
 reproduction confirmed notification compaction with the artwork page selected,
 while the background still reported visible ownership.
 
-A notification-only artwork closure now yields background ownership to native
-wallpaper. It does not rewrite saved background options or the chosen page.
-Explicit cover/lyric selection already clears temporary notification compaction;
-when artwork returns its chosen background returns as well. Requested lyric
-pages and independently chosen player pages retain their existing background
-behavior. The common hidden decision reaches the local mesh, static AOD source
-and ordered wallpaper-process messages. A remaining full-screen foreground band
-is not itself permission for local media sampling after the background is hidden;
-the sampler now tests that ownership decision separately from submitted pixels.
+An active notification compact override yields background ownership to native
+wallpaper. Raw lyric/player intent cannot bypass a foreground override that still
+blocks the page. Enabling or searching for lyrics uses the same explicit page
+transition as the player's page action, clearing the temporary override together
+with the chosen page rather than updating only the lyric-hidden flag.
 
-Two new policy regressions cover notification closure/reopening and independent
-lyrics/player choices; the focused notification suite passes 19 tests. They do
-not establish native renderer appearance. Clock/lyric drift and all transient
-sampling flashes remain explicitly deferred.
+Clearing that override is necessary but not sufficient. An instrumental or
+unavailable lyric page can remain compact with no lyric/BPM content to render.
+The normalized `CoverBackdrop.Snapshot` therefore allows an artwork background
+only for an expanded artwork/combined page, an available lyric/BPM page, or the
+legacy explicit player choice. An empty compact lyric selection keeps native
+wallpaper in both the awake lock screen and full-screen AOD. Content becoming
+available, or a real artwork reopening, can restore the background immediately;
+sampling still waits for a current-generation frame submitted in the same window.
+
+The normalized hidden decision also reaches the standalone background query and
+ordered wallpaper-process messages, so withdrawing the local fill cannot leave
+the remote artwork texture behind. The composing worker reads the published
+snapshot instead of walking UI Views or independently reconstructing page flags.
+A remaining full-screen foreground band is not itself permission for local media
+sampling after background ownership is withdrawn.
+
+Host regressions cover notification closure, compact empty-lyric selection,
+entry to AOD without content, late-frame rejection after withdrawal, real
+content/artwork reopening, combined layout and the independent player choice.
+They do not establish native renderer appearance or GPU sampling behavior.
