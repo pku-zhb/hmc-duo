@@ -37,13 +37,26 @@ class MusicSceneEntryPolicyTest {
         }
     }
 
-    @Test fun anExplicitCardChoiceSupersedesAMusicRestoreWhoseHeaderHasNotArrived() {
+    @Test fun anExplicitCardChoiceSupersedesInitialCategoriesWhoseViewsHaveNotArrived() {
         val entry = LockscreenEntryState()
         assertFalse(entry.takeMusic(false))
-        // The actual card-opening boundary consumes this pending default without requiring a header.
-        assertTrue(entry.takeMusic(true))
+        entry.finishPresentation(false, listOf("timer"))
         assertFalse(entry.takeMusic(true))
+        assertFalse(entry.takeNotifications(true))
+        assertFalse(entry.takeFocus("timer"))
+        assertFalse(entry.takeSelection(true, false))
+        assertTrue(entry.takeFocus("late-calendar"))
+        assertTrue(entry.takeMusic(true, true))
         entry.arm()
         assertTrue(entry.takeMusic(true))
+        assertTrue(entry.takeNotifications(true))
+        assertTrue(entry.takeFocus("timer"))
+    }
+
+    @Test fun aSelectedMusicSceneFoldsLateCategoriesRegardlessOfTheOlderStartupDefaults() {
+        for (page in 0..3) for (mask in 0..7) {
+            assertTrue(MusicSceneEntryPolicy.ownsScene(mask, page, true))
+            assertEquals(6, MusicSceneEntryPolicy.collapsedCategories(mask, page, true))
+        }
     }
 }

@@ -2090,7 +2090,7 @@ object MiniPlayerRuntime {
         } finally { applyingEntryDefaults = applying }
     }
 
-    /** A user's card action supersedes a remembered music page that has not bound yet. */
+    /** A user's action supersedes initial categories that have not finished binding yet. */
     @JvmStatic fun finishEntryMusicChoice() {
         if (!applyingEntryDefaults) live().forEach { it.finishEntryMusicChoice() }
     }
@@ -13648,7 +13648,7 @@ private class MiniPlayerController(
     private fun entryLandscape() = FoldArtworkLayout.innerLandscape(host.width.toFloat(), host.height.toFloat(), density())
 
     fun finishEntryMusicChoice() {
-        MiniPlayerRuntime.entryDefaults.takeMusic(true, entryLandscape())
+        MiniPlayerRuntime.entryDefaults.finishPresentation(entryLandscape(), LockIslands.focusKeys())
     }
 
     private val navigationPresentation = NavigationPresentationSession()
@@ -13744,8 +13744,9 @@ private class MiniPlayerController(
         val snapshot = entrySnapshot(landscape)
         val musicView = snapshot?.musicView ?: MiniPlayerConfig.startupMusicView(config, landscape)
         val requestedCollapsed = snapshot?.collapsed ?: MiniPlayerConfig.collapsedCategories(config, landscape)
-        val sceneEntry = MusicSceneEntryPolicy.ownsScene(requestedCollapsed, musicView)
-        val collapsed = MusicSceneEntryPolicy.collapsedCategories(requestedCollapsed, musicView)
+        val selectedMusicScene = Main.musicSceneRequested()
+        val sceneEntry = MusicSceneEntryPolicy.ownsScene(requestedCollapsed, musicView, selectedMusicScene)
+        val collapsed = MusicSceneEntryPolicy.collapsedCategories(requestedCollapsed, musicView, selectedMusicScene)
         NumState.seedPresentation(collapsed and MiniPlayerConfig.COLLAPSE_NOTIFICATIONS != 0, landscape)
         val entry = MiniPlayerRuntime.entryDefaults
         val notifications = entry.takeNotifications(NumState.model() != null &&

@@ -12,6 +12,13 @@ internal class LockscreenEntryState {
     fun takeMusic(ready: Boolean, landscape: Boolean = false): Boolean = ready && music.add(landscape)
     fun takeFocus(key: String, landscape: Boolean = false): Boolean = focus.add(landscape to key)
     fun takeSelection(ready: Boolean, landscape: Boolean): Boolean = ready && selections.add(landscape)
+    /** An explicit action wins over initial categories that have not finished binding yet. */
+    fun finishPresentation(landscape: Boolean, knownFocus: Collection<String>) {
+        music.add(landscape)
+        notifications.add(landscape)
+        selections.add(landscape)
+        knownFocus.forEach { focus.add(landscape to it) }
+    }
     fun snapshot(landscape: Boolean, load: () -> LockscreenSnapshot?): LockscreenSnapshot? {
         if (!snapshots.containsKey(landscape)) snapshots[landscape] = load()
         return snapshots[landscape]
