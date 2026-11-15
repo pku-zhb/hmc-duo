@@ -10,12 +10,13 @@ and [HyperMusicCover](https://github.com/zyl6932/HyperMusicCover).
 Device coverage is focused on the maintainer's foldable phone; compatibility with
 other devices is not established.
 
-Version 0.2.19 retires removed native media holders without allowing a stale
-layout callback to restore them. It includes unified music/non-music scenes,
-complete artwork handoff across AOD, native media identity tracking and foldable
-layout corrections. See the release record for causes,
-host checks and the separate device-validation boundary. Earlier implementation
-records remain in docs/releases.
+Version 0.2.20 keeps artwork and lyrics in one native AOD coordinate frame,
+retains local glass sampling across artwork source changes, and anchors the
+compact player shell to its content during transitions. Native cards retain
+their gestures while exposed gaps remain available for capsule interaction.
+See the release record for causes and the separate
+host/device validation boundaries. Earlier records remain in
+docs/releases.
 
 ## Features
 
