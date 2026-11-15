@@ -3,6 +3,7 @@ package com.zhuhuibin.hypermusiccover.duo;
 import android.view.View;
 import android.view.ViewGroup;
 import java.util.IdentityHashMap;
+import static com.zhuhuibin.hypermusiccover.duo.CompactPlayerFrameHistory.*;
 
 /** Compact native geometry with the same height targets used by the OEM stack animator. */
 final class CompactPlayerRuntime {
@@ -18,6 +19,9 @@ final class CompactPlayerRuntime {
     private static int nativeTarget, writtenTarget;
     private static View heightHeader;
     private static int headerBaseline, headerWritten;
+    private static final CompactPlayerBackgroundAnchor backgroundAnchor = new CompactPlayerBackgroundAnchor();
+    private static final CompactPlayerFrameHistory frameHistory = new CompactPlayerFrameHistory();
+    private static int tracedRequest;
     private static final IdentityHashMap<View, Alpha> seekAlphas = new IdentityHashMap<>();
     private static final class Alpha {
         float base, written;
@@ -189,6 +193,12 @@ final class CompactPlayerRuntime {
             compactAod = CompactPlayerMetrics.aodHeight(nativeAod, plan, art.height, art.top,
                     controls.top, controls.height, actionBottom,
                     card.getPaddingTop() + card.getPaddingBottom(), density);
+        // Seek stays measured until the native AOD completion callback makes it GONE.
+        // A centered fixed-height background would then move down inside that taller
+        // WRAP_CONTENT card as it shrinks, while its top-anchored title stays in place.
+        // Keep the compact shell in the same coordinate origin as its content.
+        if (backgroundAnchor.apply(background.getLayoutParams()))
+            background.setLayoutParams(background.getLayoutParams());
         applyHeaderMinimum(fullAod ? compactAod : plan.height);
         int shell = animating && animatedHeight > 0 ? animatedHeight : fullAod ? compactAod : plan.height;
         bg.apply(background, shell, bg.top, bg.bottom, bg.minimum);
@@ -212,6 +222,7 @@ final class CompactPlayerRuntime {
         container.apply(card, height, container.top, container.bottom,
                 Math.min(container.minimum, shell));
         appliedPercent = 75;
+        recordFrame(LAYOUT, heightHeader);
     }
 
     private static void resolveChildren() {
@@ -343,6 +354,8 @@ final class CompactPlayerRuntime {
     }
 
     private static void restoreProperties() {
+        boolean releasing = appliedPercent < 88 || !owned.isEmpty();
+        View observedHeader = heightHeader;
         if (animateHeader != null && animateHeight != null) try {
             if (animateHeight.getInt(animateHeader) == writtenTarget)
                 animateHeight.setInt(animateHeader, nativeTarget);
@@ -355,7 +368,10 @@ final class CompactPlayerRuntime {
         animating = false; animatedHeight = 0;
         for (java.util.Map.Entry<View, Lease> entry : owned.entrySet()) entry.getValue().restore(entry.getKey());
         owned.clear();
+        ViewGroup.LayoutParams params = background == null ? null : background.getLayoutParams();
+        if (backgroundAnchor.restore(params) && background != null) background.setLayoutParams(params);
         appliedPercent = 100;
+        if (releasing) recordFrame(RELEASE, observedHeader);
     }
 
     static void install(ClassLoader loader) {
@@ -373,12 +389,14 @@ final class CompactPlayerRuntime {
                 update(view.getRootView(), named(view, "mi_media_controls"));
                 int requested = (Integer) chain.getArg(0);
                 if (!matches(view) || currentPlan == null) return chain.proceed();
+                tracedRequest = requested;
                 if (requested == 0) {
                     animateHeader = null;
                     animating = false; animatedHeight = 0;
                     Object result = chain.proceed();
                     update(view.getRootView(), named(view, "mi_media_controls"));
                     restoreSeekAlpha();
+                    recordFrame(COMPLETE, view);
                     return result;
                 }
                 fullAod = requested == nativeAod;
@@ -395,7 +413,9 @@ final class CompactPlayerRuntime {
                 animateHeader = target != requested ? view : null;
                 nativeTarget = requested; writtenTarget = target;
                 // The native stack now animates toward the actual compact layout endpoint.
-                return chain.proceed(new Object[]{target});
+                Object result = chain.proceed(new Object[]{target});
+                recordFrame(TARGET, view);
+                return result;
             });
             Xp.hookAll(header, "setActualHeight", chain -> {
                 Object result = chain.proceed();
@@ -408,6 +428,7 @@ final class CompactPlayerRuntime {
                     }
                     applySeekAlpha(CompactPlayerMetrics.seekAlpha(animatedHeight,
                             currentPlan.height, compactAod));
+                    recordFrame(HEIGHT, view);
                 }
                 return result;
             });
@@ -418,6 +439,7 @@ final class CompactPlayerRuntime {
                 if (player != null && eligible(player)) {
                     fullAod = (Boolean) chain.getArg(0);
                     update(player.getRootView(), player);
+                    recordFrame(FULL_AOD, heightHeader);
                 }
                 return result;
             });
@@ -481,6 +503,51 @@ final class CompactPlayerRuntime {
         java.util.Arrays.fill(actionButtons, null);
         animating = false; animatedHeight = 0;
     }
-    static String describe() { return "playerHeight=" + appliedPercent + "% leases=" + owned.size(); }
+    private static int topMargin(View view) {
+        return view != null && view.getLayoutParams() instanceof ViewGroup.MarginLayoutParams
+                ? ((ViewGroup.MarginLayoutParams) view.getLayoutParams()).topMargin : -1;
+    }
+
+    private static int layoutHeight(View view) {
+        return view == null || view.getLayoutParams() == null ? -3 : view.getLayoutParams().height;
+    }
+
+    private static void recordFrame(int event, View header) {
+        if (card == null || background == null) return;
+        int actual = -1, target = -1;
+        if (header != null) {
+            try { actual = (Integer) Xp.getObjectField(header, "mActualHeight"); }
+            catch (Throwable ignored) { }
+            try { if (animateHeight != null) target = animateHeight.getInt(header); }
+            catch (IllegalAccessException ignored) { }
+        }
+        int[] row = frameHistory.sample();
+        row[EVENT] = event;
+        row[REQUEST] = tracedRequest;
+        row[TARGET_HEIGHT] = target;
+        row[ACTUAL_HEIGHT] = actual;
+        row[CARD_HEIGHT] = card.getHeight();
+        row[CARD_MEASURED] = card.getMeasuredHeight();
+        row[CARD_LAYOUT] = layoutHeight(card);
+        row[BACKGROUND_TOP] = background.getTop();
+        row[BACKGROUND_HEIGHT] = background.getHeight();
+        row[BACKGROUND_LAYOUT] = layoutHeight(background);
+        row[TITLE_TOP] = title == null ? -1 : title.getTop();
+        row[ART_MARGIN] = topMargin(album);
+        row[TITLE_MARGIN] = topMargin(title);
+        row[ACTION_MARGIN] = topMargin(action);
+        row[SEEK_VISIBILITY] = seek == null ? -1 : seek.getVisibility();
+        row[SEEK_ALPHA] = Float.floatToIntBits(seek == null ? Float.NaN : seek.getAlpha());
+        row[BACKGROUND_BIAS] = Float.floatToIntBits(backgroundAnchor.bias(background.getLayoutParams()));
+        row[NORMAL_HEIGHT] = currentPlan == null ? 0 : currentPlan.height;
+        row[AOD_HEIGHT] = compactAod;
+        row[ARTWORK_HEIGHT] = currentPlan == null ? 0 : currentPlan.artwork;
+        // bit 0: requested full AOD; bit 1: native height animation; bit 2: compact ownership.
+        row[FLAGS] = (fullAod ? 1 : 0) | (animating ? 2 : 0) | (appliedPercent < 88 ? 4 : 0);
+        frameHistory.append(android.os.SystemClock.uptimeMillis());
+    }
+
+    static String describe() { return "playerHeight=" + appliedPercent + "% leases=" + owned.size()
+            + " " + frameHistory.describe(); }
     private CompactPlayerRuntime() {}
 }
