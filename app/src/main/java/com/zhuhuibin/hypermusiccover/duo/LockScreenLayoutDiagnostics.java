@@ -126,6 +126,8 @@ final class LockScreenLayoutDiagnostics {
             out.put("padding", new JSONArray(new int[]{seek.getPaddingLeft(), seek.getPaddingTop(),
                     seek.getPaddingRight(), seek.getPaddingBottom()}));
             out.put("layoutDirection", seek.getLayoutDirection());
+            if ("miuix.miuixbasewidget.widget.HyperProgressSeekBar".equals(v.getClass().getName()))
+                out.put("nativeSeek", nativeSeek(v));
         }
         out.put("alpha", v.getAlpha());
         out.put("scaleX", v.getScaleX()); out.put("scaleY", v.getScaleY());
@@ -161,6 +163,34 @@ final class LockScreenLayoutDiagnostics {
             parent = parent.getParent() instanceof View ? (View) parent.getParent() : null;
         }
         out.put("parents", parents);
+        return out;
+    }
+
+    /** Exact OEM touch inputs, read only when the explicit layout probe describes this bar. */
+    private static JSONObject nativeSeek(View bar) throws Exception {
+        JSONObject out = new JSONObject();
+        out.put("density", bar.getResources().getDisplayMetrics().density);
+        for (String name : new String[]{"mDeviceLevel", "uTrackPosition", "uTrackSize",
+                "mProgressPaddingOffset", "mDistanceScale", "mScaledTouchSlop",
+                "initialX", "initialProgress", "mIsDragging", "mIsTracking"}) {
+            try {
+                java.lang.reflect.Field field = bar.getClass().getDeclaredField(name);
+                field.setAccessible(true);
+                Object value = field.get(bar);
+                if (value instanceof float[]) {
+                    float[] pair = (float[]) value;
+                    if (pair.length != 2 || !Float.isFinite(pair[0]) || !Float.isFinite(pair[1]))
+                        throw new IllegalStateException("invalid native seek pair");
+                    value = new JSONArray(pair.clone());
+                } else if (!(value instanceof Number) && !(value instanceof Boolean)) {
+                    throw new IllegalStateException("unsupported native seek field");
+                }
+                out.put(name, value);
+            } catch (Throwable unavailable) {
+                // A changed OEM contract must not hide the remaining bounded layout result.
+                out.put(name + "Unavailable", unavailable.getClass().getSimpleName());
+            }
+        }
         return out;
     }
 }
