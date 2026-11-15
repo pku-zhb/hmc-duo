@@ -1,6 +1,7 @@
 package com.zhuhuibin.hypermusiccover.duo
 
 import android.graphics.Canvas
+import android.graphics.Rect
 import android.graphics.Typeface
 import android.text.Layout
 import android.text.StaticLayout
@@ -18,7 +19,6 @@ internal class VerticalTextRenderer {
     private var key: Key? = null
     private var runs = emptyList<DrawRun>()
     private val paint = TextPaint()
-    private var cell = 0f
 
     fun draw(canvas: Canvas, view: TextView) {
         val w = view.width - view.paddingLeft - view.paddingRight
@@ -31,8 +31,17 @@ internal class VerticalTextRenderer {
             // A narrow capsule must not clip the user's scaled glyphs into its adjacent column.
             paint.textSize = min(view.textSize, w * .86f)
             val metrics = paint.fontMetrics
-            cell = ceil(metrics.descent - metrics.ascent)
-            runs = VerticalPillText.layout(next.text, cell, h.toFloat()) { paint.measureText(it).toDouble() }
+            val ink = Rect()
+            // A horizontal line box includes accent/descent room. Repeating it for every
+            // upright character made CJK summaries loose. Use an em, retaining measured ink
+            // that extends beyond it (including fallback emoji and combined graphemes).
+            runs = VerticalPillText.layout(next.text, paint.textSize, h.toFloat(),
+                { paint.measureText(it).toDouble() },
+                {
+                    paint.getTextBounds(it, 0, it.length, ink)
+                    VerticalPillText.uprightAdvance(paint.textSize, metrics.ascent, metrics.descent,
+                        ink.top, ink.bottom).toDouble()
+                })
                 .map { run ->
                     val horizontal = if (run.orientation == VerticalPillText.Orientation.SIDEWAYS)
                         StaticLayout.Builder.obtain(run.text, 0, run.text.length, paint,
@@ -59,7 +68,7 @@ internal class VerticalTextRenderer {
                 horizontal.draw(canvas)
             } else {
                 val scale = min(1f, w / paint.measureText(run.text).coerceAtLeast(1f))
-                canvas.translate(w / 2f, y + cell / 2f)
+                canvas.translate(w / 2f, y + run.advance / 2f)
                 canvas.scale(scale, 1f)
                 val metrics = paint.fontMetrics
                 canvas.drawText(run.text, -paint.measureText(run.text) / 2f,
