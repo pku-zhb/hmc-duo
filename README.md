@@ -10,6 +10,11 @@ and [HyperMusicCover](https://github.com/zyl6932/HyperMusicCover).
 Device coverage is focused on the maintainer's foldable phone; compatibility with
 other devices is not established.
 
+Version 0.2.17 retires the upper AOD renderer atomically after the incoming
+complete artwork is presented, avoiding a second blur-only fade over the ready
+foreground. It includes the media-identity and scene changes below. See the
+0.2.17 record.
+
 Version 0.2.16 follows the media identity committed to the native player when
 its view is reused for another source, and rejects callbacks from an older
 subscription generation. It includes all 0.2.15 scene and AOD changes. See the
