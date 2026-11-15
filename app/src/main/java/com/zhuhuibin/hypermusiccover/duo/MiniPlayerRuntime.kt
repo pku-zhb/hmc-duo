@@ -377,7 +377,6 @@ object MiniPlayerRuntime {
         MiniPlayerMaterialState.styleKey(cardEffect, materialGeneration)
     /** The last recipe's values, for telling a new one from the same one again. */
     private var materialSignature: Any? = null
-    private var nativeRecipeSignature: Any? = null
     private var materialRepeats = 0
 
     /** Effects run on the main thread only; this counts how deep inside one another they are. */
@@ -388,7 +387,6 @@ object MiniPlayerRuntime {
 
     /** The card's material as it was last dressed: its background, then every call in order. */
     @Volatile private var cardRecipe: List<Recorded>? = null
-    @Volatile private var cardBackground: android.graphics.drawable.Drawable.ConstantState? = null
     private var recording: ArrayList<Recorded>? = null
     private var recordTarget: View? = null
     private var recordDepth = 0
@@ -475,14 +473,6 @@ object MiniPlayerRuntime {
                         // The native choice must stay current even when Lite's final values
                         // normalize two different native inputs to the same follow profile.
                         cardRecipe = recorded
-                        cardBackground = bg?.background?.constantState
-                        val nativeSignature = materialSignature(cls.name, recorded, bg?.background, bg,
-                            finalMaterial = false)
-                        if (nativeSignature != nativeRecipeSignature) {
-                            nativeRecipeSignature = nativeSignature
-                            runCatching { keepRecipe(target.context, recorded, bg?.background) }
-                                .onFailure { Xp.log("MCMini: recipe not kept: $it") }
-                        }
                         if (signature != materialSignature) {
                             materialSignature = signature
                             if (cardEffect != cls.simpleName) Xp.log("MCMini: card material -> ${cls.simpleName}")
@@ -581,117 +571,6 @@ object MiniPlayerRuntime {
 
     // ---- the card's recipe, kept
 
-    /**
-     * The recipe is recorded only when the lock screen dresses a media card, and it lived in
-     * memory: after SystemUI restarted with no music, there was no card to record from and the
-     * row of notification islands was a flat grey fill until music played (2026-09-25). It is
-     * kept in SystemUI's own preferences now, call by call - class, method, parameter types and
-     * the plain values - and read back the first time a pill is dressed without one.
-     */
-    private const val RECIPE_KEY = "card_recipe_v1"
-    private var recipeLoaded = false
-
-    private fun keepRecipe(context: Context, list: List<Recorded>, bg: android.graphics.drawable.Drawable?) {
-        val calls = org.json.JSONArray()
-        for (r in list) {
-            val args = org.json.JSONArray()
-            r.args.forEachIndexed { i, a ->
-                args.put(when {
-                    i == r.viewAt -> JSONObject().put("t", "view")
-                    a == null -> JSONObject().put("t", "null")
-                    a is Int -> JSONObject().put("t", "i").put("x", a)
-                    a is Long -> JSONObject().put("t", "l").put("x", a)
-                    a is Float -> JSONObject().put("t", "f").put("x", a.toDouble())
-                    a is Double -> JSONObject().put("t", "d").put("x", a)
-                    a is Boolean -> JSONObject().put("t", "b").put("x", a)
-                    a is String -> JSONObject().put("t", "s").put("x", a)
-                    a is IntArray -> JSONObject().put("t", "ia").put("x", org.json.JSONArray(a.toList()))
-                    a is FloatArray -> JSONObject().put("t", "fa")
-                        .put("x", org.json.JSONArray(a.map { it.toDouble() }))
-                    a is Context -> JSONObject().put("t", "ctx")
-                    // Anything else cannot be written down: the recipe is not kept at all.
-                    else -> error("argument ${a.javaClass.name} of ${r.method.name}")
-                })
-            }
-            calls.put(JSONObject()
-                .put("c", r.method.declaringClass.name)
-                .put("m", r.method.name)
-                .put("p", org.json.JSONArray(r.method.parameterTypes.map { it.name }))
-                .put("v", r.viewAt)
-                .put("a", args))
-        }
-        val kept = JSONObject().put("calls", calls)
-        when (bg) {
-            is GradientDrawable -> kept.put("bg", JSONObject()
-                .put("t", "gradient")
-                .put("color", bg.color?.defaultColor ?: 0)
-                .put("radius", bg.cornerRadius.toDouble()))
-            is android.graphics.drawable.ColorDrawable -> kept.put("bg", JSONObject()
-                .put("t", "color").put("color", bg.color))
-        }
-        val text = kept.toString()
-        val p = prefs(context)
-        if (p.getString(RECIPE_KEY, null) != text) p.edit().putString(RECIPE_KEY, text).apply()
-    }
-
-    /** The recipe kept from an earlier dressing, when none has been recorded since SystemUI started. */
-    private fun loadRecipe(context: Context, classLoader: ClassLoader) {
-        if (recipeLoaded || cardRecipe != null) return
-        recipeLoaded = true
-        runCatching {
-            val text = prefs(context).getString(RECIPE_KEY, null) ?: return
-            val kept = JSONObject(text)
-            val calls = kept.getJSONArray("calls")
-            val list = ArrayList<Recorded>()
-            fun type(name: String): Class<*> = when (name) {
-                "int" -> Int::class.javaPrimitiveType!!
-                "long" -> Long::class.javaPrimitiveType!!
-                "float" -> Float::class.javaPrimitiveType!!
-                "double" -> Double::class.javaPrimitiveType!!
-                "boolean" -> Boolean::class.javaPrimitiveType!!
-                else -> Class.forName(name, false, classLoader)
-            }
-            for (i in 0 until calls.length()) {
-                val c = calls.getJSONObject(i)
-                val params = c.getJSONArray("p")
-                val types = Array(params.length()) { type(params.getString(it)) }
-                val method = Class.forName(c.getString("c"), false, classLoader)
-                    .getDeclaredMethod(c.getString("m"), *types).apply { isAccessible = true }
-                val a = c.getJSONArray("a")
-                val args = Array<Any?>(a.length()) { j ->
-                    val o = a.getJSONObject(j)
-                    when (o.getString("t")) {
-                        "view", "null" -> null
-                        "i" -> o.getInt("x")
-                        "l" -> o.getLong("x")
-                        "f" -> o.getDouble("x").toFloat()
-                        "d" -> o.getDouble("x")
-                        "b" -> o.getBoolean("x")
-                        "s" -> o.getString("x")
-                        "ia" -> o.getJSONArray("x").let { x -> IntArray(x.length()) { x.getInt(it) } }
-                        "fa" -> o.getJSONArray("x").let { x -> FloatArray(x.length()) { x.getDouble(it).toFloat() } }
-                        "ctx" -> context
-                        else -> error("argument type ${o.getString("t")}")
-                    }
-                }
-                list.add(Recorded(method, args, c.getInt("v")))
-            }
-            kept.optJSONObject("bg")?.let { bg ->
-                cardBackground = when (bg.getString("t")) {
-                    "gradient" -> GradientDrawable().apply {
-                        setColor(bg.getInt("color"))
-                        cornerRadius = bg.getDouble("radius").toFloat()
-                    }.constantState
-                    "color" -> android.graphics.drawable.ColorDrawable(bg.getInt("color")).constantState
-                    else -> null
-                }
-            }
-            cardRecipe = list
-            cardEffect = "kept"
-            Xp.log("MCMini: card recipe read back from preferences (${list.size} calls)")
-        }.onFailure { Xp.log("MCMini: kept recipe unusable: $it") }
-    }
-
     // ---- the full-screen AOD's dim, as the card takes it
 
     /**
@@ -711,6 +590,8 @@ object MiniPlayerRuntime {
 
     /** The last frame's arguments while the AOD's colours are on the views; null otherwise. */
     private var aodDimArgs: Array<Any?>? = null
+    private var aodDimWindow = WeakReference<View>(null)
+    private var aodDimGeometryRevision = -1L
 
     /**
      * The last frame as the views take it: the card's own blend and glass eased toward the AOD's
@@ -797,14 +678,17 @@ object MiniPlayerRuntime {
             // The native body commits media constraints and clears its animation flags after
             // notifying material listeners. Publish the endpoint after that whole transaction.
             AodTransitionRuntime.complete(enabled.getBoolean(null))
+            NativeOwnedMaterialBridge.refresh()
             result
         }
         Xp.hookAll(controller, "completeFullAodAnim") { chain ->
             val result = chain.proceed()
             // This event also covers native resets without a per-frame animation. Completion
             // resets mCurrentFraction before dispatch, so its value is not an endpoint proof.
-            if (aodAnimatingField?.getBoolean(chain.thisObject) != true)
+            if (aodAnimatingField?.getBoolean(chain.thisObject) != true) {
                 AodTransitionRuntime.complete(enabled.getBoolean(null))
+                NativeOwnedMaterialBridge.refresh()
+            }
             result
         }
         val ours = java.lang.reflect.Proxy.newProxyInstance(classLoader, arrayOf(listener)) { self, m, args ->
@@ -835,7 +719,10 @@ object MiniPlayerRuntime {
     }
 
     private fun onAodDim(args: Array<Any?>) {
-        aodDimArgs = args
+        // Keep raw native inputs in their window domain, before any provider can tune them.
+        aodDimArgs = args.map { when (it) { is FloatArray -> it.copyOf(); is IntArray -> it.copyOf(); else -> it } }.toTypedArray()
+        aodDimWindow = WeakReference(Main.sContainer?.rootView)
+        aodDimGeometryRevision = Main.screenGeometry().revision
         aodDimFrames++
         val depth = runCatching { dimDepth(args) }.getOrNull()
         aodDimDepth = depth ?: -1f
@@ -866,9 +753,12 @@ object MiniPlayerRuntime {
         if (!view.isAttachedToWindow) return
         val ctx = view.context
         val blurOpened = blurOpenedMethod?.let { runCatching { it.invoke(null, ctx) as Boolean }.getOrNull() } ?: true
-        runCatching {
+        NativeOwnedMaterialBridge.beginNativeAod()
+        try { runCatching {
             if (blurOpened) {
-                val look = aodDimLook
+                val look = if (NativeOwnedMaterialRecipe.projectPlayer(
+                    NativeOwnedMaterialBridge.claimed(view), Main.sFollowNativeMaterial,
+                    NativeGlassRelay.hasCurrentPlayerMaterial())) aodDimLook else null
                 val colours = look?.first ?: IntArray(6) { args[4 + it] as Int }
                 NativeGlassRelay.beginOwnedPaletteUpdate(view)
                 try { blendMethod?.invoke(null, ctx, view, false, colours, false) }
@@ -884,7 +774,7 @@ object MiniPlayerRuntime {
                 view.background = bg
                 aodDimFlat = true
             }
-        }
+        } } finally { NativeOwnedMaterialBridge.endNativeAod() }
     }
 
     /**
@@ -1888,6 +1778,7 @@ object MiniPlayerRuntime {
 
     @JvmStatic fun refreshNativeMaterial() {
         materialGeneration++
+        NativeOwnedMaterialBridge.refresh()
         refresh()
     }
 
@@ -2332,19 +2223,86 @@ object MiniPlayerRuntime {
         if (changed) Xp.log("MCMini: media session ended ($reason)")
     }
 
-    /**
-     * The pill's material: the card's recorded calls replayed on the pill's layer, with the
-     * pill itself made the blur container they expect above them.
-     *
-     * HyperOS notification material has two layers. The card's background is only an element:
-     * it tints and shapes a blur that an ancestor container provides, and that container is
-     * what blurs through the window to the wallpaper. The pill hangs off the window root with
-     * no such ancestor - the element alone drew nothing at all - so the pill is made a
-     * container the way ElementSurfaceModel.updateBlurContainer makes one.
-     */
+    /** Fresh owned inputs use the native scene, independently of player lifetime. */
+    @JvmStatic fun ownedNativeAodRecipe(): Boolean {
+        val progress = AodTransitionRuntime.snapshot()
+        return NativeOwnedMaterialRecipe.nativeAod(progress.running, progress.fraction)
+    }
+
+    private fun currentOwnedAodArgs(): Array<Any?>? = aodDimArgs?.takeIf {
+        ownedNativeAodRecipe() && (AodTransitionRuntime.snapshot().running || aodTransitionPlanned()) &&
+            aodDimWindow.get() === Main.sContainer?.rootView &&
+            aodDimGeometryRevision == Main.screenGeometry().revision
+    }
+
+    @JvmStatic fun reapplyOwnedNativeMaterial(view: ImageView): Boolean =
+        loader?.let { material(view, it) } ?: false
+
+    private var ownedDefaultBlurScale: Float? = null
+
+    private fun nativeDefaultBlurScale(context: Context): Float = ownedDefaultBlurScale ?: run {
+        // This unregistered owned type has no protocol role and is excluded by providers.
+        // Read only its fresh renderer default; no MediaEffect or native setters run on it.
+        val probe = MaterialElement(context)
+        check(NativeOwnedMaterialBridge.state(probe) == 0)
+        (View::class.java.getMethod("getMiBackgroundBlurScaleRatio").invoke(probe) as Float)
+            .also { require(it.isFinite()); ownedDefaultBlurScale = it }
+    }
+
+    /** No media effect or temporary media View is used while constructing raw inputs. */
+    private fun freshOwnedRecipe(view: ImageView, classLoader: ClassLoader) {
+        val ctx = view.context
+        val res = ctx.resources
+        fun id(type: String, name: String): Int = res.getIdentifier(name, type, "com.android.systemui")
+            .also { require(it != 0) { "no $type/$name" } }
+        val aod = ownedNativeAodRecipe()
+        val frame = currentOwnedAodArgs()
+        val controller = aodController?.get()
+        val paletteContext = if (aod) runCatching {
+            controller?.let { Xp.getObjectField(it, "mFullAodContext") as? Context }
+        }.getOrNull() ?: ctx else ctx
+        val glassMode = frame?.getOrNull(12) as? Boolean ?: runCatching {
+            controller?.let { Xp.getObjectField(it, "mIsGlassMode") as? Boolean }
+        }.getOrNull() ?: true
+        val recipe = NativeOwnedMaterialRecipe.current(object : NativeOwnedMaterialRecipe.Resources {
+            override fun color(name: String): Int = paletteContext.getColor(id("color", name))
+            override fun integer(name: String): Int = res.getInteger(id("integer", name))
+            override fun parameters(name: String): FloatArray = res.getStringArray(id("array", name))
+                .map(String::toFloat).toFloatArray()
+        }, aod, glassMode, frame?.let { IntArray(6) { j -> it[4 + j] as Int } }, frame?.getOrNull(10) as? FloatArray)
+        val glass = Class.forName("com.miui.systemui.util.MiGlassCompat", false, classLoader)
+        val type = glass.getMethod("setMiViewMaterialTypeCompat", Int::class.javaPrimitiveType, View::class.java)
+        view.setImageDrawable(null)
+        view.background = ctx.getDrawable(id("drawable", "notification_heads_up_transparent_bg"))?.mutate()
+        type.invoke(null, 0, view)
+        val util = Class.forName("com.android.systemui.statusbar.notification.utils.NotificationUtil", false, classLoader)
+        NativeGlassRelay.beginOwnedPaletteUpdate(view)
+        try {
+            val blurOpened = blurOpenedMethod?.let { runCatching { it.invoke(null, ctx) as Boolean }.getOrNull() } ?: true
+            if (blurOpened) {
+                // Preserve the native element setup, then commit one complete raw palette.
+                // The OEM convenience helper uses legacy clear/add calls, which cannot
+                // express an atomic provider substitution of the whole unified palette.
+                util.getMethod("setRoundRect", View::class.java, Boolean::class.javaPrimitiveType,
+                    Boolean::class.javaPrimitiveType).invoke(null, view, false, false)
+                View::class.java.getMethod("setMiViewBlurMode", Int::class.javaPrimitiveType).invoke(view, 1)
+                val points = ArrayList<android.graphics.Point>(recipe.blend.size / 2)
+                for (i in recipe.blend.indices step 2) points.add(android.graphics.Point(recipe.blend[i], recipe.blend[i + 1]))
+                View::class.java.getMethod("setMiBackgroundBlendColors", ArrayList::class.java).invoke(view, points)
+            }
+            if (recipe.glassMode) {
+                type.invoke(null, 1, view)
+                glass.getMethod("setMiGlassCompat", View::class.java, FloatArray::class.java)
+                    .invoke(null, view, recipe.glass)
+            }
+        } finally { NativeGlassRelay.endOwnedPaletteUpdate(view) }
+    }
+
     internal fun material(view: ImageView, classLoader: ClassLoader): Boolean {
         val ctx = view.context
         return runCatching {
+            val container = view.parent as? View ?: error("no owned material container")
+            check(NativeOwnedMaterialBridge.register(view, container)) { "unsupported owned material pair" }
             NativeGlassRelay.register(view)
             val res = ctx.resources
             fun id(type: String, name: String): Int =
@@ -2359,6 +2317,12 @@ object MiniPlayerRuntime {
                 util.getMethod("applyContainerViewBlur", Context::class.java, View::class.java,
                     Int::class.javaPrimitiveType, Int::class.javaPrimitiveType,
                     Boolean::class.javaPrimitiveType).invoke(null, ctx, container, 0, 0, false)
+                // The native util skips unchanged radius and leaves scale at the renderer's
+                // default. Refresh every tunable raw channel, including when disabling.
+                View::class.java.getMethod("setMiBackgroundBlurRadius", Int::class.javaPrimitiveType)
+                    .invoke(container, res.getDimensionPixelSize(id("dimen", "notification_container_blur_radius")))
+                View::class.java.getMethod("setMiBackgroundBlurScaleRatio", Float::class.javaPrimitiveType)
+                    .invoke(container, nativeDefaultBlurScale(ctx))
                 View::class.java.getMethod("setMiGlassBlurRadius", Int::class.javaPrimitiveType,
                     Int::class.javaPrimitiveType).invoke(container,
                     res.getDimensionPixelSize(id("dimen", "notification_glass_small_blur_max_radius")),
@@ -2368,21 +2332,12 @@ object MiniPlayerRuntime {
                         .getMethod("setMiBlurWinType", View::class.java).invoke(null, container)
                 }
             } }
-            if (cardRecipe == null) loadRecipe(ctx, classLoader)
-            val recipe = cardRecipe ?: error("the card has not been dressed yet")
-            view.setImageDrawable(null)
-            view.background = cardBackground?.newDrawable(res)?.mutate()
-            NativeGlassRelay.beginOwnedPaletteUpdate(view)
-            try {
-                recipe.forEach { call ->
-                    val args = call.args.copyOf()
-                    args[call.viewAt] = view
-                    call.method.invoke(null, *args)
-                }
-            } finally { NativeGlassRelay.endOwnedPaletteUpdate(view) }
+            freshOwnedRecipe(view, classLoader)
+            NativeOwnedMaterialBridge.applied(view)
             dressedViews.add(view)
-            // Dressed in the AOD - a small island coming up there: dimmed as the rest are.
-            aodDimArgs?.let { run { dimView(view, it) } }
+            // A current raw frame also supplies the native non-blur AOD background.
+            if (blurOpenedMethod?.let { runCatching { it.invoke(null, ctx) as Boolean }.getOrNull() } == false)
+                currentOwnedAodArgs()?.let { dimView(view, it) }
             true
         }.getOrElse { error ->
             val cause = (error as? java.lang.reflect.InvocationTargetException)?.targetException ?: error

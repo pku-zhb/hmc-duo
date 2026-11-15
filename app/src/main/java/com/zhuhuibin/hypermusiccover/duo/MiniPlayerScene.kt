@@ -50,7 +50,10 @@ internal object MiniPlayerScene {
             runCatching {
                 Xp.hookAll(Xp.findClass(className, cl), methodName) { chain ->
                     before(chain.args)
-                    chain.proceed()
+                    val result = chain.proceed()
+                    if (methodName == "notifyKeyguardState" || methodName == "notifyKeyguardGoingAway")
+                        Main.nativeOwnedMaterialSceneChanged()
+                    result
                 }
             }.onFailure { Xp.w("MCMini: scene hook $methodName unavailable: $it") }
         }
