@@ -19,6 +19,16 @@ final class NativeMaterialNodeCache<N> {
 
     synchronized boolean tracked(N node) { return node != null && nodes.containsKey(node); }
 
+    synchronized float[] currentGlass(N node) {
+        State state = nodes.get(node);
+        return state == null || state.glass == null ? null : state.glass.clone();
+    }
+
+    synchronized int[] currentBlur(N node) {
+        State state = nodes.get(node);
+        return state == null || state.blur == null ? null : state.blur.clone();
+    }
+
     /** Unknown/rejected writes cannot seed a cache; unchanged known values can be reused. */
     synchronized float[] glass(N node, float[] values, boolean changed) {
         State state = nodes.get(node);

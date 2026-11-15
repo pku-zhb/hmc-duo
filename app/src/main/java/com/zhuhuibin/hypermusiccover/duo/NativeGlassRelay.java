@@ -22,6 +22,7 @@ final class NativeGlassRelay {
     private static final Map<View, GlassProfile.Blur> committedBlur = Collections.synchronizedMap(new WeakHashMap<>());
     private static final Map<View, GlassProfile.Background> committedBackground = Collections.synchronizedMap(new WeakHashMap<>());
     private static final NativeMaterialCommitScope<View> scopes = new NativeMaterialCommitScope<>();
+    private static final NativeMaterialBatch<View> nativeBatches = new NativeMaterialBatch<>();
     private static final NativeMaterialNodeCache<Object> nodeCommits = new NativeMaterialNodeCache<>();
     private static final NativeMaterialSourceBinding<View> sourceBinding = new NativeMaterialSourceBinding<>();
     private static final NativePaletteBatch<View> palettes = new NativePaletteBatch<>();
@@ -47,6 +48,22 @@ final class NativeGlassRelay {
             synchronized (targets) { targets.put(target, targets.getOrDefault(target, 0) | role); }
     }
     static void unregister(View target) { targets.remove(target); palettes.remove(target); }
+
+    /** Effect.apply and the verified media AOD listener each own one complete native recipe. */
+    static NativeMaterialBatch.Frame<View> beginNativeUpdate(View source) {
+        return backgroundInstalled && sourceBinding.isSource(source) && sourceStillBound(source) ? nativeBatches.begin(source) : null;
+    }
+
+    static void endNativeUpdate(NativeMaterialBatch.Frame<View> frame, boolean success) {
+        if (frame == null) return;
+        if (nativeBatches.end(frame, success) && sourceBinding.isSource(frame.source) && sourceStillBound(frame.source))
+            captureNativeSnapshot(frame.source);
+        // Native mode/pass/type writes in the same recipe must finish before our sampler
+        // chooses its input domain. A failed recipe still releases this synchronous scope.
+        NativeMediaBackdrop.refresh();
+    }
+
+    static boolean nativeUpdateInProgress(View source) { return nativeBatches.active(source); }
 
     /** Complete owned recipes restore their final palette once, before returning to draw. */
     static void beginOwnedPaletteUpdate(View target) {
@@ -85,6 +102,7 @@ final class NativeGlassRelay {
                 float[] accepted = nodeCommits.glass(node, args[0] instanceof float[] ? (float[]) args[0] : null,
                         Boolean.TRUE.equals(result));
                 frame = scopes.matching(node);
+                if (frame != null && frame.role == SOURCE && nativeBatches.defer(frame.target)) return result;
                 if (frame != null && frame.role == SOURCE && accepted != null) {
                     GlassProfile next = GlassProfile.capture(accepted, frame.nightMode, frame.awake);
                     if (next != null) {
@@ -113,6 +131,7 @@ final class NativeGlassRelay {
                 int[] accepted = nodeCommits.blur(node, (Integer) args[0], (Integer) args[1],
                         Boolean.TRUE.equals(result));
                 frame = scopes.matching(node);
+                if (frame != null && frame.role == SOURCE && nativeBatches.defer(frame.target)) return result;
                 if (frame != null && frame.role == SOURCE && accepted != null) {
                     GlassProfile.Blur next = GlassProfile.Blur.capture(accepted[0], accepted[1],
                             frame.nightMode, frame.awake);
@@ -160,7 +179,9 @@ final class NativeGlassRelay {
                     }
                     Object result = chain.proceed(args);
                     // Never sample on throw, and never infer committed values from args.
-                    if (source && sourceStillBound(view)) captureBackground(view);
+                    if (source && sourceStillBound(view)) {
+                        if (!nativeBatches.defer(view)) captureBackground(view);
+                    }
                     else if (role != null && (role & GLASS_TARGET) != 0 && state != null &&
                             (setter == clear || setter == add)) {
                         // clear + N add calls form one palette, not N+1 full replays.
@@ -211,7 +232,11 @@ final class NativeGlassRelay {
         }
     }
 
-    private static void captureBackground(View view) {
+    private static GlassProfile.Background readBackground(View view) {
+        return readBackground(view, night(view), Main.screenOnCached());
+    }
+
+    private static GlassProfile.Background readBackground(View view, int mode, boolean awake) {
         try {
             ArrayList<?> palette = (ArrayList<?>) readColors.invoke(view);
             int[] colors = new int[palette.size()], modes = new int[palette.size()];
@@ -219,13 +244,42 @@ final class NativeGlassRelay {
                 Point point = (Point) palette.get(i);
                 colors[i] = point.x; modes[i] = point.y;
             }
-            GlassProfile.Background next = GlassProfile.Background.capture((Integer) readRadius.invoke(view),
-                    (Float) readScale.invoke(view), colors, modes, night(view), Main.screenOnCached());
-            if (next != null) {
-                committedBackground.put(view, next);
-                if (!next.same(background)) { background = next; refreshTargets(); }
-            }
+            return GlassProfile.Background.capture((Integer) readRadius.invoke(view),
+                    (Float) readScale.invoke(view), colors, modes, mode, awake);
         } catch (Throwable error) { Xp.d(Main.TAG + "native background readback skipped: " + error); }
+        return null;
+    }
+
+    private static void captureBackground(View view) {
+        GlassProfile.Background next = readBackground(view);
+        if (next != null) {
+            committedBackground.put(view, next);
+            if (!next.same(background)) { background = next; refreshTargets(); }
+        }
+    }
+
+    /** No clear/add intermediate palette or previous-scene recipe reaches owned layers. */
+    private static void captureNativeSnapshot(View source) {
+        int mode = night(source);
+        boolean awake = Main.screenOnCached();
+        GlassProfile.Background nextBackground = readBackground(source, mode, awake);
+        if (nextBackground == null) return;
+        Object node;
+        try { node = renderNode.get(source); } catch (Throwable ignored) { return; }
+        // The node cache observes actual accepted writes even when this complete frame
+        // leaves glass/radii unchanged. Screen power alone cannot invalidate those values.
+        GlassProfile next = GlassProfile.capture(nodeCommits.currentGlass(node), mode, awake);
+        int[] radii = nodeCommits.currentBlur(node);
+        GlassProfile.Blur nextBlur = radii == null ? null : GlassProfile.Blur.capture(radii[0], radii[1], mode, awake);
+        if (!sourceBinding.isSource(source) || !sourceStillBound(source)) return;
+        if (next == null) committedGlass.remove(source); else committedGlass.put(source, next);
+        if (nextBlur == null) committedBlur.remove(source); else committedBlur.put(source, nextBlur);
+        committedBackground.put(source, nextBackground);
+        if (next != null && !next.same(profile)) ++captures;
+        profile = next; blur = nextBlur; background = nextBackground;
+        // These writes share the native callback's current frame. Handler.post can run
+        // after that frame's traversal, leaving the discs on the previous material.
+        refreshTargetsNow();
     }
 
     private static GlassProfile.Background currentBackground(View view) {
@@ -271,41 +325,45 @@ final class NativeGlassRelay {
         refreshPosted = true;
         Main.main().post(() -> {
             refreshPosted = false;
-            if (!followsNow()) return;
-            if ((profile == null ? appliedProfile == null : profile.same(appliedProfile)) &&
-                    (blur == null ? appliedBlur == null : blur.same(appliedBlur)) &&
-                    (background == null ? appliedBackground == null : background.same(appliedBackground))) return;
-            // No generation bump, card rebind, or whole-row refresh. Owned target commits
-            // can never become sources, even when replay invokes the same vendor setters.
-            ArrayList<Map.Entry<View, Integer>> snapshot;
-            synchronized (targets) { snapshot = new ArrayList<>(targets.entrySet()); }
-            for (Map.Entry<View, Integer> item : snapshot) {
-                View view = item.getKey();
-                if (view == null || !view.isAttachedToWindow() || !targets.containsKey(view)) continue;
-                try {
-                    int mode = night(view);
-                    boolean awake = Main.screenOnCached();
-                    GlassProfile current = profile;
-                    GlassProfile.Blur radius = blur;
-                    float[] values = current == null ? null : current.forScene(mode, awake);
-                    int[] radii = radius == null ? null : radius.forScene(mode, awake);
-                    if (glassInstalled && (item.getValue() & GLASS_TARGET) != 0 && values != null)
-                        glassSetter.invoke(view, (Object) values);
-                    if (blurInstalled && (item.getValue() & BLUR_TARGET) != 0 && radii != null)
-                        blurSetter.invoke(view, radii[0], radii[1]);
-                    GlassProfile.Background state = currentBackground(view);
-                    if (backgroundInstalled && state != null) {
-                        if ((item.getValue() & GLASS_TARGET) != 0) restorePalette(view);
-                        if ((item.getValue() & BLUR_TARGET) != 0) {
-                            backgroundRadius.invoke(view, state.radius);
-                            backgroundScale.invoke(view, state.scale);
-                        }
-                    }
-                } catch (Throwable error) { Xp.d(Main.TAG + "owned material relay skipped: " + error); }
-            }
-            appliedProfile = profile; appliedBlur = blur; appliedBackground = background;
-            ++refreshes;
+            refreshTargetsNow();
         });
+    }
+
+    private static void refreshTargetsNow() {
+        if (!followsNow()) return;
+        if ((profile == null ? appliedProfile == null : profile.same(appliedProfile)) &&
+                (blur == null ? appliedBlur == null : blur.same(appliedBlur)) &&
+                (background == null ? appliedBackground == null : background.same(appliedBackground))) return;
+        // No generation bump, card rebind, or whole-row refresh. Owned target commits
+        // can never become sources, even when replay invokes the same vendor setters.
+        ArrayList<Map.Entry<View, Integer>> snapshot;
+        synchronized (targets) { snapshot = new ArrayList<>(targets.entrySet()); }
+        for (Map.Entry<View, Integer> item : snapshot) {
+            View view = item.getKey();
+            if (view == null || !view.isAttachedToWindow() || !targets.containsKey(view)) continue;
+            try {
+                int mode = night(view);
+                boolean awake = Main.screenOnCached();
+                GlassProfile current = profile;
+                GlassProfile.Blur radius = blur;
+                float[] values = current == null ? null : current.forScene(mode, awake);
+                int[] radii = radius == null ? null : radius.forScene(mode, awake);
+                if (glassInstalled && (item.getValue() & GLASS_TARGET) != 0 && values != null)
+                    glassSetter.invoke(view, (Object) values);
+                if (blurInstalled && (item.getValue() & BLUR_TARGET) != 0 && radii != null)
+                    blurSetter.invoke(view, radii[0], radii[1]);
+                GlassProfile.Background state = currentBackground(view);
+                if (backgroundInstalled && state != null) {
+                    if ((item.getValue() & GLASS_TARGET) != 0) restorePalette(view);
+                    if ((item.getValue() & BLUR_TARGET) != 0) {
+                        backgroundRadius.invoke(view, state.radius);
+                        backgroundScale.invoke(view, state.scale);
+                    }
+                }
+            } catch (Throwable error) { Xp.d(Main.TAG + "owned material relay skipped: " + error); }
+        }
+        appliedProfile = profile; appliedBlur = blur; appliedBackground = background;
+        ++refreshes;
     }
 
     /** Called only by the known OEM effect binder, independently of the follow preference. */

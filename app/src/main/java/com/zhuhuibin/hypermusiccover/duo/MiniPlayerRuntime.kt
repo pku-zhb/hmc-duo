@@ -434,14 +434,17 @@ object MiniPlayerRuntime {
                         recordTarget = candidateBg
                         recording = ArrayList()
                     }
+                    val nativeUpdate = if (mine) NativeGlassRelay.beginNativeUpdate(candidateBg) else null
                     effectDepth++
+                    var successful = false
                     val result = try {
-                        chain.proceed()
+                        chain.proceed().also { successful = true }
                     } catch (error: Throwable) {
                         if (mine) { recording = null; recordTarget = null }
                         throw error
                     } finally {
                         effectDepth--
+                        NativeGlassRelay.endNativeUpdate(nativeUpdate, successful)
                     }
                     if (mine) NativeMediaBackdrop.refresh()
                     val recorded = recording
@@ -746,6 +749,24 @@ object MiniPlayerRuntime {
         val transition = Xp.findClass(
             "com.android.systemui.statusbar.notification.fullaod.NotifiFullAodController\$FullAodTransitionListener",
             classLoader)
+        // The shipped listener writes one whole media palette, then its glass array. Its
+        // successful return is the native frame boundary, independently of listener order.
+        runCatching {
+            val mediaListener = Xp.findClass(
+                "com.android.systemui.statusbar.notification.mediacontrol.MiuiMediaViewControllerImpl\$mediaFullAodListener\$1",
+                classLoader)
+            Xp.hookAll(mediaListener, "updateFullAodAnimState") { chain ->
+                val source = runCatching {
+                    val controller = Xp.getObjectField(chain.thisObject, "this\$0")
+                    val holder = Xp.getObjectField(controller, "holder")
+                    Xp.getObjectField(holder, "mediaBg") as? View
+                }.getOrNull()
+                val nativeUpdate = NativeGlassRelay.beginNativeUpdate(source)
+                var successful = false
+                try { chain.proceed().also { successful = true } }
+                finally { NativeGlassRelay.endNativeUpdate(nativeUpdate, successful) }
+            }
+        }.onFailure { Xp.w("MCMini: complete native media frame unavailable: $it") }
         Xp.hookAll(transition, "onBegin") { chain ->
             AodTransitionRuntime.begin(enabled.getBoolean(null))
             chain.proceed()
