@@ -10,6 +10,13 @@ and [HyperMusicCover](https://github.com/zyl6932/HyperMusicCover).
 Device coverage is focused on the maintainer's foldable phone; compatibility with
 other devices is not established.
 
+Version 0.2.15 makes artwork/lyrics and non-music cards mutually exclusive,
+retains full artwork during AOD renderer handoff, and stabilizes lyric blur
+updates. Content layouts gain inner-screen margins and a centered rail lane.
+Artwork time is fixed to the status cluster; tapping that cluster requests the
+native Control Center with its normal restrictions. See the
+0.2.15 record for validation boundaries.
+
 Version 0.2.14 connects the inner-screen AOD option to the native AOD plugin's
 independent display eligibility check. See the 0.2.14 record.
 It includes 0.2.13, which aligns inner-screen content inside the right-rail safe frame.
@@ -58,11 +65,10 @@ for confirmed causes, host checks and the remaining manually operated visual che
   targets use the same coordinates as the animations; the system retains secure launch
   and cancellation. MiDuo and MiDuo Notification are not required.
 - An independently switchable AMap walking/cycling lockscreen navigation map.
-- A display-only battery/network cluster and an independent lock-screen status-bar
-  switch and a common lockscreen/AOD vertical offset. Artwork and lyrics offer three clock destinations on outer and inner displays: shrink,
-  join the date row, or fade into the status cluster. The date-row time can sit on
-  either side of the date. Ordinary AOD retains the native presentation; full-screen
-  AOD can retain the selected compact time.
+- A battery/network cluster, native Control Center access, an independent
+  lock-screen status-bar switch and a common lockscreen/AOD vertical offset.
+  Artwork and lyrics move time into the status cluster. Ordinary AOD retains
+  the native presentation; full-screen AOD retains the compact time.
 - HyperOS and ColorOS vertical capsule styles. Tap a capsule or bubble to open its
   card; swipe to switch. HyperOS stops at the first/last item, follows the drag with
   a spring, and joins/splits native-material bubbles. More than three items shorten
