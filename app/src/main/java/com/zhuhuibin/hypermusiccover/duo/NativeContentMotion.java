@@ -7,6 +7,8 @@ import android.view.View;
 /** Shared native content affine; layout is retained in its local frame, never physical pixels. */
 final class NativeContentMotion {
     private static final Matrix sourceMatrix = new Matrix(), targetInverse = new Matrix();
+    private static final FoldMusicLayout.Box UNIT = new FoldMusicLayout.Box(0, 0, 100, 100);
+    private static final RectF measuredUnit = new RectF();
     private static final String[] SOURCE_IDS = {"shared_notification_container", "keyguard_root_view"};
     private static java.lang.ref.WeakReference<View> cachedWindow = new java.lang.ref.WeakReference<>(null);
     private static java.lang.ref.WeakReference<View> cachedOwner = new java.lang.ref.WeakReference<>(null);
@@ -45,6 +47,13 @@ final class NativeContentMotion {
             node = parent;
         }
         return ContentMotionSnapshot.logicalPlan(plan, x, y);
+    }
+
+    /** Current native motion and natural layout must be separated before a new plan is fitted. */
+    static ContentMotionMeasurement measurement(View window, View owner) {
+        FoldMusicLayout.Box naturalUnit = logicalPlan(window, owner, UNIT);
+        if (naturalUnit == null || !map(owner, window, UNIT, measuredUnit)) return null;
+        return ContentMotionMeasurement.from(box(measuredUnit), naturalUnit);
     }
 
     static boolean map(View source, View target, FoldMusicLayout.Box box, RectF result) {
