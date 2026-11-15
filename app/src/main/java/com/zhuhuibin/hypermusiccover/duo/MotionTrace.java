@@ -29,6 +29,7 @@ final class MotionTrace {
 
     private static volatile int sRemaining;
     private static boolean sRunning;
+    private static volatile String lastTrace = "never run";
 
     static void arm(int count) {
         sRemaining = Math.max(0, count);
@@ -37,6 +38,16 @@ final class MotionTrace {
 
     /** Called on the main thread at the start of a wake or a toggle. */
     static void start(final String what) {
+        start(what, 1200);
+    }
+
+    static void recordNow(int durationMs) {
+        start("manual", Math.max(100, Math.min(4000, durationMs)));
+    }
+
+    static String read() { return sRunning ? "running" : lastTrace; }
+
+    private static void start(final String what, final int durationMs) {
         if (sRemaining <= 0 || sRunning) return;
         View base = Main.sContainer;
         if (base == null) return;
@@ -60,7 +71,9 @@ final class MotionTrace {
             @Override
             public void doFrame(long frameTimeNanos) {
                 long ms = (System.nanoTime() - t0) / 1000000L;
-                sb.append("t=").append(ms).append(ClockCollapse.traceLine());
+                sb.append("t=").append(ms).append(ClockCollapse.traceLine())
+                        .append(CoverCardLayer.traceLine()).append(" nativeAod[")
+                        .append(AodTransitionRuntime.describe()).append(']');
                 for (int i = 0; i < views.length; i++) {
                     View v = views[i];
                     if (v == null) continue;
@@ -74,11 +87,17 @@ final class MotionTrace {
                       .append(v.getVisibility() == View.VISIBLE ? "" : " vis=" + v.getVisibility());
                 }
                 sb.append('\n');
-                if (ms < 1200) {
+                // ResultData is sent through Binder on explicit readback. Bound both retained
+                // memory and the transaction even on a high-refresh-rate native run.
+                boolean capacity = sb.length() >= 240_000;
+                if (ms < durationMs && !capacity) {
                     Choreographer.getInstance().postFrameCallback(this);
                     return;
                 }
+                if (capacity) sb.append("motiontrace stopped at capacity; requestedMs=")
+                        .append(durationMs).append(" actualMs=").append(ms).append('\n');
                 sRunning = false;
+                lastTrace = sb.toString();
                 // Logcat truncates long entries; one entry per frame line.
                 for (String line : sb.toString().split("\n")) Xp.log(TAG + line);
             }

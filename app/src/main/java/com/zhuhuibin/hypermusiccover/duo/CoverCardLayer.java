@@ -300,15 +300,21 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
                     lastTop = loc[1];
                     lastClock = clock;
                     lastMedia = media;
-                    // In this frame, not the next: the card has already been moved for it.
-                    if (carries(ClockCollapse.phase()) && opacity > 0f) {
-                        CoverCardStyle.Rect goal = placeNow();
-                        if (goal != null) {
-                            carry(goal, true);
-                            invalidate();
-                        }
+                    // Pre-draw must use the same owner as the animation/clock callback. A
+                    // direct carry(placeNow()) here bypassed the committed logical frame as
+                    // the native card/hidden clock changed underneath an AOD/wake hold.
+                    if (opacity > 0f) {
+                        followPlace(ClockCollapse.phase(), 0f,
+                                Math.max(.18f, Main.sClockResponse), opacity);
+                        invalidate();
                     }
                     start();
+                } else if (opacity > 0f && (railAodHolding || FoldMusicRuntime.sideBySide()
+                        || AodTransitionRuntime.moving())) {
+                    // Even an unchanged local room can have a new native-content affine.
+                    followPlace(ClockCollapse.phase(), 0f,
+                            Math.max(.18f, Main.sClockResponse), opacity);
+                    invalidate();
                 }
                 return true;
             } finally { android.os.Trace.endSection(); } }
@@ -338,7 +344,7 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
             if (v.getParent() instanceof ViewGroup) v.watchGeometry((ViewGroup) v.getParent());
             if (shapeChanged) {
                 v.lockPlace = v.bigCoverPlace = v.restPlace = v.lastGoal = null;
-                v.railScreenPlace = null;
+                v.railMotionPlace = null;
             }
             v.start();
         }
@@ -603,7 +609,7 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
         if (v == null) return;
         v.wash.lastSurface = -1;
         v.lockPlace = v.bigCoverPlace = v.restPlace = v.lastGoal = v.aodUnshrunkGoal = null;
-        v.railScreenPlace = null;
+        v.railMotionPlace = null;
         v.railAodHolding = false;
         v.aodShrinkMedia = Float.NaN;
         v.aodShrinkSeconds = 0f;
@@ -644,7 +650,7 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
         bigCoverPlace = null;
         restPlace = null;
         lastGoal = null;
-        railScreenPlace = null;
+        railMotionPlace = null;
         railAodHolding = false;
         // A sleep from an app takes its new place, not the last lock screen's drawn size.
         drawX = goalX = Float.NaN;
@@ -1033,7 +1039,34 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
                 + " thumbnail=" + (v.current != null && v.current.temporaryThumbnail)
                 + " ticking=" + v.ticking + " opacity=" + v.opacity
                 + " attached=" + v.isAttachedToWindow()
-                + " fade=" + v.getTransitionAlpha() + " chain=" + chain;
+                + " fade=" + v.getTransitionAlpha() + " chain=" + chain + traceLine();
+    }
+
+    /** Read-only and used only by the existing bounded motion trace/state diagnostic. */
+    static String traceLine() {
+        CoverCardLayer v = sView;
+        if (v == null || !v.isAttachedToWindow() || !Float.isFinite(v.drawX)) return " art=none";
+        CoverMorphMotion.Box actual = CoverMorphMotion.cardBox(v.drawX, v.drawY, v.drawSide,
+                v.artworkScale() * (RISE_FROM + (1f - RISE_FROM) * v.rise), v.shownAspect());
+        RectF bounds = new RectF();
+        boolean mapped = NativeContentMotion.map(v, v.getRootView(),
+                new FoldMusicLayout.Box(actual.x, actual.y, actual.x + actual.w, actual.y + actual.h), bounds);
+        View owner = NativeContentMotion.owner(v);
+        RectF nativeFrame = new RectF();
+        boolean nativeMapped = NativeContentMotion.map(owner, v.getRootView(),
+                new FoldMusicLayout.Box(0, 0, 100, 100), nativeFrame);
+        return " art[local=" + Main.r1(v.drawX) + "," + Main.r1(v.drawY) + "," + Main.r1(v.drawSide)
+                + " window=" + (mapped ? Main.r1(bounds.left) + "," + Main.r1(bounds.top)
+                    + "," + Main.r1(bounds.width()) + "x" + Main.r1(bounds.height()) : "none")
+                + " native=" + (nativeMapped ? Main.r1(nativeFrame.left) + "," + Main.r1(nativeFrame.top)
+                    + "," + Main.r3(nativeFrame.width() / 100f) : "none")
+                + " owner=" + (owner == null ? "none" : owner.getClass().getSimpleName()
+                    + "/" + Integer.toHexString(System.identityHashCode(owner)))
+                + " hold=" + v.railAodHolding + " both=" + FoldMusicRuntime.sideBySide()
+                + " logical=" + (v.railMotionPlace == null ? "none"
+                    : Main.r1(v.railMotionPlace.bounds.left) + "," + Main.r1(v.railMotionPlace.bounds.top)
+                        + "," + Main.r1(v.railMotionPlace.bounds.width()))
+                + " opacity=" + Main.r3(v.opacity) + " pose=" + v.aodPlaceNote + "]";
     }
 
     static float renderedScale(ViewGroup layer) {
@@ -1170,7 +1203,7 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
     }
 
     @Override protected void onDetachedFromWindow() {
-        railScreenPlace = null;
+        railMotionPlace = null;
         railAodHolding = false;
         stop();
         unwatchGeometry();
@@ -1200,9 +1233,9 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
      * keep. Not lockPlace: that one is only written on the lit, locked lock screen.
      */
     private CoverCardStyle.Rect restPlace;
-    /** Screen-space rail artwork, unaffected by the OEM's AOD parent zoom and translation. */
-    private FoldMusicLayout.Box railScreenPlace;
-    private long railScreenRevision = -1;
+    /** Fitted artwork in the native content's logical frame; its AOD affine applies once. */
+    private ContentMotionSnapshot railMotionPlace;
+    private final RectF motionBounds = new RectF();
     private boolean railAodHolding;
 
     /**
@@ -1269,7 +1302,7 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
             drawX = goalX = goal.x;
             drawY = goalY = goal.y;
             drawSide = goalSide = goal.side;
-            rememberRailScreenPlace();
+            rememberRailMotionPlace();
             aodPlaceNote = "shared artwork/lyrics column frame";
             return false;
         }
@@ -1323,12 +1356,10 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
                         && settled) bigCoverPlace = goal;
             }
         }
-        if (goal == null) {
-            goalX = Float.NaN;
-            return false;
-        }
-        if (!LockScreenRailRuntime.reflowing() || railScreenRevision != Main.screenGeometry().revision) {
-            railScreenPlace = null;
+        View motionOwner = NativeContentMotion.owner(this);
+        if (!LockScreenRailRuntime.reflowing() || railMotionPlace != null
+                && !railMotionPlace.current(getRootView(), Main.screenGeometry().revision, motionOwner)) {
+            railMotionPlace = null;
             railAodHolding = false;
         }
         if (MiniPlayerScene.INSTANCE.getKeyguardGoingAway()) railAodHolding = false;
@@ -1336,51 +1367,59 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
                 || AodTransitionRuntime.moving() || phase == ClockCollapse.Phase.AOD) railAodHolding = true;
         else if (!LockScreenRailRuntime.holdGeometry()) railAodHolding = false;
         if (railAodHolding && LockScreenRailRuntime.reflowing()) {
-            FoldMusicLayout.Box fallback = railScreenPlace != null ? railScreenPlace
-                    : LockScreenRailRuntime.artworkOnScreen(this, goal);
+            if (railMotionPlace == null && goal != null) captureRailMotionPlace(motionOwner, goal);
+            FoldMusicLayout.Box logical = railMotionPlace == null ? null : railMotionPlace.bounds;
             // STATUS replaces the native clock, so its hidden large-clock bounds cannot
-            // reserve a second artwork room. Keep the committed screen-space artwork box
-            // while the native player contracts/returns; compensate the parent's transform
-            // on this same frame instead of fitting a moving endpoint twice.
+            // reserve a second artwork room. Keep one logical box while the player contracts,
+            // and map through the shared native motion owner rather than freeze physical
+            // bounds by inverting the AOD scale/offset all the way back to the window.
             boolean statusTime = Main.sArtworkClockDestination == ArtworkClockDestination.STATUS;
-            FoldMusicLayout.Box fitted = statusTime ? fallback
-                    : LockScreenRailRuntime.aodArtwork(fallback,
+            CoverCardStyle.Rect fixed = null;
+            if (statusTime && NativeContentMotion.map(motionOwner, this, logical, motionBounds)) {
+                fixed = new CoverCardStyle.Rect(motionBounds.left, motionBounds.top, motionBounds.width());
+            } else if (!statusTime) {
+                FoldMusicLayout.Box fallback = NativeContentMotion.map(motionOwner, getRootView(), logical, motionBounds)
+                        ? NativeContentMotion.box(motionBounds) : null;
+                FoldMusicLayout.Box fitted = LockScreenRailRuntime.aodArtwork(fallback,
                         ClockCollapse.contentBottomDrawn(), Main.liveMediaTop(), shownAspect());
-            if (!statusTime && ClockCollapse.followsNativeAod()) {
-                // The lit endpoint must be the very same box used after the AOD lease ends.
-                // A separate screen-space fitter at fraction0 otherwise changes the endpoint
-                // when holdGeometry finally releases its parent-zoom compensation.
-                CoverCardStyle.Rect lit = placeNow();
-                FoldMusicLayout.Box normal = lit == null ? null
-                        : LockScreenRailRuntime.artworkOnScreen(this, lit);
-                if (normal != null && fitted != null) {
-                    float p = AodTransitionRuntime.snapshot().fraction;
-                    fitted = new FoldMusicLayout.Box(normal.left + (fitted.left - normal.left) * p,
-                            normal.top + (fitted.top - normal.top) * p,
-                            normal.right + (fitted.right - normal.right) * p,
-                            normal.bottom + (fitted.bottom - normal.bottom) * p);
+                if (ClockCollapse.followsNativeAod()) {
+                    // The lit endpoint must be the very same box used after the AOD lease ends.
+                    // A separate screen-space fitter at fraction0 otherwise changes the endpoint
+                    // when holdGeometry finally releases its parent-zoom compensation.
+                    CoverCardStyle.Rect lit = placeNow();
+                    FoldMusicLayout.Box normal = lit == null ? null
+                            : LockScreenRailRuntime.artworkOnScreen(this, lit);
+                    if (normal != null && fitted != null) {
+                        float p = AodTransitionRuntime.snapshot().fraction;
+                        fitted = new FoldMusicLayout.Box(normal.left + (fitted.left - normal.left) * p,
+                                normal.top + (fitted.top - normal.top) * p,
+                                normal.right + (fitted.right - normal.right) * p,
+                                normal.bottom + (fitted.bottom - normal.bottom) * p);
+                    }
                 }
+                fixed = LockScreenRailRuntime.artworkFromScreen(this, fitted);
             }
-            CoverCardStyle.Rect fixed = LockScreenRailRuntime.artworkFromScreen(this, fitted);
-            fixed = FoldMusicRuntime.capPortraitArtwork(this, fixed);
+            fixed = fitPortraitArtwork(fixed, true);
             if (fixed != null) {
-                // Compensate on the same frame as the parent animation. Easing this inverse
-                // transform would recreate the drift while the AOD's zoom is running.
+                // Consume the affine in the same pass, with no second spring or layout fit.
                 drawX = fixed.x; drawY = fixed.y; drawSide = fixed.side;
                 goalX = fixed.x; goalY = fixed.y; goalSide = fixed.side;
-                aodPlaceNote = "rail screen frame fitted to actual AOD room";
+                aodPlaceNote = statusTime ? "native content logical frame" : "legacy AOD room";
                 return false;
             }
         }
-        if (style.mode == CoverCardStyle.CARD)
-            goal = FoldMusicRuntime.capPortraitArtwork(this, goal);
+        if (goal == null) {
+            goalX = Float.NaN;
+            return false;
+        }
+        if (style.mode == CoverCardStyle.CARD) goal = fitPortraitArtwork(goal, false);
         if (goal == null) return false;
         carry(goal, carries(phase));
         if (Float.isNaN(drawX) || opacity <= 0f || ClockCollapse.aodTransitioning()) {
             drawX = goal.x;
             drawY = goal.y;
             drawSide = goal.side;
-            rememberRailScreenPlace();
+            rememberRailMotionPlace();
             return false;
         }
         float k = Math.min(1f, dt * 3f / response);
@@ -1394,15 +1433,28 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
             drawY = goal.y;
             drawSide = goal.side;
         }
-        rememberRailScreenPlace();
+        rememberRailMotionPlace();
         return moving;
     }
 
-    private void rememberRailScreenPlace() {
+    private void rememberRailMotionPlace() {
         if (!Main.screenOnCached() || !Main.keyguardLocked() || LockScreenRailRuntime.holdGeometry()) return;
-        railScreenPlace = LockScreenRailRuntime.artworkOnScreen(this,
-                new CoverCardStyle.Rect(drawX, drawY, drawSide));
-        railScreenRevision = Main.screenGeometry().revision;
+        captureRailMotionPlace(NativeContentMotion.owner(this), new CoverCardStyle.Rect(drawX, drawY, drawSide));
+    }
+
+    private void captureRailMotionPlace(View owner, CoverCardStyle.Rect rect) {
+        if (!LockScreenRailRuntime.reflowing() || rect == null || !NativeContentMotion.map(this, owner,
+                new FoldMusicLayout.Box(rect.x, rect.y, rect.x + rect.side, rect.y + rect.side), motionBounds)) return;
+        railMotionPlace = new ContentMotionSnapshot(getRootView(), Main.screenGeometry().revision,
+                owner, NativeContentMotion.box(motionBounds));
+    }
+
+    private CoverCardStyle.Rect fitPortraitArtwork(CoverCardStyle.Rect rect, boolean motionOwned) {
+        // The logical frame was capped before capture. Re-capping its inverse transform to
+        // the independently animating native player width shrinks and then grows artwork
+        // even while its committed logical layout has not moved.
+        return ArtworkPosePolicy.fit(rect, motionOwned, FoldMusicRuntime.innerPortrait(),
+                motionOwned ? Float.NaN : FoldMusicRuntime.portraitPlayerWidth(this));
     }
 
     /** Consume the current clock/media geometry after the native and HMC pose writers. */
@@ -1505,7 +1557,8 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
      * frame. Eased there, it lagged its own easing plus a frame and ran over the card.
      */
     private boolean carries(ClockCollapse.Phase phase) {
-        return phase == ClockCollapse.Phase.ON && !afterBigClock;
+        return ArtworkPosePolicy.carryLocal(phase == ClockCollapse.Phase.ON, afterBigClock,
+                FoldMusicRuntime.sideBySide() || railAodHolding && LockScreenRailRuntime.reflowing());
     }
 
     /** Moves the drawn place by however far the goal moved since it was last seen. */

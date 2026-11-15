@@ -3567,7 +3567,11 @@ public class Main extends XposedModule {
                         if (ms > 0) MotionTrace.startAlphaSweep(ms);
                         setResultData(MotionTrace.sSweep);
                     } else if ("motiontrace".equals(op)) {
-                        MotionTrace.arm(i.getIntExtra("n", 4));
+                        if (!i.getBooleanExtra("read", false)) {
+                            MotionTrace.arm(i.getIntExtra("n", 4));
+                            if (i.getBooleanExtra("now", false)) MotionTrace.recordNow(i.getIntExtra("ms", 1200));
+                        }
+                        setResultData(MotionTrace.read());
                     } else if ("geomtrace".equals(op)) {
                         startGeomTrace(i.getIntExtra("ms", 4000));
                     } else if ("clockmove".equals(op)) {
