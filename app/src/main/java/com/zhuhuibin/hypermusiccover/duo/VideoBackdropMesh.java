@@ -217,7 +217,7 @@ final class VideoBackdropMesh extends View implements Choreographer.FrameCallbac
                 && ownerLayer.isAttachedToWindow() && CoverCardLayer.currentBackdrop() != null
                 && getRootView() == scene.window && (retained || wanted && scene.cover
                     && !scene.navigation && scene.surface == CoverBackdrop.SURFACE_LIT
-                    && (scene.backgroundWanted || scene.fullComposition));
+                    && scene.rendererWanted);
     }
 
     static void refreshVisibility(CoverBackdrop.Snapshot scene) {
@@ -243,6 +243,9 @@ final class VideoBackdropMesh extends View implements Choreographer.FrameCallbac
             // Keep the View drawable while waiting. Alpha zero on its RenderNode can skip
             // onDraw forever, so the first source is submitted at one alpha step instead.
             v.renderAlpha = 1f / 255f;
+            // AOD is a renderer handoff of the existing composition, not a new page reveal.
+            // The native fraction supplies the one alpha; the clear band needs no second clock.
+            if (v.aodReveal && scene.fullArtworkWanted) v.fullArtworkAlpha = 1f;
             v.setVisibility(VISIBLE);
             changed = true;
         }
@@ -342,7 +345,9 @@ final class VideoBackdropMesh extends View implements Choreographer.FrameCallbac
         // Preserve the video's existing first-frame hold/fade as well as our local draw gate.
         if (Main.sVideoWallpaper && Main.sCover != null) {
             lastVideoAlpha = Main.sCover.getAlpha();
-            if (state.revealed()) alpha *= lastVideoAlpha;
+            // The legacy video overlay owes a separate wallpaper reload fade after sleep.
+            // It cannot revoke pixels already owned by the native AOD composition handoff.
+            if (state.revealed() && !aodReveal && !retained) alpha *= lastVideoAlpha;
         }
         int saved = alpha < 0.999f
                 ? canvas.saveLayerAlpha(bounds, Math.round(255f * alpha)) : canvas.save();
@@ -373,11 +378,13 @@ final class VideoBackdropMesh extends View implements Choreographer.FrameCallbac
         frames++;
         lastDrawAt = SystemClock.uptimeMillis();
         state.drawn(generation);
-        lastPresentedAlpha = scene.hidden ? 0f : alpha;
+        lastPresentedAlpha = scene.rendererWanted ? alpha : 0f;
+        // Background coverage alone is insufficient to retire a FULL foreground presenter.
+        float foreground = scene.fullArtworkWanted ? fullArtworkAlpha : 1f;
         float contribution = lastPresentedAlpha * CoverCardLayer.backdropContribution();
         CoverCardLayer.recordBackdropFrame(this);
         CoverBackdrop.drawn(ArtworkBackdropState.MESH, scene, this, generation,
-                contribution, lastPresentedAlpha);
+                contribution, lastPresentedAlpha, foreground);
         if (!state.revealed() && !revealPending) {
             long epoch = state.epoch();
             revealPending = true;

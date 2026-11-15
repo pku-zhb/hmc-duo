@@ -840,8 +840,8 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
                 && scene.surface == CoverBackdrop.SURFACE_FULL_AOD;
         v.wash.lastSurface = scene.surface;
         boolean retained = CoverBackdrop.retains(ArtworkBackdropState.STILL, scene);
-        boolean fullForeground = !scene.navigation && scene.surface == CoverBackdrop.SURFACE_FULL_AOD
-                && fullSceneArtworkVisible();
+        boolean fullForeground = scene.fullArtworkWanted
+                && (scene.surface == CoverBackdrop.SURFACE_FULL_AOD || retained);
         boolean on = scene.desiredRenderer == ArtworkBackdropState.STILL || retained || fullForeground;
         if (v.current == null || v.current.aodBackdrop == null
                 || !v.wash.isAttachedToWindow() || v.wash.getRootView() != scene.window) {
@@ -850,7 +850,7 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
             AodTransitionProgress.Snapshot aod = AodTransitionRuntime.snapshot();
             v.wash.show(true, enteredFullAod || aod.running && aod.into);
             if (v.wash.lastBackdropGeneration != scene.generation) v.wash.invalidate();
-        } else if (scene.backgroundWanted && scene.desiredRenderer == ArtworkBackdropState.MESH) {
+        } else if (scene.rendererWanted && scene.desiredRenderer == ArtworkBackdropState.MESH) {
             v.wash.show(false, false);
         } else v.wash.hideNow();
     }
@@ -901,17 +901,7 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
     }
 
     static boolean fullSceneArtworkVisible() {
-        if (!fullScene()) return false;
-        // AOD keeps its existing artwork/clock handoff. On the lit lock screen FULL is a
-        // background, so neither a notification list hiding the native clock root nor its
-        // temporary compact-card flag may erase the clear band and leave only blurred fill.
-        if (!Main.screenOnCached())
-            return Main.coverCardVisible() && !LockLyrics.wantsCompactArtwork();
-        boolean sceneVisible = (Main.coverModeOn() || LockHold.exitingFor(LockHold.Owner.COVER)
-                        && ClockCollapse.phase() == ClockCollapse.Phase.EXIT) && Main.onKeyguardNow()
-                && LockscreenSurfacePolicy.visible(Main.keyguardLocked(),
-                        MiniPlayerScene.INSTANCE.getKeyguardGoingAway());
-        return CoverFullScenePolicy.sharpBand(sceneVisible, LockLyrics.userWantsCompactArtwork());
+        return CoverBackdrop.snapshot().fullArtworkWanted;
     }
 
     static String fullSceneDescription() {
@@ -1263,6 +1253,18 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
     private boolean followPlace(ClockCollapse.Phase phase, float dt, float response,
                                 float target) {
         CoverCardStyle.Rect goal;
+        if (FoldMusicRuntime.sideBySide()) {
+            goal = placeNow();
+            if (goal == null) return false;
+            // The common column plan is already mapped through the current parent transform.
+            // A second single-page AOD fitter would pull only artwork into the centre.
+            drawX = goalX = goal.x;
+            drawY = goalY = goal.y;
+            drawSide = goalSide = goal.side;
+            rememberRailScreenPlace();
+            aodPlaceNote = "shared artwork/lyrics column frame";
+            return false;
+        }
         if (phase != ClockCollapse.Phase.AOD || (afterBigClock && restPlace != null)) {
             aodShrinkSeconds = 0f;
             aodShrinkMedia = Float.NaN;
@@ -1323,14 +1325,20 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
         }
         if (MiniPlayerScene.INSTANCE.getKeyguardGoingAway()) railAodHolding = false;
         else if (MiniPlayerScene.INSTANCE.getAodActive() || !Main.screenOnCached()
-                || phase == ClockCollapse.Phase.AOD) railAodHolding = true;
+                || AodTransitionRuntime.moving() || phase == ClockCollapse.Phase.AOD) railAodHolding = true;
         else if (!LockScreenRailRuntime.holdGeometry()) railAodHolding = false;
         if (railAodHolding && LockScreenRailRuntime.reflowing()) {
             FoldMusicLayout.Box fallback = railScreenPlace != null ? railScreenPlace
                     : LockScreenRailRuntime.artworkOnScreen(this, goal);
-            FoldMusicLayout.Box fitted = LockScreenRailRuntime.aodArtwork(fallback,
-                    ClockCollapse.contentBottomDrawn(), Main.liveMediaTop(), shownAspect());
-            if (ClockCollapse.followsNativeAod()) {
+            // STATUS replaces the native clock, so its hidden large-clock bounds cannot
+            // reserve a second artwork room. Keep the committed screen-space artwork box
+            // while the native player contracts/returns; compensate the parent's transform
+            // on this same frame instead of fitting a moving endpoint twice.
+            boolean statusTime = Main.sArtworkClockDestination == ArtworkClockDestination.STATUS;
+            FoldMusicLayout.Box fitted = statusTime ? fallback
+                    : LockScreenRailRuntime.aodArtwork(fallback,
+                        ClockCollapse.contentBottomDrawn(), Main.liveMediaTop(), shownAspect());
+            if (!statusTime && ClockCollapse.followsNativeAod()) {
                 // The lit endpoint must be the very same box used after the AOD lease ends.
                 // A separate screen-space fitter at fraction0 otherwise changes the endpoint
                 // when holdGeometry finally releases its parent-zoom compensation.
@@ -1887,11 +1895,13 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
         @Override protected void onDraw(Canvas canvas) {
             CoverBackdrop.Snapshot scene = CoverBackdrop.snapshot();
             boolean retained = CoverBackdrop.retains(ArtworkBackdropState.STILL, scene);
-            boolean foreground = !scene.navigation && scene.surface == CoverBackdrop.SURFACE_FULL_AOD
-                    && fullSceneArtworkVisible();
-            boolean fadingOut = scene.backgroundWanted && !want
+            // Retain the complete submitted composition, including the clear band. Wake
+            // changes the desired renderer before the incoming native fraction reaches it.
+            boolean foreground = scene.fullArtworkWanted
+                    && (scene.surface == CoverBackdrop.SURFACE_FULL_AOD || retained);
+            boolean fadingOut = scene.rendererWanted && !want
                     && scene.desiredRenderer == ArtworkBackdropState.MESH;
-            if ((!scene.backgroundWanted && !foreground) || scene.window != getRootView()
+            if ((!scene.rendererWanted && !foreground) || scene.window != getRootView()
                     || (scene.desiredRenderer != ArtworkBackdropState.STILL
                         && !retained && !foreground && !fadingOut)) {
                 hideNow();
@@ -1930,12 +1940,16 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
                 lastBackdropGeneration = p.generation;
                 // Resource retirement concerns clean draw commands, not the layer's fade alpha.
                 if (!foreground) v.recordPreparedFrame(p, true, 1f, this);
-                CoverBackdrop.drawn(ArtworkBackdropState.STILL, scene, this, p.generation, alpha / 255f);
             }
-            if (foreground) {
-                drawFullSceneArtwork(canvas, bounds, paint, 1f);
+            boolean bandDrawn = foreground && drawFullSceneArtwork(canvas, bounds, paint, 1f);
+            if (bandDrawn) {
+                lastBackdropGeneration = p.generation;
                 recordBackdropFrame(this);
             }
+            if (scene.rendererWanted)
+                CoverBackdrop.drawn(ArtworkBackdropState.STILL, scene, this, p.generation,
+                        alpha / 255f * backdropContribution(), alpha / 255f,
+                        foreground && !bandDrawn ? 0f : 1f);
             canvas.restoreToCount(saved);
         }
     }

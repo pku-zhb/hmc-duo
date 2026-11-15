@@ -1718,7 +1718,7 @@ final class LyricView extends View {
             emph[i] = 0f;
             lit[i] = 0f;
             scale[i] = INACTIVE_SCALE;
-            blur[i] = 0f;
+            blur[i] = blurTarget(i);
         }
     }
 
@@ -1739,6 +1739,8 @@ final class LyricView extends View {
         final int alignOn = LockLyrics.sAlign;
         final LyricStyle style = LockLyrics.sStyle;
         final List<LyricLine> ls = LockLyrics.lines();
+        final int depthBlur = LockLyrics.sDepthBlur;
+        final int position = LockLyrics.positionMs();
         if (!ls.isEmpty() && v == wantVersion && width == wantWidth && transOn == wantTrans
                 && alignOn == wantAlign && style.sameLayout(wantStyle)) return false;
         final float buildTextPx = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP,
@@ -1776,6 +1778,7 @@ final class LyricView extends View {
             public void run() {
                 final Built b = build(v, width, ls, p, bp, tp, rp, op, transOn, alignOn,
                         style, buildTextPx, buildSidePx);
+                prepareLayoutBlur(b, position, depthBlur, p, tp, rp, op, bp);
                 post(new Runnable() {
                     @Override
                     public void run() {
@@ -1791,6 +1794,7 @@ final class LyricView extends View {
                                 || transOn != LockLyrics.below()
                                 || alignOn != LockLyrics.sAlign
                                 || !style.sameLayout(LockLyrics.sStyle)
+                                || b.depthBlur != LockLyrics.sDepthBlur
                                 || !LockLyrics.wantsAttached()) {
                             return;
                         }
@@ -1808,6 +1812,8 @@ final class LyricView extends View {
     private static final class Built {
         boolean faces;
         int version, width, w;
+        int depthBlur, blurPad;
+        Bitmap[][] blurTextures;
         LyricStyle style;
         /** The translation and romanisation switches this layout was made under; see LockLyrics.below(). */
         int transOn;
@@ -1819,6 +1825,41 @@ final class LyricView extends View {
         float[][] charX, charXBg;
         int[][] clusterEnd, clusterEndBg;
         long tookMs;
+    }
+
+    /** Publish a measured row and its initial depth together, never sharp while a worker catches up. */
+    private void prepareLayoutBlur(Built b, int position, int depth, TextPaint p, TextPaint tp,
+                                   TextPaint rp, TextPaint op, TextPaint bp) {
+        long started = SystemClock.uptimeMillis();
+        // StaticLayouts retain their TextPaint. Blur work must never mutate the paints
+        // carried by the just-built sharp layouts.
+        p = new TextPaint(p);
+        tp = new TextPaint(tp);
+        rp = new TextPaint(rp);
+        op = new TextPaint(op);
+        bp = new TextPaint(bp);
+        b.depthBlur = depth;
+        b.blurPad = (int) Math.ceil((BLUR_NEXT_DP + BLUR_DP_PER_ROW * BLUR_MAX_ROWS)
+                * density * 2f * Math.max(1f, depth / 100f));
+        b.blurTextures = new Bitmap[b.lines.size()][BLUR_MAX_ROWS];
+        if (depth == 0 || b.lines.isEmpty()) return;
+        int focus = 0;
+        while (focus + 1 < b.lines.size() && b.lines.get(focus + 1).start <= position) focus++;
+        int onlineMode = LockLyrics.sOnlineTranslateMode;
+        // The visible window plus the renderer's existing lead-in range. One texture per
+        // row is enough to preserve depth until its exact neighbour radius is ready.
+        for (int i = Math.max(0, focus - 6); i <= Math.min(b.lines.size() - 1, focus + 12); i++) {
+            int rows = Math.max(1, Math.min(BLUR_MAX_ROWS,
+                    i > focus ? i - focus : focus - i + 1));
+            int width = b.main[i].getWidth();
+            float radius = LyricDepthBlur.radiusDp(rows, depth) * density;
+            b.blurTextures[i][rows - 1] = makeBlurred(b.lines.get(i), width,
+                    width + 2 * b.blurPad, Math.round(b.height[i]) + 2 * b.blurPad,
+                    b.blurPad, radius, p, tp, rp, op, bp,
+                    TRANS_GAP_DP * density, ONLINE_TRANS_GAP_DP * density, BG_GAP_DP * density,
+                    rows >= BLUR_QUARTER_ROWS ? 4 : 2, b.align, b.transOn, onlineMode);
+        }
+        b.tookMs += SystemClock.uptimeMillis() - started;
     }
 
     /**
@@ -1935,13 +1976,15 @@ final class LyricView extends View {
         return b;
     }
 
-    /** Puts a finished layout in, and starts every line's animated state over. UI thread. */
+    /** Publish text and initial depth atomically; a same-song reflow retains its motion. UI thread. */
     private void apply(Built b) {
         int oldVersion = version;
         // The same lines with translations borrowed after they went up (LyricSource
         // .borrowTranslations): nothing to start over, so the lines carry on where they are.
         boolean reveal = gainsTranslations(lines, b.lines) && b.width == layoutWidth
                 && b.align == builtAlign && focus >= 0 && scroll.length == b.lines.size();
+        boolean reflow = LyricLayoutContinuity.sameTimeline(lines, b.lines)
+                && focus >= 0 && scroll.length == b.lines.size();
         float[] oldBase = base;
         applyPaintStyle(b.style);
         version = b.version;
@@ -1967,7 +2010,11 @@ final class LyricView extends View {
         clusterEnd = b.clusterEnd;
         clusterEndBg = b.clusterEndBg;
         dotsTop = b.dotsTop;
-        blurBmp = new Bitmap[n][BLUR_MAX_ROWS];
+        blurBmp = b.blurTextures != null ? b.blurTextures : new Bitmap[n][BLUR_MAX_ROWS];
+        if (b.blurTextures != null) {
+            builtDepthBlur = b.depthBlur;
+            blurPad = b.blurPad;
+        }
         if (reveal) {
             readingRange(focus, dotsFor);
             revealTranslations(oldBase);
@@ -1975,6 +2022,15 @@ final class LyricView extends View {
             return;
         }
         transRevealAt = 0L;
+        if (reflow) {
+            if (dotsFor >= 0 && Float.isNaN(dotsTop[dotsFor])) setDotsFor(-1);
+            readingRange(focus, dotsFor);
+            float to = dotsFor >= 0 ? dotsTop[dotsFor] : base[readingFirst];
+            LyricLayoutContinuity.rebase(oldBase, base, scroll, aim, nextAim, to);
+            java.util.Arrays.fill(aimAt, now());
+            prewarmBlur();
+            return;
+        }
         scroll = new float[n];
         vel = new float[n];
         aim = new float[n];
@@ -2110,6 +2166,11 @@ final class LyricView extends View {
                 top = bandBounds[0] - me;
                 bottom = bandBounds[1] - me;
                 ok = bottom - top >= MIN_BAND_ROWS * textPx - 0.01f;
+            }
+            if (FoldDateLayout.inner(getWidth(), getHeight(), density)) {
+                top += 12f * density;
+                bottom -= 12f * density;
+                ok &= companion ? bottom > top : bottom - top >= MIN_BAND_ROWS * textPx - .01f;
             }
         }
         boolean changed = ok != bandOk
@@ -2862,6 +2923,8 @@ final class LyricView extends View {
         final int gen = buildGen;
         final LyricLine l = lines.get(i);
         final int alignOn = builtAlign;
+        final int belowMode = builtTrans;
+        final int onlineMode = LockLyrics.sOnlineTranslateMode;
         final int width = main[i].getWidth();
         final int fullW = width + 2 * blurPad, fullH = Math.round(height[i]) + 2 * blurPad;
         final float radius = blurFor(rows);
@@ -2881,7 +2944,7 @@ final class LyricView extends View {
                 // Slider changes can supersede queued work before the worker starts it.
                 if (gen != buildGen) return;
                 final Bitmap b = makeBlurred(l, width, fullW, fullH, pad, radius, p, tp, rp, op, bp,
-                        transGap, onlineTransGap, bgGap, down, alignOn);
+                        transGap, onlineTransGap, bgGap, down, alignOn, belowMode, onlineMode);
                 post(new Runnable() {
                     @Override
                     public void run() {
@@ -2907,7 +2970,7 @@ final class LyricView extends View {
     private static Bitmap makeBlurred(LyricLine l, int width, int fullW, int fullH, int pad,
                                       float radius, TextPaint p, TextPaint tp, TextPaint rp, TextPaint op,
                                       TextPaint bp, float transGap, float onlineTransGap,
-                                      float bgGap, int down, int alignOn) {
+                                      float bgGap, int down, int alignOn, int belowMode, int onlineMode) {
         try {
             Bitmap b = Bitmap.createBitmap(Math.max(1, fullW / down), Math.max(1, fullH / down),
                     Bitmap.Config.ARGB_8888);
@@ -2945,9 +3008,9 @@ final class LyricView extends View {
                 c.restoreToCount(save);
                 below += bgGap + bl.getHeight();
             }
-            int belowMode = LockLyrics.below();
             String localRoma = (belowMode & LockLyrics.BELOW_ROMA) != 0 ? l.renderedRoma() : null;
-            String translation = (belowMode & LockLyrics.BELOW_TRANS) != 0 ? translationFor(l) : null;
+            String translation = (belowMode & LockLyrics.BELOW_TRANS) != 0
+                    ? LyricTranslationLogic.translationFor(l, onlineMode) : null;
             float romaHeight = 0f;
             if (localRoma != null) {
                 rp.setAlpha(Math.round(255f * TRANS_ALPHA));

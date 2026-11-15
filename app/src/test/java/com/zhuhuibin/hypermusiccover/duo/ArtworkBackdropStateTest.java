@@ -366,4 +366,36 @@ public class ArtworkBackdropStateTest {
         handoff.presented(1L, ArtworkBackdropState.STILL, window, 0L, 4, .1f);
         assertEquals(ArtworkBackdropState.STILL, handoff.owner());
     }
+    @Test public void fullWakeCannotRetireTheOldArtworkOnBackgroundCoverageAlone() {
+        ArtworkBackdropState.Handoff handoff = new ArtworkBackdropState.Handoff();
+        Object window = new Object();
+        handoff.select(1L, ArtworkBackdropState.STILL, window, 7L, 3L, 6);
+        handoff.presented(1L, ArtworkBackdropState.STILL, window, 7L, 3L, 6, 1f);
+        handoff.select(2L, ArtworkBackdropState.MESH, window, 7L, 3L, 6);
+        for (int step = 0; step < 100; step++) {
+            float band = step / 100f;
+            float evidence = ArtworkBackdropState.compositionEvidence(1f, 1f, band);
+            if (Float.isFinite(evidence))
+                handoff.presented(2L, ArtworkBackdropState.MESH, window, 7L, 3L, 6, evidence);
+            assertTrue(handoff.retains(ArtworkBackdropState.STILL));
+        }
+        handoff.presented(2L, ArtworkBackdropState.MESH, window, 7L, 3L, 6,
+                ArtworkBackdropState.compositionEvidence(1f, 1f, 1f));
+        assertEquals(ArtworkBackdropState.MESH, handoff.owner());
+    }
+
+    @Test public void reversingBeforeTheNewBandCoversCannotRevokeItsOriginalPresenter() {
+        ArtworkBackdropState.Handoff handoff = new ArtworkBackdropState.Handoff();
+        Object window = new Object();
+        handoff.select(1L, ArtworkBackdropState.STILL, window, 7L, 3L, 6);
+        handoff.presented(1L, ArtworkBackdropState.STILL, window, 7L, 3L, 6, 1f);
+        handoff.select(2L, ArtworkBackdropState.MESH, window, 7L, 3L, 6);
+        handoff.presented(2L, ArtworkBackdropState.MESH, window, 7L, 3L, 6,
+                ArtworkBackdropState.compositionEvidence(.4f, .4f, 1f));
+        handoff.select(3L, ArtworkBackdropState.STILL, window, 7L, 3L, 6);
+        assertEquals(ArtworkBackdropState.STILL, handoff.owner());
+        assertTrue(handoff.local());
+        assertFalse(handoff.presented(2L, ArtworkBackdropState.MESH, window, 7L, 3L, 6, 1f));
+    }
+
 }

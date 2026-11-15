@@ -37,6 +37,12 @@ final class ArtworkBackdropState {
         return Math.min(incoming, coverage);
     }
 
+    /** A FULL composition is ready only when its clear foreground is ready too. */
+    static float compositionEvidence(float incoming, float coverage, float foreground) {
+        if (!Float.isFinite(foreground)) return Float.NaN;
+        return compositionEvidence(incoming * Math.max(0f, Math.min(1f, foreground)), coverage);
+    }
+
     /** Disappearance belongs to the renderer scope, even if it still held an outgoing bitmap. */
     static boolean acceptsEvidence(int desired, int drawn, float alpha) {
         return Float.isFinite(alpha) && (alpha <= .001f || desired >= 0 && drawn == desired);

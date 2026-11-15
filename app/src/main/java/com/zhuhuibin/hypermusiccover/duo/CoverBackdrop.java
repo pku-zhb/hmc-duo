@@ -37,6 +37,7 @@ final class CoverBackdrop {
         final View window;
         final boolean navigation, cover, playerChosen, lyricsRequested, notificationCompact;
         final boolean combinedRequested, pageClockRequested, foregroundReady, hidden, backgroundWanted, fullComposition;
+        final boolean fullArtworkWanted, rendererWanted;
         final boolean locked, goingAway, onKeyguard, awake, compact, lyrics, wantsLyrics;
         final float bias;
 
@@ -78,7 +79,15 @@ final class CoverBackdrop {
             fullComposition = CoverCardLayer.fullScene();
             backgroundWanted = cover && !hidden && !navigation && generation >= 0
                     && (surface == SURFACE_LIT || surface == SURFACE_FULL_AOD);
-            desiredRenderer = !backgroundWanted ? ArtworkBackdropState.NATIVE
+            // The clear FULL band is foreground content even when the user chooses the
+            // native wallpaper. Its renderer lease must survive the same AOD handoff as fill.
+            fullArtworkWanted = fullComposition && !navigation && CoverFullScenePolicy.sharpBand(
+                    (cover || LockHold.exitingFor(LockHold.Owner.COVER)
+                        && ClockCollapse.phase() == ClockCollapse.Phase.EXIT)
+                    && (surface == SURFACE_LIT || surface == SURFACE_FULL_AOD),
+                    LockLyrics.userWantsCompactArtwork());
+            rendererWanted = backgroundWanted || fullArtworkWanted;
+            desiredRenderer = !rendererWanted ? ArtworkBackdropState.NATIVE
                     : surface == SURFACE_LIT ? ArtworkBackdropState.MESH : ArtworkBackdropState.STILL;
             blur = Main.sFullBlur;
             dim = Main.sWallpaperDim;
@@ -95,7 +104,8 @@ final class CoverBackdrop {
                     && combinedRequested == s.combinedRequested && hidden == s.hidden
                     && foregroundReady == s.foregroundReady
                     && compact == s.compact && lyrics == s.lyrics && wantsLyrics == s.wantsLyrics
-                    && fullComposition == s.fullComposition && locked == s.locked
+                    && fullComposition == s.fullComposition && fullArtworkWanted == s.fullArtworkWanted
+                    && rendererWanted == s.rendererWanted && locked == s.locked
                     && goingAway == s.goingAway && onKeyguard == s.onKeyguard && awake == s.awake
                     && clockDestination == s.clockDestination
                     && blur == s.blur && dim == s.dim && Float.compare(bias, s.bias) == 0;
@@ -131,7 +141,13 @@ final class CoverBackdrop {
 
     static void drawn(int renderer, Snapshot scene, View view, int generation,
                       float compositionAlpha, float rendererAlpha) {
-        float alpha = ArtworkBackdropState.compositionEvidence(compositionAlpha, rendererAlpha);
+        drawn(renderer, scene, view, generation, compositionAlpha, rendererAlpha, 1f);
+    }
+
+    static void drawn(int renderer, Snapshot scene, View view, int generation,
+                      float compositionAlpha, float rendererAlpha, float foregroundAlpha) {
+        float alpha = ArtworkBackdropState.compositionEvidence(compositionAlpha, rendererAlpha,
+                foregroundAlpha);
         if (!Float.isFinite(alpha)) {
             // The outgoing pixels are still visible, but the new composition contributed
             // nothing. It cannot acknowledge or revoke the outgoing display list.
@@ -169,7 +185,7 @@ final class CoverBackdrop {
     }
 
     static boolean retains(int renderer, Snapshot scene) {
-        return scene.backgroundWanted && handoff.matches(scene.epoch, scene.window,
+        return scene.rendererWanted && handoff.matches(scene.epoch, scene.window,
                 scene.sourceIdentity, scene.geometryRevision, scene.generation) && handoff.retains(renderer);
     }
 
