@@ -14,6 +14,8 @@ final class FoldMusicRuntime {
     private static ViewTreeObserver observer;
     private static ViewTreeObserver.OnPreDrawListener listener;
     private static volatile FoldMusicLayout.Columns columns;
+    private static View motionOwner;
+    private static FoldMusicLayout.Columns motionColumns;
     private static String reason = "not attached";
     private static boolean combinedChosen;
     private static final Matrix toScreen = new Matrix(), fromScreen = new Matrix();
@@ -26,8 +28,14 @@ final class FoldMusicRuntime {
     private static final LyricFrameReadiness lyricFrame = new LyricFrameReadiness();
 
     static boolean sideBySide() {
-        return columns != null && columnsRevision == Main.screenGeometry().revision && combinedRequested()
+        return motionPlanCurrent() && combinedRequested()
                 && unifiedSceneVisible();
+    }
+
+    private static boolean motionPlanCurrent() {
+        return columns != null && motionColumns != null && root != null && motionOwner != null
+                && motionOwner == NativeContentMotion.owner(root)
+                && columnsRevision == Main.screenGeometry().revision;
     }
 
     /** Keep one column plan while the native doze callback crosses the screen-power edge. */
@@ -144,12 +152,12 @@ final class FoldMusicRuntime {
             lyricFrame.reset();
             publish(null);
         }
-        if (columns != null && columnsRevision != Main.screenGeometry().revision) publish(null);
+        if (columns != null && !motionPlanCurrent()) publish(null);
         // The held-clock latch outlives wake. Retain the old native height only through
         // actual AOD/motion, then fit the common plan to the current measured header.
         if (columns != null && combinedRequested() && FoldMusicLayout.retainColumns(
                 Main.screenOnCached(), MiniPlayerScene.INSTANCE.getFullScreenAodActive(),
-                ClockCollapse.aodTransitioning())
+                ClockCollapse.aodTransitioning() || LockScreenRailRuntime.holdGeometry())
                 && Main.keyguardLocked() && !Main.bouncerShown()
                 && !MiniPlayerScene.INSTANCE.getKeyguardGoingAway()) return;
         // Keep the outgoing artwork/lyric plan until the native header leaves the screen.
@@ -220,6 +228,11 @@ final class FoldMusicRuntime {
         boolean modeChanged = (columns == null) != (next == null);
         columns = next;
         columnsRevision = next == null ? -1 : Main.screenGeometry().revision;
+        motionOwner = next == null ? null : NativeContentMotion.owner(root);
+        motionColumns = next == null || motionOwner == null ? null : new FoldMusicLayout.Columns(
+                NativeContentMotion.logicalPlan(root, motionOwner, next.artworkRoom),
+                NativeContentMotion.logicalPlan(root, motionOwner, next.player),
+                NativeContentMotion.logicalPlan(root, motionOwner, next.lyrics));
         if (modeChanged) Main.refreshCoverGeometry();
     }
 
@@ -238,30 +251,34 @@ final class FoldMusicRuntime {
     }
 
     static CoverCardStyle.Rect artwork(View target, float aspect) {
-        FoldMusicLayout.Columns c = columns;
-        if (!sideBySide() || c == null || !map(root, target, c.artworkRoom, scratch)) return null;
-        return FoldMusicLayout.artwork(new FoldMusicLayout.Box(
-                scratch.left, scratch.top, scratch.right, scratch.bottom), aspect,
+        FoldMusicLayout.Columns c = motionColumns;
+        if (!sideBySide() || c == null) return null;
+        // Fit once in the common logical room, then present the resulting pose through the
+        // native content affine. Fitting an inverse-mapped physical room cancelled AOD motion.
+        CoverCardStyle.Rect logical = FoldMusicLayout.artwork(c.artworkRoom, aspect,
                 target.getResources().getDisplayMetrics().density);
+        if (logical == null || !NativeContentMotion.map(motionOwner, target,
+                new FoldMusicLayout.Box(logical.x, logical.y,
+                    logical.x + logical.side, logical.y + logical.side), scratch)) return null;
+        return new CoverCardStyle.Rect(scratch.left, scratch.top, scratch.width());
     }
 
     static boolean lyrics(View target, RectF result) {
-        FoldMusicLayout.Columns c = columns;
-        return sideBySide() && c != null && map(root, target, c.lyrics, result);
+        FoldMusicLayout.Columns c = motionColumns;
+        return sideBySide() && c != null && NativeContentMotion.map(motionOwner, target, c.lyrics, result);
     }
 
     /** Text topology follows the shared plan even across a temporary display-power edge. */
     static View logicalLyrics(RectF result) {
-        FoldMusicLayout.Columns c = columns;
-        if (!combinedRequested() || c == null || root == null || !root.isAttachedToWindow()
-                || columnsRevision != Main.screenGeometry().revision) return null;
+        FoldMusicLayout.Columns c = motionColumns;
+        if (!combinedRequested() || !motionPlanCurrent() || !root.isAttachedToWindow()) return null;
         result.set(c.lyrics.left, c.lyrics.top, c.lyrics.right, c.lyrics.bottom);
-        return root;
+        return motionOwner;
     }
 
     static boolean lyricFramePending() {
         if (!combinedRequested()) return false;
-        if (columns != null && columnsRevision == Main.screenGeometry().revision) return false;
+        if (columns != null) return !motionPlanCurrent();
         return root == null || !root.isAttachedToWindow()
                 || lyricFrame.pending(Main.screenGeometry().revision, root.getWidth(), root.getHeight());
     }
