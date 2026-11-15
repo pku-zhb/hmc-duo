@@ -819,6 +819,10 @@ object MiniPlayerRuntime {
         aodDimHandler.postDelayed(aodDimSettle, AOD_DIM_SETTLE_MS)
     }
 
+    /** A bound controller dispatches completion for animated transitions and native resets. */
+    @JvmStatic
+    fun nativeAodCompletionAvailable(): Boolean = aodController?.get() != null
+
     /** Native lifecycle intent, queried only on an explicit doze/display event. */
     @JvmStatic
     fun aodTransitionPlanned(): Boolean {

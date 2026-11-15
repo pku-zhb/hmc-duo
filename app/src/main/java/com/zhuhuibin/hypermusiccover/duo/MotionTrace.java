@@ -66,13 +66,13 @@ final class MotionTrace {
         for (int i = 0; i < IDS.length; i++) {
             sb.append(' ').append(i).append('=').append(IDS[i]).append(views[i] == null ? "(none)" : "");
         }
-        sb.append('\n');
+        sb.append(" startUptimeMs=").append(android.os.SystemClock.uptimeMillis()).append('\n');
         Choreographer.getInstance().postFrameCallback(new Choreographer.FrameCallback() {
             @Override
             public void doFrame(long frameTimeNanos) {
                 long ms = (System.nanoTime() - t0) / 1000000L;
                 sb.append("t=").append(ms).append(ClockCollapse.traceLine())
-                        .append(CoverCardLayer.traceLine()).append(" nativeAod[")
+                        .append(CoverCardLayer.traceLine()).append(CoverBackdrop.traceLine()).append(" nativeAod[")
                         .append(AodTransitionRuntime.describe()).append(']');
                 for (int i = 0; i < views.length; i++) {
                     View v = views[i];

@@ -246,6 +246,30 @@ final class CoverBackdrop {
         return state;
     }
 
+    /** Existing opt-in motion traces read the last published scene without selecting a new one. */
+    static String traceLine() {
+        Snapshot scene = published;
+        return scene == null ? " bg=none" : " bg[e=" + scene.epoch + " surface=" + scene.surface
+                + " renderer=" + scene.desiredRenderer + " owner=" + handoff.owner()
+                + " src=" + scene.sourceIdentity + "/" + handoff.ownerSource()
+                + " gen=" + scene.generation + "/" + handoff.generation()
+                + " ownerEpoch=" + handoff.ownerEpoch() + " awake=" + scene.awake
+                + " onKeyguard=" + scene.onKeyguard + " wanted=" + scene.backgroundWanted
+                + "/" + scene.fullArtworkWanted + " window="
+                + (scene.window == null ? "none" : Integer.toHexString(System.identityHashCode(scene.window)))
+                + "]" + VideoBackdropMesh.traceLine() + CoverCardLayer.backdropTraceLine();
+    }
+
+    static String presenterAlpha(View view) {
+        if (view == null) return "none";
+        float alpha = 1f;
+        for (View current = view; current != null;
+                current = current.getParent() instanceof View ? (View) current.getParent() : null)
+            alpha *= current.getAlpha() * current.getTransitionAlpha();
+        return view.getVisibility() + "/" + view.isAttachedToWindow() + "/" + view.isShown()
+                + "/" + Main.r3(alpha);
+    }
+
     static boolean hidden() {
         // The artwork worker must use the same normalized decision without walking Views.
         Snapshot scene = Looper.myLooper() == Looper.getMainLooper() ? snapshot() : published;
