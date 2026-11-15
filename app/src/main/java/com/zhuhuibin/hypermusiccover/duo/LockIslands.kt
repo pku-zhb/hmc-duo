@@ -328,6 +328,7 @@ internal object LockIslands {
 
     fun setSpread(on: Boolean) {
         if (spreading == on) return
+        if (on) Main.leaveMusicSceneForCard()
         spreading = on
         if (on) beginNotificationListArtwork()
         NumState.trace("spread=$on")
@@ -511,6 +512,7 @@ internal object LockIslands {
 
     /** A tapped island goes back into the stack, for the rest of this lock screen. */
     fun release(key: String) { android.os.Trace.beginSection("MC li.release"); try {
+        Main.leaveMusicSceneForCard()
         if (key == STACK_KEY && nativeStack) {
             openStack("released")
             return
@@ -533,6 +535,14 @@ internal object LockIslands {
                 .onFailure { Xp.log("MCIsland: ${opened.id()} not opened: $it") }
         }
     } finally { android.os.Trace.endSection() } }
+
+    /** The native player may remain open; every notification and immersive live page folds. */
+    fun collapseForMusicScene() {
+        for (key in (releasedKeys() + listOfNotNull(sceneKey)).distinct()) recapture(key)
+        if (spreading) setSpread(false)
+        if (nativeStack) NumState.collapseForMusicScene()
+        else recapture(STACK_KEY)
+    }
 
     /** A notification put back in the stack comes back into the row: collapsed into it. */
     fun recapture(key: String) { android.os.Trace.beginSection("MC li.recapture"); try {
@@ -562,6 +572,7 @@ internal object LockIslands {
      * with the pill showing a notification whose rows are already coming out under it.
      */
     fun openStack(why: String, scroll: Boolean = true) {
+        Main.leaveMusicSceneForCard()
         // Not scrolled (no model to ask): the island stays, or nothing would be left to tap.
         // [scroll] false: a finger scrolls it (the spread pulled open) - only the island goes.
         if (scroll) beginNotificationListArtwork()

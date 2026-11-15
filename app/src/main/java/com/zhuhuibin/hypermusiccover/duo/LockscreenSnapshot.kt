@@ -14,6 +14,11 @@ internal data class LockscreenSnapshot(
     fun collapseFocus(key: String): Boolean = if (key in focusKnown) key !in focusExpanded
         else collapsed and MiniPlayerConfig.COLLAPSE_LIVE != 0
 
+    fun exclusiveMusicScene(): LockscreenSnapshot =
+        if (MusicSceneEntryPolicy.ownsScene(collapsed, musicView)) copy(
+            collapsed = MusicSceneEntryPolicy.collapsedCategories(collapsed, musicView),
+            focusExpanded = emptySet()) else this
+
     fun encode(): String = JSONObject().put("collapsed", collapsed).put("musicView", musicView)
         .put("musicPageSchema", 1)
         .put("focusKnown", JSONArray(focusKnown.sorted())).put("focusExpanded", JSONArray(focusExpanded.sorted()))

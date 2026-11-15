@@ -312,8 +312,7 @@ public class Main extends XposedModule {
 
     /** The full-bleed album cover we add behind the clock. */
     static volatile ImageView sCover;
-    /** Survives keyguard rebuilds: re-attach whenever a fresh clock container shows up. */
-    private static volatile boolean sCoverWanted;
+    private static final MusicSceneTransition sMusicScene = new MusicSceneTransition();
     /**
      * While true, the wallpaper's subject cut-out stays hidden. HyperOS composites it in
      * SystemUI (KeyguardDepthInteractor -> deducted_image_view) on top of the hour clock, so
@@ -1133,12 +1132,6 @@ public class Main extends XposedModule {
                     LyriconSource.attach(sContainer.getContext().getApplicationContext());
                 } catch (Throwable t) {
                     Xp.w(TAG + "Lyricon attach failed: " + t);
-                }
-                // The keyguard is rebuilt on some transitions, taking our cover with it, so
-                // re-attach rather than assume the view is still in the tree.
-                if (sCoverWanted) {
-                    sCover = null;
-                    attachCover();
                 }
                 // The video path's cover is a view, so a keyguard rebuild takes it - and the
                 // wallpaper it was covering is hidden, so losing it without putting it back
@@ -2437,13 +2430,12 @@ public class Main extends XposedModule {
         }
         Xp.log(TAG + "state restored: cover=" + cover + " bias=" + sBias);
         if (cover) {
-            enterCoverMode(false);
             // The composed cover the shade reveals does not survive a restart, and the wallpaper
             // process has no reason to ask for art again - it kept its own texture on disk and
             // believes it already has one. Without this the lock screen comes back correct and
             // the shade stays empty until the next track change. Non-fresh, so it is not
             // suppressed for being the same artwork as last time.
-            CoverPush.pushArtAsync(true, false);
+            setCoverEnabled(true, false, false);
         }
         // Always follow the card, whatever the file said.
         setAuto(true);
@@ -3298,20 +3290,10 @@ public class Main extends XposedModule {
                             }
                         });
                     } else if ("cover".equals(op)) {
-                        if (i.getBooleanExtra("on", true)) {
-                            sCoverWanted = true;
-                            attachCover();
-                        } else {
-                            // Through setCoverEnabled, exactly like a tap, and NOT detachCover()
-                            // directly. detachCover() only takes our own keyguard view away; the
-                            // cover itself is a texture in the wallpaper process, and handing
-                            // that back is pushArtAsync(false) inside setCoverEnabled. Calling
-                            // the short one leaves the album art on the lock screen for good -
-                            // seen on device, after a measurement session that toggled cover mode
-                            // with this probe and then could not get the wallpaper back.
-                            sCoverWanted = false;
-                            setCoverEnabled(false, false, false);
-                        }
+                        // Retired: this diagnostic bypassed scene ownership and installed a raw
+                        // ImageView in the shared keyguard/shade background. Page selection belongs
+                        // to the guarded native player and capsule controls.
+                        Xp.log(TAG + "cover probe retired; select a music page through its native controls");
 
                     } else if ("callclock".equals(op)) {
                         callOnClockViews(i.getStringExtra("m"), i.getStringExtra("kind"),
@@ -7628,6 +7610,7 @@ public class Main extends XposedModule {
             return;
         }
         if (!miniPlayerCanShow()) return;
+        MiniPlayerRuntime.finishEntryMusicChoice();
         // Taken before the entry moves anything: the lyrics grow out of the island as it is now.
         LockLyrics.notePopOrigin(MiniPlayerRuntime.detachedRail()
                 ? null : MiniPlayerRuntime.musicIslandCentreOnScreen());
@@ -7645,19 +7628,32 @@ public class Main extends XposedModule {
         FoldMusicRuntime.selectPage(view);
         if (view < MiniPlayerConfig.VIEW_ARTWORK) {
             sTapSuppressed = true;
-            if (sCoverMode) setCoverEnabled(false, false, false);
+            if (sCoverMode || sMusicScene.wanted()) setCoverEnabled(false, false, false);
             LockLyrics.setPlayerChosen(view == MiniPlayerConfig.VIEW_PLAYER);
         } else {
             sTapSuppressed = false;
             LockLyrics.selectStartupPage(RailMusicPagePolicy.showsLyrics(view), sTrackKey, sWatched);
-            if (!sCoverMode) setCoverEnabled(true, false, false);
-            else refreshCoverGeometry();
+            setCoverEnabled(true, false, false);
         }
+    }
+
+    /** A normal notification or live card owns the next scene, including a queued music entry. */
+    static void leaveMusicSceneForCard() {
+        sTapSuppressed = true;
+        MiniPlayerRuntime.cancelMusicExpansion();
+        MiniPlayerRuntime.forgetRestoreScene();
+        MiniPlayerRuntime.finishEntryMusicChoice();
+        if (!sMusicScene.wanted() && !sCoverMode) return;
+        FoldMusicRuntime.selectPage(MiniPlayerConfig.VIEW_PLAYER);
+        LockLyrics.selectPage(false, sTrackKey, sWatched);
+        CoverMorphLayer.cancel();
+        setCoverEnabled(false, true, false);
+        CoverBackdrop.sync(false);
     }
 
     /** An island opened from the cover: the cover goes, its card coming down into the row. */
     static void miniPlayerLeaveCover() {
-        if (!sCoverMode) return;
+        if (!sCoverMode && !sMusicScene.wanted()) return;
         // Left the way a swipe down leaves it, and remembered the same way: the exit below holds
         // the cover off (sTapSuppressed) so a track change does not put it back over the page,
         // and without this the swipe up on the pill went to the plain card - the card up, the
@@ -7682,7 +7678,7 @@ public class Main extends XposedModule {
             if (!sAuto) setCoverEnabled(true, true, false);
             else enterFromTap("mini player pulled back up");
         } else {
-            if (!sCoverMode) return;
+            if (!sCoverMode && !sMusicScene.wanted()) return;
             LockLyrics.notePopTarget(MiniPlayerRuntime.musicIslandHomeOnScreen());
             exitFromTap("mini player pulled back down");
         }
@@ -10368,51 +10364,6 @@ public class Main extends XposedModule {
         return id == 0 ? null : v.getRootView().findViewById(id);
     }
 
-    /** Adds the cover into keyguard_background_layer, which sits behind the whole clock stack. */
-    private static void attachCover() {
-        final View v = sContainer;
-        if (v == null) {
-            Xp.log(TAG + "no clock container");
-            return;
-        }
-        v.post(new Runnable() {
-            @Override
-            public void run() {
-                try {
-                    Context ctx = v.getContext();
-                    int id = ctx.getResources().getIdentifier(
-                            "keyguard_background_layer", "id", "com.android.systemui");
-                    View layer = id == 0 ? null : v.getRootView().findViewById(id);
-                    if (!(layer instanceof ViewGroup)) {
-                        Xp.log(TAG + "keyguard_background_layer not found");
-                        return;
-                    }
-                    Bitmap art = albumArt(ctx);
-                    if (art == null) {
-                        Xp.log(TAG + "no album art available");
-                        return;
-                    }
-                    ImageView iv = sCover;
-                    if (iv == null || iv.getParent() != layer) {
-                        detachCover();
-                        iv = new ImageView(ctx);
-                        iv.setScaleType(ImageView.ScaleType.CENTER_CROP);
-                        ((ViewGroup) layer).addView(iv, new ViewGroup.LayoutParams(
-                                ViewGroup.LayoutParams.MATCH_PARENT,
-                                ViewGroup.LayoutParams.MATCH_PARENT));
-                        sCover = iv;
-                    }
-                    iv.setImageBitmap(art);
-                    rebindSession();
-                    Xp.log(TAG + "cover attached, layer "
-                            + layer.getWidth() + "x" + layer.getHeight());
-                } catch (Throwable t) {
-                    Xp.w(TAG + "attachCover failed: " + Log.getStackTraceString(t));
-                }
-            }
-        });
-    }
-
     /**
      * Turns the automatic mode on or off. On, cover mode is a consequence of what is playing;
      * off, it stays exactly where a pushart broadcast left it.
@@ -10559,7 +10510,7 @@ public class Main extends XposedModule {
             // Positive native-resume evidence needs no removal grace: its resumeAction belongs
             // to SystemUI, and a different live paused session must not adopt this card.
             sCardPresent = sCardShowing = false;
-            if (sCoverMode) setCoverEnabled(false, screenOnCached(), false);
+            if (sCoverMode || sMusicScene.wanted()) setCoverEnabled(false, screenOnCached(), false);
             MiniPlayerRuntime.mediaCardRemoved();
             applyMediaCard();
             applyCardState();
@@ -10637,7 +10588,7 @@ public class Main extends XposedModule {
                     Xp.log(TAG + "no session left: the tapped-away cover is forgotten");
                 }
             }
-            if (sCoverMode) {
+            if (sCoverMode || sMusicScene.wanted()) {
                 Xp.log(TAG + "media card dismissed, leaving cover mode");
                 setCoverEnabled(false, true);
             }
@@ -10664,7 +10615,7 @@ public class Main extends XposedModule {
      * alone: a list that could not be read, and a non-empty one - the ordinary wait.
      */
     private static void releaseUnobservedCover(List<MediaController> sessions) {
-        if (sCardKnown || !sCoverMode || sessions == null || !sessions.isEmpty()) return;
+        if (sCardKnown || !sCoverMode && !sMusicScene.wanted() || sessions == null || !sessions.isEmpty()) return;
         Xp.log(TAG + "cover restored with no media session at all - leaving cover mode");
         sTrackKey = "";
         sTapSuppressed = false;
@@ -10915,7 +10866,6 @@ public class Main extends XposedModule {
                         // last callback of a skip was the one that says where it ended up.
                         MediaController w = sWatched;
                         if (w != null) updateCoverCardPlayback(w.getPlaybackState());
-                        if (sCoverWanted) attachCover();
                         onMediaUpdate();
                         CoverPush.watchMetadataArtwork();
                     }
@@ -11217,16 +11167,24 @@ public class Main extends XposedModule {
      */
     private static void setCoverEnabled(final boolean on, final boolean animate,
                                         final boolean fresh) {
-        CoverPush.pushArtAsync(on, on && fresh);
+        final long request = sMusicScene.request(on);
         Runnable r = new Runnable() {
             @Override
             public void run() {
-                // Only where it can be seen: entered from an unlocked phone, the walk never ran,
-                // and the AOD that followed froze its first frame - small artwork over the player
-                // until the wake (filmed 2026-10-22). Off the lock screen it is put in place.
-                boolean seen = animate && screenOn() && onKeyguardNow();
-                if (on) enterCoverMode(seen);
-                else exitCoverMode(seen);
+                sMusicScene.apply(request, new MusicSceneTransition.Target() {
+                    @Override public void collapseNonMusic() {
+                        MiniPlayerRuntime.prepareMusicScene();
+                    }
+                    @Override public void commit(boolean musicScene) {
+                        CoverPush.pushArtAsync(musicScene, musicScene && fresh);
+                        // Only where it can be seen: off the lock screen the pose is settled
+                        // without starting a spring that has no display frames to finish it.
+                        boolean seen = animate && screenOn() && onKeyguardNow();
+                        if (!musicScene) exitCoverMode(seen);
+                        else if (!sCoverMode) enterCoverMode(seen);
+                        else refreshCoverGeometry();
+                    }
+                });
             }
         };
         if (Looper.myLooper() == Looper.getMainLooper()) r.run();
@@ -11601,9 +11559,9 @@ public class Main extends XposedModule {
         // A pending lyric lookup must not turn the first click into a no-op. The selected
         // page waits for its content, and the next click can still return to the native clock.
         if (lyrics && !LockLyrics.sEnabled) return;
+        MiniPlayerRuntime.cancelMusicExpansion();
+        MiniPlayerRuntime.finishEntryMusicChoice();
         boolean wasCompact = LockLyrics.wantsCompactArtwork();
-        boolean wasFullComposition = CoverCardLayer.fullScene();
-        boolean wasCombined = FoldMusicRuntime.combinedRequested();
         FoldMusicRuntime.selectPage(page);
         boolean compact = lyrics && !(page == RailMusicPagePolicy.ARTWORK_AND_LYRICS
                 && FoldMusicRuntime.supportsCombinedPage());
@@ -11613,7 +11571,7 @@ public class Main extends XposedModule {
             LockLyrics.setPlayerChosen(true);
             CoverMorphLayer.cancel();
             sTapSuppressed = true;
-            if (sCoverMode) setCoverEnabled(false, true, false);
+            if (sCoverMode || sMusicScene.wanted()) setCoverEnabled(false, true, false);
             LockLyrics.refresh();
         } else {
             if (sCoverMode && wasCompact != compact) beginCompactArtworkMorph(!compact);
@@ -11622,10 +11580,7 @@ public class Main extends XposedModule {
             if (key.isEmpty()) key = sTrackKey;
             LockLyrics.selectPage(lyrics, key, sWatched);
             sTapSuppressed = false;
-            if (!sCoverMode) setCoverEnabled(true, true, false);
-            else if (wasFullComposition != CoverCardLayer.fullScene()
-                    || wasCombined != FoldMusicRuntime.combinedRequested()) refreshCoverGeometry();
-            else CoverCardLayer.refresh();
+            setCoverEnabled(true, true, false);
         }
         CoverBackdrop.sync(false);
         applyMediaCard();

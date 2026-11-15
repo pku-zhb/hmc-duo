@@ -14,6 +14,9 @@ final class RailMusicPagePolicy {
     static boolean showsLyrics(int page) {
         return page == LYRICS || page == ARTWORK_AND_LYRICS;
     }
+    static boolean ownsScene(int page) {
+        return page == ARTWORK || showsLyrics(page);
+    }
     /** The player's button cycles pages; tapping the expanded artwork dismisses its whole scene. */
     static int afterTap(int current, boolean expandedArtwork, boolean lyricsEnabled,
                         boolean combinedAvailable) {

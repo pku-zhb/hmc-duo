@@ -66,8 +66,11 @@ internal object NumState {
             nativeGesture.begin(event.rawX, event.rawY, position(), slop.toFloat(), state(), collapseVisualProgress())
         } else if (action == android.view.MotionEvent.ACTION_MOVE || action == android.view.MotionEvent.ACTION_UP) {
             if (nativeGesture.needsNativeEvidence(event.rawX, event.rawY) &&
-                nativeGesture.moved(event.rawX, event.rawY, position(), state(), collapseVisualProgress()))
+                nativeGesture.moved(event.rawX, event.rawY, position(), state(), collapseVisualProgress())) {
                 exposure.interacted()
+                if (LockIslands.foldsToCount() && MiniPlayerRuntime.notificationRowsVisible())
+                    Main.leaveMusicSceneForCard()
+            }
         }
         if (action == android.view.MotionEvent.ACTION_UP || action == android.view.MotionEvent.ACTION_CANCEL) {
             if (action == android.view.MotionEvent.ACTION_UP) nativeGesture.finish(event.rawX, event.rawY)
@@ -168,6 +171,7 @@ internal object NumState {
 
     /** Native AOD geometry callbacks must not call this: only explicit presentation actions do. */
     fun choosePresentation(collapsed: Boolean) {
+        if (!collapsed) Main.leaveMusicSceneForCard()
         // A native HANDS_UP can reverse an in-flight island opening without calling goTo.
         // Its latest collapse choice must cancel LIST retargets and stale gesture evidence.
         if (collapsed) {
@@ -179,6 +183,12 @@ internal object NumState {
         if (!collapsed) main.removeCallbacks(foldCheck)
         if (changed || folding && !forcedDefault) forceDefault(folding)
         if (changed) LockIslands.refreshPresentation()
+    }
+
+    /** Save the folded intent even before the native stack's model or view has appeared. */
+    fun collapseForMusicScene() {
+        choosePresentation(true)
+        goTo("NUMBER", anim = false, why = "music scene selected")
     }
 
     /** The islands fold the ordinary notifications this way (LockIslands.setActive turns it on). */
@@ -621,6 +631,7 @@ internal object NumState {
             openingVisualComplete = false
         }
         val y = scrollFor(model, state)
+        if (state == "LIST") Main.leaveMusicSceneForCard()
         val refactor = Xp.callMethod(Xp.getObjectField(model, "notifContainerRefactor"), "get")
         val scroller = Xp.callMethod(refactor, "getOverScroller")
         val cur = (Xp.callMethod(refactor, "getOwnScrollY") as Number).toInt()
