@@ -23,6 +23,7 @@ public class MusicSceneTransitionTest {
             artwork = scene;
             events.add(scene ? "music" : "cards");
         }
+        @Override public void pushArtwork(boolean scene) { assertEquals(scene, artwork); }
     }
 
     @Test public void everyArtworkAndLyricPageCollapsesOtherCardsBeforeItsBackgroundCanCommit() {
@@ -75,6 +76,7 @@ public class MusicSceneTransitionTest {
                 cardRequest[0] = scenes.request(false);
             }
             @Override public void commit(boolean scene) { fail("superseded scene committed"); }
+            @Override public void pushArtwork(boolean scene) { fail("superseded artwork dispatched"); }
         });
         assertEquals(Arrays.asList("collapse"), cards.events);
         scenes.apply(cardRequest[0], cards);
@@ -92,5 +94,103 @@ public class MusicSceneTransitionTest {
         assertEquals(Arrays.asList("cards"), cards.events);
         assertFalse(cards.artwork);
         assertTrue(cards.notifications);
+    }
+
+    private static final class ArtworkScene implements MusicSceneTransition.Target {
+        static final String CARD = "com.netease.cloudmusic|天下|张杰";
+        static final String SESSION = CARD + "|明天过后";
+        final List<Runnable> worker = new ArrayList<>();
+        final List<Boolean> dispatched = new ArrayList<>();
+        String track = "";
+        boolean mode, published, immediateWorker;
+        int artworkGeneration;
+        Runnable duringCommit;
+        @Override public void collapseNonMusic() { }
+        @Override public void commit(boolean scene) {
+            track = scene ? ArtworkTrackIdentity.entryKey(CARD, SESSION) : "";
+            mode = scene;
+            Runnable action = duringCommit;
+            duringCommit = null;
+            if (action != null) action.run();
+        }
+        @Override public void pushArtwork(boolean scene) {
+            // The worker can start as soon as dispatch happens, before the main call returns.
+            assertEquals(scene, mode);
+            if (scene) assertEquals(SESSION, track);
+            dispatched.add(scene);
+            int generation = ++artworkGeneration;
+            String requestedTrack = track;
+            Runnable job = () -> {
+                boolean confirmedTrack = !scene
+                        || !requestedTrack.isEmpty() && requestedTrack.equals(track);
+                if (!ArtworkPredictionPolicy.canPublish(generation, artworkGeneration,
+                        confirmedTrack, false, false)) return;
+                if (scene) {
+                    assertTrue(mode);
+                    assertEquals(requestedTrack, track);
+                    assertFalse(track.isEmpty());
+                }
+                published = scene;
+            };
+            if (immediateWorker) job.run();
+            else worker.add(job);
+        }
+    }
+
+    @Test public void firstExplicitArtworkAfterOffPublishesIdentityAndModeBeforeAnImmediateWorker() {
+        MusicSceneTransition scenes = new MusicSceneTransition();
+        ArtworkScene target = new ArtworkScene();
+        target.immediateWorker = true;
+        scenes.apply(scenes.request(false), target);
+        assertEquals("", target.track);
+        scenes.apply(scenes.request(true), target);
+        assertEquals(ArtworkScene.SESSION, target.track);
+        assertTrue(target.mode);
+        assertTrue(target.published);
+        assertEquals(Arrays.asList(false, true), target.dispatched);
+    }
+
+    @Test public void aNewExitDuringModeCommitPreventsTheOlderArtworkDispatch() {
+        MusicSceneTransition scenes = new MusicSceneTransition();
+        ArtworkScene target = new ArtworkScene();
+        long[] exit = {-1L};
+        target.duringCommit = () -> exit[0] = scenes.request(false);
+        scenes.apply(scenes.request(true), target);
+        assertTrue(target.dispatched.isEmpty());
+        scenes.apply(exit[0], target);
+        assertEquals(Arrays.asList(false), target.dispatched);
+        assertFalse(target.mode);
+    }
+
+    @Test public void aReentrantEntryCancelsTheOuterExitBeforeItCanEnqueueArtworkRemoval() {
+        MusicSceneTransition scenes = new MusicSceneTransition();
+        ArtworkScene target = new ArtworkScene();
+        target.duringCommit = () -> scenes.apply(scenes.request(true), target);
+        scenes.apply(scenes.request(false), target);
+        assertEquals(Arrays.asList(true), target.dispatched);
+        assertTrue(target.mode);
+        assertEquals(ArtworkScene.SESSION, target.track);
+    }
+
+    @Test public void queuedOffThenOnKeepsTheLatestArtworkAndItsIdentity() {
+        MusicSceneTransition scenes = new MusicSceneTransition();
+        ArtworkScene target = new ArtworkScene();
+        scenes.apply(scenes.request(false), target);
+        scenes.apply(scenes.request(true), target);
+        for (Runnable work : target.worker) work.run();
+        assertTrue(target.published);
+        assertTrue(target.mode);
+        assertEquals(ArtworkScene.SESSION, target.track);
+    }
+
+    @Test public void queuedOnThenOffCannotPublishArtworkIntoTheClosedScene() {
+        MusicSceneTransition scenes = new MusicSceneTransition();
+        ArtworkScene target = new ArtworkScene();
+        scenes.apply(scenes.request(true), target);
+        scenes.apply(scenes.request(false), target);
+        for (Runnable work : target.worker) work.run();
+        assertFalse(target.published);
+        assertFalse(target.mode);
+        assertEquals("", target.track);
     }
 }

@@ -11098,6 +11098,20 @@ public class Main extends XposedModule {
         return c == null ? "" : metadataTrackKey(c, sessionMetadata(c));
     }
 
+    /** Resolve entry against the same native session that the artwork worker will read. */
+    private static String artworkEntryTrackKey() {
+        Context ctx = sAppCtx;
+        MediaController controller = ctx == null ? null : controllerFromCard(ctx);
+        if (controller == null && ctx != null && sCardSelection.allowsSessionFallback()) {
+            controller = pickController(ctx);
+        }
+        MediaMetadata md = controller == null ? null
+                : "com.spotify.music".equals(controller.getPackageName())
+                ? controller.getMetadata() : sessionMetadata(controller);
+        return ArtworkTrackIdentity.entryKey(sCardSelection.key(), controller == null ? ""
+                : metadataTrackKey(controller, md));
+    }
+
     /**
      * Whether two track keys name the same track.
      *
@@ -11261,17 +11275,26 @@ public class Main extends XposedModule {
             @Override
             public void run() {
                 sMusicScene.apply(request, new MusicSceneTransition.Target() {
+                    private long coverOffHoldMs;
                     @Override public void collapseNonMusic() {
                         MiniPlayerRuntime.prepareMusicScene();
                     }
                     @Override public void commit(boolean musicScene) {
-                        CoverPush.pushArtAsync(musicScene, musicScene && fresh);
+                        // The leave hold describes the page before exitCoverMode restores it.
+                        coverOffHoldMs = musicScene ? 0L : ImmersiveHost.coverOffHoldMs();
+                        // An explicit entry need not pass through onMediaUpdate. OFF used to
+                        // clear this on the worker, leaving its next first read with an empty
+                        // identity that could never pass sameTrack, even with real session art.
+                        sTrackKey = musicScene ? artworkEntryTrackKey() : "";
                         // Only where it can be seen: off the lock screen the pose is settled
                         // without starting a spring that has no display frames to finish it.
                         boolean seen = animate && screenOn() && onKeyguardNow();
                         if (!musicScene) exitCoverMode(seen);
                         else if (!sCoverMode) enterCoverMode(seen);
                         else refreshCoverGeometry();
+                    }
+                    @Override public void pushArtwork(boolean musicScene) {
+                        CoverPush.pushArtAsync(musicScene, musicScene && fresh, coverOffHoldMs);
                     }
                 });
             }

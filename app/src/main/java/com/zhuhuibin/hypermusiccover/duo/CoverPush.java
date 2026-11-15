@@ -221,7 +221,6 @@ final class CoverPush {
                     Main.effectiveCoverStyle().mode == CoverCardStyle.CARD)) {
                 ProbeGuard.send(ctx, out);
             }
-            Main.sTrackKey = "";
             Main.sCoverTint = 0;
             // This branch is the single funnel for leaving cover mode - the tap, the dismissed
             // card, the release path and the cover op all end up here.
@@ -1682,6 +1681,13 @@ final class CoverPush {
     }
 
     static void pushArtAsync(final boolean on, final boolean fresh) {
+        long hold = !on && android.os.Looper.myLooper() == android.os.Looper.getMainLooper()
+                ? ImmersiveHost.coverOffHoldMs() : 0L;
+        pushArtAsync(on, fresh, hold);
+    }
+
+    /** A scene captures its leave hold before committing the native page underneath it. */
+    static void pushArtAsync(final boolean on, final boolean fresh, final long coverOffHoldMs) {
         final Context ctx = Main.sAppCtx;
         if (ctx == null) return;
         final int gen = ++Main.sPushGen;
@@ -1696,18 +1702,14 @@ final class CoverPush {
             // it, or the wallpaper shows through between the two. A push that comes in the
             // meantime - a tap back into cover mode - supersedes this one, and the cover never
             // leaves at all.
-            long hold = 0L;
-            if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) {
-                hold = ImmersiveHost.coverOffHoldMs();
-            }
+            long hold = Math.max(0L, coverOffHoldMs);
             if (hold > 0L) Xp.log(Main.TAG + "pushart off held " + hold + "ms for the page over it");
-            final boolean held = hold > 0L;
             Main.worker().postDelayed(new Runnable() {
                 @Override
                 public void run() {
-                    // Only a held leave is dropped: an unheld one goes as it always did, and the
-                    // quick toggles without a page keep the path they were tuned on.
-                    if (held && gen != Main.sPushGen) {
+                    // A newer entry owns both the bitmap and the wallpaper handoff state,
+                    // including when this leave was queued without a page fade.
+                    if (gen != Main.sPushGen) {
                         Xp.log(Main.TAG + "pushart off superseded, the cover stays");
                         return;
                     }

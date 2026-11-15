@@ -14,6 +14,25 @@ final class ArtworkTrackIdentity {
         }
         return title;
     }
+
+    /** The bound session may be newer than its native header, but never belongs to another app. */
+    static String entryKey(String nativeCardKey, String boundSessionKey) {
+        String[] card = fields(nativeCardKey), session = fields(boundSessionKey);
+        if (valid(session) && (card[0].isEmpty() || card[0].equals(session[0]))) {
+            return boundSessionKey;
+        }
+        return valid(card) ? nativeCardKey : "";
+    }
+
+    private static String[] fields(String key) {
+        String[] value = key == null ? new String[0] : key.split("\\|", 3);
+        return new String[]{value.length > 0 ? value[0] : "", value.length > 1 ? value[1] : ""};
+    }
+
+    private static boolean valid(String[] fields) {
+        return !fields[0].isEmpty() && !fields[1].isEmpty() && !"null".equals(fields[1]);
+    }
+
     static boolean sameArtists(String pkg, String a, String b) {
         if (!"com.spotify.music".equals(pkg)) return false;
         java.util.Set<String> first = artists(a);

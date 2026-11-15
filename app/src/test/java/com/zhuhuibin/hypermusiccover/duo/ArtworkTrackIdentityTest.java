@@ -28,4 +28,25 @@ public class ArtworkTrackIdentityTest {
         assertFalse(ArtworkTrackIdentity.sameArtists("com.spotify.music", "Synthion", "Other"));
         assertFalse(ArtworkTrackIdentity.sameArtists("other.player", "A, B", "B, A"));
     }
+
+    @Test public void firstEntryUsesTheCurrentNativeSessionEvenWhenTheOldArtworkKeyWasEmpty() {
+        String session = "com.netease.cloudmusic|天下|张杰|明天过后";
+        assertEquals(session, ArtworkTrackIdentity.entryKey("", session));
+        assertEquals(session, ArtworkTrackIdentity.entryKey("com.netease.cloudmusic|old|张杰", session));
+        assertEquals("天下", ArtworkTrackIdentity.title("com.netease.cloudmusic", "天下", "张杰"));
+    }
+
+    @Test public void aBoundNativeCardNeverBorrowsAnotherPlayersArtworkIdentity() {
+        String card = "com.netease.cloudmusic|天下|张杰";
+        assertEquals(card, ArtworkTrackIdentity.entryKey(card, "tv.danmaku.bili|video|uploader|album"));
+        assertEquals(card, ArtworkTrackIdentity.entryKey(card, ""));
+    }
+
+    @Test public void missingSongMetadataUsesOnlyAValidNativeCardIdentity() {
+        String card = "com.netease.cloudmusic|天下|张杰";
+        assertEquals(card, ArtworkTrackIdentity.entryKey(card, "com.netease.cloudmusic|null|张杰|明天过后"));
+        assertEquals("", ArtworkTrackIdentity.entryKey("", "com.netease.cloudmusic"));
+        assertEquals("", ArtworkTrackIdentity.entryKey(null, "com.netease.cloudmusic||张杰|明天过后"));
+        assertEquals("", ArtworkTrackIdentity.entryKey("com.netease.cloudmusic|null|张杰", ""));
+    }
 }
