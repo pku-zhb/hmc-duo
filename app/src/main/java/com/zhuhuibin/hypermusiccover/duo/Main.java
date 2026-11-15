@@ -673,6 +673,7 @@ public class Main extends XposedModule {
     private static final NativeMediaCardBindingState<View> sNativeCardBinding = new NativeMediaCardBindingState<>();
     private static boolean sBindingMediaCard;
     private static String sNativeSelectionEvent = "not observed";
+    private static final NativeMediaRemovalState sNativeRemoval = new NativeMediaRemovalState();
     private static final ArtworkThumbnailVeil sArtVeil = new ArtworkThumbnailVeil();
     /** The title carrying our play/pause listener, and what it was clickable-wise before. */
     private static View sCardTitleTapped;
@@ -8853,8 +8854,23 @@ public class Main extends XposedModule {
 
     private static boolean reconcileNativeMediaSelection(View card, Object eventOwner) {
         NativeMediaCardLifecycle.Selection selected = NativeMediaCardLifecycle.selection(card);
-        if (selected == null || !selected.coherent()
-                || eventOwner != null && selected.owner != eventOwner) return false;
+        if (selected == null) {
+            Object previous = sNativeRemoval.card();
+            if (previous instanceof View && sNativeRemoval.removeDetached(
+                    ((View) previous).isAttachedToWindow(), false)) {
+                onCardChanged(null, sNativeRemoval.owner(), null);
+            }
+            return false;
+        }
+        if (!selected.coherent() || eventOwner != null && selected.owner != eventOwner) return false;
+        return commitNativeMediaSelection(card, selected);
+    }
+
+    private static boolean commitNativeMediaSelection(View card, NativeMediaCardLifecycle.Selection selected) {
+        Object top = NativeMediaCardLifecycle.topMediaData(selected.notificationOwner);
+        if (!sNativeRemoval.accepts(selected.notificationOwner, card, selected.owner, selected.data, top))
+            return false;
+        sNativeRemoval.commit(selected.notificationOwner, card, selected.owner, selected.data);
         onCardChanged(card, selected.owner, selected.data);
         return true;
     }
@@ -8867,15 +8883,27 @@ public class Main extends XposedModule {
         }
         View card = ensureMediaCardBinding(false);
         NativeMediaCardLifecycle.Selection selected = NativeMediaCardLifecycle.selection(card);
+        Object top = NativeMediaCardLifecycle.topMediaData(notificationOwner);
+        if (sNativeRemoval.removeTop(notificationOwner, top,
+                selected != null && selected.coherent(), card,
+                selected == null ? null : selected.owner, selected == null ? null : selected.data)) {
+            onCardChanged(null, sNativeRemoval.owner(), null);
+            sNativeSelectionEvent = "top data removed";
+            return;
+        }
         if (selected != null) {
             if (selected.notificationOwner == notificationOwner && selected.coherent()) {
-                onCardChanged(card, selected.owner, selected.data);
+                commitNativeMediaSelection(card, selected);
                 sNativeSelectionEvent = "top data commit";
             }
             return;
         }
-        if (card == null) onCardChanged(null, notificationOwner,
-                NativeMediaCardLifecycle.topMediaData(notificationOwner));
+        NativeMediaSelectionState.Snapshot<android.media.session.MediaSession.Token> committed =
+                sCardSelection.snapshot();
+        if (card == null && (committed == null || committed.owner == notificationOwner)) {
+            sNativeRemoval.commit(notificationOwner, null, notificationOwner, top);
+            onCardChanged(null, notificationOwner, top);
+        }
     }
 
     private static View mediaChild(View card, String name) {
