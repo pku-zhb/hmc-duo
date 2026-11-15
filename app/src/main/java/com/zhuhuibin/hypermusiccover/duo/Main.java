@@ -441,8 +441,8 @@ public class Main extends XposedModule {
     static volatile float sRailStatusOffsetYDp = 0f;
     static volatile boolean sHideChargingHint = true;
     static volatile boolean sHideLockStatusBar = true;
-    static volatile boolean sArtworkClockRow = true; // Legacy backup compatibility.
-    static volatile int sArtworkClockDestination = ArtworkClockDestination.DATE_ROW;
+    static volatile boolean sArtworkClockRow = false; // Legacy backup compatibility.
+    static volatile int sArtworkClockDestination = ArtworkClockDestination.STATUS;
     static volatile boolean sArtworkClockBeforeDate = true;
     static volatile boolean sForceNotificationFloor = true;
     static volatile boolean sCoverOnTap;
@@ -1786,6 +1786,15 @@ public class Main extends XposedModule {
                     // arrow - is the page's, and the row must not see it. See
                     // ImmersiveHost.routeTouch.
                     try {
+                        if (chain.getThisObject() instanceof View
+                                && RailStatusRuntime.routeTouch((View) chain.getThisObject(), ev)) {
+                            cancelPendingTap("status opens the native control centre");
+                            MotionEvent cancel = MotionEvent.obtain(ev);
+                            cancel.setAction(MotionEvent.ACTION_CANCEL);
+                            try { chain.proceed(new Object[]{cancel}); }
+                            finally { cancel.recycle(); }
+                            return Boolean.TRUE;
+                        }
                         if (ImmersiveHost.routeTouch(ev)) return Boolean.TRUE;
                     } catch (Throwable ignored) {
                     }
@@ -2326,6 +2335,7 @@ public class Main extends XposedModule {
                         else if ("artworkClockRow".equals(k)) {
                             sArtworkClockRow = "1".equals(v);
                             sArtworkClockDestination = ArtworkClockDestination.fromLegacy(sArtworkClockRow);
+                            sArtworkClockRow = false;
                         }
                         else if ("artworkClockDestination".equals(k)) {
                             sArtworkClockDestination = ArtworkClockDestination.normalize(Integer.parseInt(v));
@@ -2617,7 +2627,7 @@ public class Main extends XposedModule {
                         if (i.hasExtra("on") || "artworkClockDestination".equals(key) && i.hasExtra("v")) {
                             boolean on = i.getBooleanExtra("on", false);
                             if ("artworkClockDestination".equals(key)) {
-                                sArtworkClockDestination = ArtworkClockDestination.normalize(i.getIntExtra("v", ArtworkClockDestination.DATE_ROW));
+                                sArtworkClockDestination = ArtworkClockDestination.normalize(i.getIntExtra("v", ArtworkClockDestination.STATUS));
                                 sArtworkClockRow = sArtworkClockDestination == ArtworkClockDestination.DATE_ROW;
                             }
                             else if ("hideLockStatusBar".equals(key)) { sHideLockStatusBar = on; LockscreenStatusBar.refresh(); }
@@ -2626,8 +2636,8 @@ public class Main extends XposedModule {
                                 InnerScreenAod.publishOptIn();
                             }
                             else if ("artworkClockRow".equals(key)) {
-                                sArtworkClockRow = on;
                                 sArtworkClockDestination = ArtworkClockDestination.fromLegacy(on);
+                                sArtworkClockRow = false;
                             }
                             else if ("artworkClockBeforeDate".equals(key)) sArtworkClockBeforeDate = on;
                             else if ("rightRail".equals(key)) sRightRail = on;
@@ -11220,6 +11230,10 @@ public class Main extends XposedModule {
 
     static boolean coverModeOn() {
         return sCoverMode;
+    }
+
+    static boolean musicSceneRequested() {
+        return sMusicScene.wanted();
     }
 
     /**
