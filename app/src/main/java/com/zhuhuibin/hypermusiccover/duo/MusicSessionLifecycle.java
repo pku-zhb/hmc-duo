@@ -7,6 +7,7 @@ import java.util.Objects;
 final class MusicSessionLifecycle<T> {
     private final LinkedHashSet<T> destroyed = new LinkedHashSet<>();
     private final int limit;
+    private long watchGeneration;
     MusicSessionLifecycle(int limit) { this.limit = Math.max(1, limit); }
     synchronized void destroy(T token) {
         if (token == null) return;
@@ -17,5 +18,11 @@ final class MusicSessionLifecycle<T> {
     synchronized boolean alive(T token) { return token != null && !destroyed.contains(token); }
     synchronized boolean accepts(T token, T current) {
         return alive(token) && Objects.equals(token, current);
+    }
+    synchronized long nextWatchGeneration() { return ++watchGeneration; }
+    synchronized long watchGeneration() { return watchGeneration; }
+    /** A token can be selected again while its previous callback is still queued. */
+    synchronized boolean accepts(T token, T current, long generation) {
+        return generation == watchGeneration && accepts(token, current);
     }
 }

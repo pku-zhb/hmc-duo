@@ -516,13 +516,12 @@ public class Main extends XposedModule {
     private static volatile boolean sCardPresent;
     /** False until the card hook has fired once, so a restart does not act on an unknown state. */
     private static volatile boolean sCardKnown;
-    /** The session the card itself is bound to - exact, where pickController() only guesses. */
-    private static volatile android.media.session.MediaSession.Token sCardToken;
+    /** Native token and track identity commit together, independently of active-session order. */
+    private static final NativeMediaSelectionState<android.media.session.MediaSession.Token> sCardSelection =
+            new NativeMediaSelectionState<>();
     /** Every data binding invalidates deferred user expansion of an older card. */
     private static final java.util.concurrent.atomic.AtomicLong sCardGeneration =
             new java.util.concurrent.atomic.AtomicLong();
-    /** Track identity straight off the card's MediaData. */
-    private static volatile String sCardKey = "";
     /**
      * A track change arrives as a remove followed by an add, so the card is briefly gone. Wait
      * this long before believing it: long enough to absorb that pair, short enough that
@@ -673,6 +672,7 @@ public class Main extends XposedModule {
     private static ViewTreeObserver sCardObserver;
     private static final NativeMediaCardBindingState<View> sNativeCardBinding = new NativeMediaCardBindingState<>();
     private static boolean sBindingMediaCard;
+    private static String sNativeSelectionEvent = "not observed";
     private static final ArtworkThumbnailVeil sArtVeil = new ArtworkThumbnailVeil();
     /** The title carrying our play/pause listener, and what it was clickable-wise before. */
     private static View sCardTitleTapped;
@@ -1719,16 +1719,15 @@ public class Main extends XposedModule {
                     + "MIUI's files for the wallpaper type: " + t);
         }
 
-        // The media card is the switch. Every add, track change and dismissal of the
-        // lockscreen card funnels through this one static - MediaData in means a card is on
-        // screen (and which track), null means it has gone. Playback state never reaches it,
-        // which is exactly what we want: pausing leaves the card up, so it leaves the cover up.
+        // Pipeline bootstrap/removal is observed here. The actual selected holder commits
+        // through NativeMediaCardLifecycle as well, independently of this synthetic accessor.
+        // Pausing retains the native card and therefore retains the music scene.
         try {
             Class<?> card = Xp.findClass(CLS_MEDIA_CARD, cl);
             Xp.hookAll(card, "access$setTopMediaData", chain -> {
                 Object result = chain.proceed();
                 java.util.List<Object> args = chain.getArgs();
-                onCardChanged(args.size() > 1 ? args.get(1) : null);
+                if (!args.isEmpty()) nativeTopMediaCardChanged(args.get(0));
                 return result;
             });
             Xp.log(TAG + "media card hooked");
@@ -3387,7 +3386,7 @@ public class Main extends XposedModule {
                         // Checked live rather than reported from the cached flag: the user can
                         // change the wallpaper at any time and that is what breaks the feature.
                         out.putBoolean("lockwp", CoverPush.hasLockWallpaper(c));
-                        out.putString("track", sCardKey);
+                        out.putString("track", sCardSelection.key());
                         MediaController mc = sWatched;
                         out.putString("player", mc == null ? "" : mc.getPackageName());
                         out.putBoolean("mcart", sMcHideArt);
@@ -3582,7 +3581,7 @@ public class Main extends XposedModule {
                                 + " notifPresence[" + NotifPresence.describe() + "]");
                         Xp.log(TAG + "cover: on=" + sCoverMode + " auto=" + sAuto
                                 + " bias=" + sBias + " screen=" + sScreenW + "x" + sScreenH
-                                + " card=" + (sCardKnown ? (sCardShowing ? sCardKey : "gone") : "unknown")
+                                + " card=" + (sCardKnown ? (sCardShowing ? sCardSelection.key() : "gone") : "unknown")
                                 + " following=" + (sWatched == null ? "none" : sWatched.getPackageName())
                                 + " track=" + sTrackKey);
                         Xp.log(TAG + "card rect: " + sCardL + "," + sCardT + " "
@@ -6021,7 +6020,7 @@ public class Main extends XposedModule {
                                    String expectedKey) {
         if (sessionBits != null) sessionBits[0] = -1;
         MediaController c = controllerFromCard(ctx);
-        if (c == null) c = pickController(ctx);
+        if (c == null && sCardSelection.allowsSessionFallback()) c = pickController(ctx);
         if (c != null) {
             MediaMetadata md = "com.spotify.music".equals(c.getPackageName())
                     ? c.getMetadata() : sessionMetadata(c);
@@ -6042,7 +6041,7 @@ public class Main extends XposedModule {
             }
         }
         if (!allowCard) return null;
-        if (expectedKey != null && !sameTrack(expectedKey, sCardKey)) return null;
+        if (expectedKey != null && !sameTrack(expectedKey, sCardSelection.key())) return null;
         return cardThumbnail();
     }
 
@@ -6092,7 +6091,7 @@ public class Main extends XposedModule {
 
     static Bitmap sessionArtForTrack(Context ctx, String key, boolean fresh) {
         MediaController controller = controllerFromCard(ctx);
-        if (controller == null) controller = pickController(ctx);
+        if (controller == null && sCardSelection.allowsSessionFallback()) controller = pickController(ctx);
         if (controller == null) return null;
 
         MediaMetadata md = fresh || "com.spotify.music".equals(controller.getPackageName())
@@ -6384,7 +6383,7 @@ public class Main extends XposedModule {
         if (!i.getBooleanExtra("shots", true)) {
             android.os.Bundle out = new android.os.Bundle();
             out.putBoolean("alive", true);
-            out.putString("track", sCardKey);
+            out.putString("track", sCardSelection.key());
             putPreviewState(out);
             return out;
         }
@@ -6395,7 +6394,7 @@ public class Main extends XposedModule {
         // trip to find out WHICH source failed.
         StringBuilder diag = DIAG ? new StringBuilder() : null;
         out.putBoolean("alive", true);
-        out.putString("track", sCardKey);
+        out.putString("track", sCardSelection.key());
         if (diag != null) {
             diag.append("preview: cover=").append(sCoverMode)
                 .append(" auto=").append(sAuto)
@@ -6405,10 +6404,10 @@ public class Main extends XposedModule {
                 .append(" screenOn=").append(screenOn())
                 .append(" container=").append(sContainer != null)
                 .append(" screen=").append(sScreenW).append('x').append(sScreenH)
-                .append(" track=").append(sCardKey.isEmpty() ? "none" : sCardKey);
+                .append(" track=").append(sCardSelection.key().isEmpty() ? "none" : sCardSelection.key());
         }
 
-        if (!sCardKey.isEmpty() && sCardKey.equals(i.getStringExtra("have"))) {
+        if (!sCardSelection.key().isEmpty() && sCardSelection.key().equals(i.getStringExtra("have"))) {
             out.putBoolean("same", true);
             if (diag != null) diag.append("\n  art: same track, not resent");
         } else {
@@ -7435,10 +7434,10 @@ public class Main extends XposedModule {
         if (token == null || !mediaSessionAlive(token)) return;
         sSessionLifecycle.destroy(token);
         Runnable reconcile = () -> {
-            boolean retainedCard = token.equals(sCardToken);
+            boolean retainedCard = token.equals(sCardSelection.token());
             if (retainedCard) {
                 sCardGeneration.incrementAndGet();
-                sCardToken = null;
+                sCardSelection.clear();
                 sCardPresent = false;
                 sCardShowing = false;
                 main().removeCallbacks(sCardGone);
@@ -7497,19 +7496,18 @@ public class Main extends XposedModule {
     static boolean miniPlayerMediaCardPresent() { return sCardPresent; }
 
     static long miniPlayerMediaCardGeneration() { return sCardGeneration.get(); }
-    static android.media.session.MediaSession.Token miniPlayerMediaCardToken() { return sCardToken; }
+    static android.media.session.MediaSession.Token miniPlayerMediaCardToken() { return sCardSelection.token(); }
 
     /** An attempted expansion found no native header for a full second; release only that card. */
     static void expireMissingMusicCard(android.media.session.MediaSession.Token token, long generation) {
-        if (token == null || generation != sCardGeneration.get() || !token.equals(sCardToken)
+        if (token == null || generation != sCardGeneration.get() || !token.equals(sCardSelection.token())
                 || !sCardPresent || !keyguardShowing() || !onKeyguardNow() || !screenOnCached()
                 || MiniPlayerScene.INSTANCE.getKeyguardGoingAway() || bouncerUp()) return;
         View header = miniPlayerMediaHeader();
         if (header != null && header.isAttachedToWindow()) return;
         sCardGeneration.incrementAndGet();
         sCardPresent = sCardShowing = false;
-        sCardToken = null;
-        sCardKey = "";
+        sCardSelection.clear();
         main().removeCallbacks(sCardGone);
         main().removeCallbacks(sCardRemoved);
         noteCard("user expansion expired: native header missing");
@@ -8828,7 +8826,8 @@ public class Main extends XposedModule {
             main().post(Main::applyMediaCard);
             return;
         }
-        ensureMediaCardBinding(true);
+        View card = ensureMediaCardBinding(true);
+        reconcileNativeMediaSelection(card, null);
     }
 
     /** Native layout ownership can change without a song, playback or clock-container event. */
@@ -8838,7 +8837,45 @@ public class Main extends XposedModule {
             return;
         }
         NativeMediaCardLifecycle.invalidate(event);
-        ensureMediaCardBinding(false);
+        View card = ensureMediaCardBinding(false);
+        reconcileNativeMediaSelection(card, null);
+    }
+
+    /** Read the owner again on the UI thread; an old queued argument must not restore old data. */
+    static void nativeMediaSelectionChanged(Object owner, String event) {
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            main().post(() -> nativeMediaSelectionChanged(owner, event));
+            return;
+        }
+        View card = ensureMediaCardBinding(false);
+        if (reconcileNativeMediaSelection(card, owner)) sNativeSelectionEvent = event;
+    }
+
+    private static boolean reconcileNativeMediaSelection(View card, Object eventOwner) {
+        NativeMediaCardLifecycle.Selection selected = NativeMediaCardLifecycle.selection(card);
+        if (selected == null || !selected.coherent()
+                || eventOwner != null && selected.owner != eventOwner) return false;
+        onCardChanged(card, selected.owner, selected.data);
+        return true;
+    }
+
+    /** Pipeline removal/bootstrap still matters, but cannot overwrite another visible owner. */
+    private static void nativeTopMediaCardChanged(Object notificationOwner) {
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            main().post(() -> nativeTopMediaCardChanged(notificationOwner));
+            return;
+        }
+        View card = ensureMediaCardBinding(false);
+        NativeMediaCardLifecycle.Selection selected = NativeMediaCardLifecycle.selection(card);
+        if (selected != null) {
+            if (selected.notificationOwner == notificationOwner && selected.coherent()) {
+                onCardChanged(card, selected.owner, selected.data);
+                sNativeSelectionEvent = "top data commit";
+            }
+            return;
+        }
+        if (card == null) onCardChanged(null, notificationOwner,
+                NativeMediaCardLifecycle.topMediaData(notificationOwner));
     }
 
     private static View mediaChild(View card, String name) {
@@ -8916,7 +8953,49 @@ public class Main extends XposedModule {
         return "generation=" + sNativeCardBinding.generation() + " dirty=" + NativeMediaCardLifecycle.dirty()
                 + " event=" + NativeMediaCardLifecycle.event() + " present=" + sCardPresent
                 + " showing=" + sCardShowing + " revision=" + (binding == null ? -1 : binding.revision)
-                + " observerAlive=" + (sCardObserver != null && sCardObserver.isAlive());
+                + " observerAlive=" + (sCardObserver != null && sCardObserver.isAlive())
+                + mediaSelectionState(binding == null ? null : binding.card);
+    }
+
+    /** Read-only identity diagnostics; no binding repair or full metadata payload. */
+    private static String mediaSelectionState(View card) {
+        NativeMediaSelectionState.Snapshot<android.media.session.MediaSession.Token> selected =
+                sCardSelection.snapshot();
+        NativeMediaCardLifecycle.Selection nativeSelection = NativeMediaCardLifecycle.selection(card);
+        android.media.session.MediaSession.Token nativeToken = null;
+        android.media.session.MediaSession.Token topToken = null;
+        String nativePackage = "none", topPackage = "none";
+        if (nativeSelection != null) {
+            nativePackage = keyField(cardKey(nativeSelection.data), 0);
+            nativeToken = nativeSelection.token;
+            Object topData = NativeMediaCardLifecycle.topMediaData(nativeSelection.notificationOwner);
+            if (topData != null) {
+                topPackage = keyField(cardKey(topData), 0);
+                try { topToken = (android.media.session.MediaSession.Token) Xp.getObjectField(topData, "token"); }
+                catch (Throwable ignored) { }
+            }
+        }
+        MediaController watched = sWatched;
+        android.media.session.MediaSession.Token watchedToken = watched == null ? null : watched.getSessionToken();
+        boolean matched = nativeSelection != null && nativeSelection.coherent()
+                && nativeToken != null && selected != null && nativeToken.equals(selected.token)
+                && nativeToken.equals(watchedToken);
+        MediaMetadata metadata = sessionMetadata(watched);
+        boolean artwork = metadata != null && bestSessionArt(metadata) != null;
+        return " nativeSelected=" + nativePackage + "@" + tokenId(nativeToken)
+                + " nativeController=" + tokenId(nativeSelection == null ? null : nativeSelection.controllerToken)
+                + " nativeTop=" + topPackage + "@" + tokenId(topToken)
+                + " selectionEvent=" + sNativeSelectionEvent.replace(' ', '_')
+                + " selected=" + (selected == null ? "none" : keyField(selected.key, 0))
+                + "@" + tokenId(selected == null ? null : selected.token)
+                + " selectionGeneration=" + (selected == null ? 0 : selected.generation)
+                + " watched=" + (watched == null ? "none" : watched.getPackageName())
+                + "@" + tokenId(watchedToken) + " watchGeneration=" + sSessionLifecycle.watchGeneration()
+                + " identityMatched=" + matched + " sessionArtwork=" + artwork;
+    }
+
+    private static String tokenId(android.media.session.MediaSession.Token token) {
+        return token == null ? "none" : Integer.toHexString(token.hashCode());
     }
 
     /**
@@ -10142,7 +10221,7 @@ public class Main extends XposedModule {
                     open, count, sCoverMode && keyguardShowing(), !LockLyrics.wantsCompactArtwork());
             // The visible source is full artwork, even when the old logical flag still says compact.
             if (compact && sCoverMode && keyguardShowing()) {
-                if (!CoverMorphLayer.active()) sMorphKey = sCardKey;
+                if (!CoverMorphLayer.active()) sMorphKey = sCardSelection.key();
                 CoverMorphLayer.beginNotificationCompact(false);
             }
             LockLyrics.setNotificationCompact(compact);
@@ -10157,7 +10236,7 @@ public class Main extends XposedModule {
                 sCoverMode && keyguardShowing(), !LockLyrics.wantsCompactArtwork());
         if (was == compact) return;
         if (sCoverMode && keyguardShowing()) {
-            if (!CoverMorphLayer.active()) sMorphKey = sCardKey;
+            if (!CoverMorphLayer.active()) sMorphKey = sCardSelection.key();
             CoverMorphLayer.beginNotificationCompact(!compact);
         }
         LockLyrics.setNotificationCompact(compact);
@@ -10166,13 +10245,13 @@ public class Main extends XposedModule {
     }
 
     private static void beginCompactArtworkMorph(boolean toCover) {
-        if (!CoverMorphLayer.active()) sMorphKey = sCardKey;
+        if (!CoverMorphLayer.active()) sMorphKey = sCardSelection.key();
         CoverMorphLayer.beginCompact(toCover);
     }
 
     private static void beginMorph(boolean toCover) {
         long t0 = System.nanoTime();
-        if (!CoverMorphLayer.active()) sMorphKey = sCardKey;
+        if (!CoverMorphLayer.active()) sMorphKey = sCardSelection.key();
         CoverMorphLayer.begin(toCover);
         sMorphBeginNs += System.nanoTime() - t0;
     }
@@ -10184,7 +10263,7 @@ public class Main extends XposedModule {
      */
     private static void beginMiniMorph(boolean toCover, boolean coverEndpoint) {
         long t0 = System.nanoTime();
-        if (!CoverMorphLayer.active()) sMorphKey = sCardKey;
+        if (!CoverMorphLayer.active()) sMorphKey = sCardSelection.key();
         if (!coverEndpoint || !CoverMorphLayer.beginMiniScene(toCover)) CoverMorphLayer.cancel();
         sMorphBeginNs += System.nanoTime() - t0;
     }
@@ -10394,7 +10473,7 @@ public class Main extends XposedModule {
      * The last few things that happened to the media card, as `op card` prints them.
      *
      * The card disappearing has three unrelated causes and the module can only see one of them
-     * directly. The OEM dropping its media data arrives here, at onCardChanged(null), and is
+     * directly. The OEM dropping its media data arrives at onCardChanged with null data and is
      * recorded. A third party hiding the VIEW - HyperLight's music capsule rewrites
      * MiuiMediaHeaderView's VISIBLE into GONE, measured 2026-09-21 - never reaches any hook of
      * ours at all, so it leaves no event: what names it is the live snapshot `op card` takes
@@ -10417,9 +10496,9 @@ public class Main extends XposedModule {
         sb.append("auto=").append(sAuto).append(" cover=").append(sCoverMode)
           .append(" known=").append(sCardKnown).append(" showing=").append(sCardShowing)
           .append(" forced=").append(sCardForced)
-          .append(" token=").append(sCardToken != null)
+          .append(" token=").append(sCardSelection.token() != null)
           .append(" generation=").append(sCardGeneration.get())
-          .append(" key=").append(sCardKey == null || sCardKey.isEmpty() ? "-" : sCardKey);
+          .append(" key=").append(sCardSelection.key() == null || sCardSelection.key().isEmpty() ? "-" : sCardSelection.key());
         View c = sCardGuarded;
         if (c == null) {
             try {
@@ -10475,43 +10554,40 @@ public class Main extends XposedModule {
      * followed by an add, so "gone" is only believed after CARD_GONE_MS - otherwise every skip
      * would tear the wallpaper down and put it straight back.
      */
-    private static void onCardChanged(Object mediaData) {
-        sCardGeneration.incrementAndGet();
-        sCardKnown = true;
+    private static void onCardChanged(View card, Object owner, Object mediaData) {
         boolean showing = mediaData != null;
         boolean nativeOnly = false;
+        android.media.session.MediaSession.Token token = null;
+        String key = "";
         if (showing) {
             try {
-                sCardToken = (android.media.session.MediaSession.Token)
+                token = (android.media.session.MediaSession.Token)
                         Xp.getObjectField(mediaData, "token");
-            } catch (Throwable t) {
-                sCardToken = null;
-            }
+            } catch (Throwable ignored) { }
             boolean resumption = false;
             try { resumption = Boolean.TRUE.equals(Xp.getObjectField(mediaData, "resumption")); }
             catch (Throwable ignored) { }
-            nativeOnly = MusicExpansionAttempt.nativeOnly(resumption, sCardToken != null,
-                    sCardToken != null && mediaSessionAlive(sCardToken));
+            nativeOnly = MusicExpansionAttempt.nativeOnly(resumption, token != null,
+                    token != null && mediaSessionAlive(token));
             if (nativeOnly) {
                 // The pipeline can rebind an old resumption card after the session died.
                 // It remains native content, not a new interactive Duo music island.
                 showing = false;
-                sCardToken = null;
-                sCardKey = "";
-            } else sCardKey = cardKey(mediaData);
+                token = null;
+            } else key = cardKey(mediaData);
             // The card's title may be one the session callback has not shown us yet.
             TrackName.note(sWatched);
-        } else {
-            sCardToken = null;
-            sCardKey = "";
         }
+        if (!sCardSelection.publish(card, owner, mediaData, token, key)) return;
+        sCardGeneration.incrementAndGet();
+        sCardKnown = true;
         // Against the track the morph started on, not sTrackKey: a tap into cover mode clears
         // that, the card is rebound as the cover goes up, and every entry was cancelled a couple
         // of frames in - then begun again from the thumbnail by the entry's second call.
-        if (!showing || (CoverMorphLayer.active() && !sameTrack(sCardKey, sMorphKey))) {
+        if (!showing || (CoverMorphLayer.active() && !sameTrack(sCardSelection.key(), sMorphKey))) {
             CoverMorphLayer.cancel();
         }
-        Xp.log(TAG + "media card " + (showing ? "-> " + sCardKey : "gone"));
+        Xp.log(TAG + "media card " + (showing ? "-> " + sCardSelection.key() : "gone"));
         noteCard(nativeOnly ? "OEM native-only resume or destroyed session"
                 : showing ? "OEM says up" : "OEM says gone (waiting " + CARD_GONE_MS + "ms)");
         main().removeCallbacks(sCardGone);
@@ -10850,11 +10926,12 @@ public class Main extends XposedModule {
         Context ctx = sAppCtx;
         if (ctx == null) return;
         MediaController c = controllerFromCard(ctx);
-        if (c == null) c = pickController(ctx);
-        boolean same = c != null && sWatched != null
+        if (c == null && sCardSelection.allowsSessionFallback()) c = pickController(ctx);
+        boolean same = c == null && sWatched == null || c != null && sWatched != null
                 && c.getSessionToken().equals(sWatched.getSessionToken());
-        if (same) sWatchedMetadata = new SessionMetadata(c, c.getMetadata());
+        if (same && c != null) sWatchedMetadata = new SessionMetadata(c, c.getMetadata());
         if (!same) {
+            final long watchGeneration = sSessionLifecycle.nextWatchGeneration();
             if (sWatched != null && sMediaCb != null) {
                 try {
                     sWatched.unregisterCallback(sMediaCb);
@@ -10869,7 +10946,7 @@ public class Main extends XposedModule {
                 sMediaCb = new MediaController.Callback() {
                     @Override
                     public void onMetadataChanged(MediaMetadata md) {
-                        if (sWatched == null || !mediaSessionCallbackCurrent(watched.getSessionToken(), sWatched.getSessionToken())) return;
+                        if (sWatched == null || !sSessionLifecycle.accepts(watched.getSessionToken(), sWatched.getSessionToken(), watchGeneration)) return;
                         sWatchedMetadata = new SessionMetadata(watched, md);
                         TrackName.note(watched.getPackageName(), md);
                         // Every track change re-reads the state rather than trusting that the
@@ -10882,7 +10959,7 @@ public class Main extends XposedModule {
 
                     @Override
                     public void onPlaybackStateChanged(PlaybackState state) {
-                        if (sWatched == null || !mediaSessionCallbackCurrent(watched.getSessionToken(), sWatched.getSessionToken())) return;
+                        if (sWatched == null || !sSessionLifecycle.accepts(watched.getSessionToken(), sWatched.getSessionToken(), watchGeneration)) return;
                         LockLyrics.onPlaybackState(state);
                         updateCoverCardPlayback(state);
                         MiniPlayerRuntime.refresh();
@@ -10891,7 +10968,7 @@ public class Main extends XposedModule {
                     @Override
                     public void onQueueChanged(List<android.media.session.MediaSession.QueueItem> queue) {
                         if (sWatched == null
-                                || !mediaSessionCallbackCurrent(watched.getSessionToken(), sWatched.getSessionToken())) {
+                                || !sSessionLifecycle.accepts(watched.getSessionToken(), sWatched.getSessionToken(), watchGeneration)) {
                             return;
                         }
                         // Spotify can reshuffle without changing the current metadata. Its queue
@@ -10901,6 +10978,8 @@ public class Main extends XposedModule {
 
                     @Override
                     public void onSessionDestroyed() {
+                        // Destruction is a fact about this token even after its watcher retired.
+                        // mediaSessionDestroyed only clears the card if it still owns that token.
                         mediaSessionDestroyed(watched.getSessionToken());
                     }
                 };
@@ -11070,7 +11149,7 @@ public class Main extends XposedModule {
 
     /** The controller the card is bound to, or null if the card has not named one. */
     private static MediaController controllerFromCard(Context ctx) {
-        android.media.session.MediaSession.Token t = sCardToken;
+        android.media.session.MediaSession.Token t = sCardSelection.token();
         if (!mediaSessionAlive(t)) return null;
         try {
             return new MediaController(ctx, t);
@@ -11097,7 +11176,7 @@ public class Main extends XposedModule {
         // The user tapped the cover away and the card is still up. The one case where "there is
         // a card" must not mean "put the cover back".
         if (sTapSuppressed) return;
-        String key = sCardKey.isEmpty() ? trackKey(sWatched) : sCardKey;
+        String key = sCardSelection.key().isEmpty() ? trackKey(sWatched) : sCardSelection.key();
         // A player's card can report an older item during rapid skips. Prefer the live
         // session of that same player, keeping the card fallback for missing metadata.
         String sessionKey = trackKey(sWatched);

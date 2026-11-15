@@ -24,6 +24,26 @@ public class MusicSessionLifecycleTest {
         for (int i = 0; i < 1000; i++) assertTrue(state.accepts("paused", "paused"));
         assertFalse(state.alive(null));
     }
+    @Test public void switchingBackToTheSameLiveTokenRejectsItsPreviousCallbackGeneration() {
+        MusicSessionLifecycle<String> state = new MusicSessionLifecycle<>(4);
+        long firstBili = state.nextWatchGeneration();
+        assertTrue(state.accepts("bili", "bili", firstBili));
+        long ncm = state.nextWatchGeneration();
+        assertFalse(state.accepts("bili", "ncm", firstBili));
+        assertTrue(state.accepts("ncm", "ncm", ncm));
+        long nextBili = state.nextWatchGeneration();
+        assertTrue(state.alive("bili"));
+        assertTrue(state.alive("ncm"));
+        assertFalse(state.accepts("bili", "bili", firstBili));
+        assertFalse(state.accepts("ncm", "bili", ncm));
+        assertTrue(state.accepts("bili", "bili", nextBili));
+    }
+    @Test public void removingTheWatcherInvalidatesItsPendingCallbacks() {
+        MusicSessionLifecycle<String> state = new MusicSessionLifecycle<>(4);
+        long watched = state.nextWatchGeneration();
+        state.nextWatchGeneration();
+        assertFalse(state.accepts("ncm", "ncm", watched));
+    }
     @Test public void tombstonesAreBoundedAndRepeatedDestructionKeepsTheNewest() {
         MusicSessionLifecycle<String> state = new MusicSessionLifecycle<>(2);
         state.destroy("one"); state.destroy("two"); state.destroy("one"); state.destroy("three");

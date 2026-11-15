@@ -2415,8 +2415,8 @@ private class MiniPlayerController(
     private var mediaListener: MediaController.Callback? = null
     private fun callbackFor(session: MediaController): MediaController.Callback = object : MediaController.Callback() {
         private val token = session.sessionToken
-        private fun current() = !destroyed && Main.mediaSessionCallbackCurrent(token, liveFor)
-                && token == controller?.sessionToken
+        private fun current() = !destroyed && mediaListener === this
+                && Main.mediaSessionCallbackCurrent(token, liveFor) && token == controller?.sessionToken
         override fun onMetadataChanged(metadata: MediaMetadata?) {
             if (!current()) return
             liveMetadata = metadata
