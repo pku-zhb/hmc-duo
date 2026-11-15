@@ -10,13 +10,12 @@ and [HyperMusicCover](https://github.com/zyl6932/HyperMusicCover).
 Device coverage is focused on the maintainer's foldable phone; compatibility with
 other devices is not established.
 
-Version 0.2.20 keeps artwork and lyrics in one native AOD coordinate frame,
-retains local glass sampling across artwork source changes, and anchors the
-compact player shell to its content during transitions. Native cards retain
-their gestures while exposed gaps remain available for capsule interaction.
-See the release record for causes and the separate
-host/device validation boundaries. Earlier records remain in
-docs/releases.
+Version 0.2.21 keeps native AOD progress authoritative when wake callbacks arrive
+late. A scene request no longer pretends the incoming full artwork is opaque
+before its first native animation frame. It includes the unified content-frame,
+source-sampling, compact-shell and native-touch changes in 0.2.20. See the
+release record for causes and validation boundaries.
+Earlier records remain in docs/releases.
 
 ## Features
 
