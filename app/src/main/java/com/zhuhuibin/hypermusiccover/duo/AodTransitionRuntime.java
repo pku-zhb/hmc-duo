@@ -7,6 +7,7 @@ final class AodTransitionRuntime {
     private static final AodTransitionProgress progress = new AodTransitionProgress();
     private static long begins, frames, ends, cancels, scenes;
     private static String lastEvent = "none";
+    private static boolean scenePlanned, sceneCompletionAvailable;
     private static View window() { return Main.sContainer == null ? null : Main.sContainer.getRootView(); }
     private static long revision() { return Main.screenGeometry().revision; }
     static void begin(boolean into) {
@@ -22,7 +23,9 @@ final class AodTransitionRuntime {
     static void cancel() { note("cancel"); progress.cancel(window(), revision()); invalidate(); }
     static void scene(boolean fullAod) {
         note("scene");
-        progress.scene(window(), revision(), fullAod, MiniPlayerRuntime.aodTransitionPlanned());
+        scenePlanned = MiniPlayerRuntime.aodTransitionPlanned();
+        sceneCompletionAvailable = MiniPlayerRuntime.nativeAodCompletionAvailable();
+        progress.scene(window(), revision(), fullAod, scenePlanned, sceneCompletionAvailable);
         invalidate();
     }
     static AodTransitionProgress.Snapshot snapshot() {
@@ -54,6 +57,7 @@ final class AodTransitionRuntime {
         AodTransitionProgress.Snapshot s = snapshot();
         return "epoch=" + s.epoch + " fraction=" + s.fraction + " running=" + s.running
                 + " into=" + s.into + " event=" + lastEvent
+                + " sceneFlags=" + scenePlanned + "/" + sceneCompletionAvailable
                 + " events=" + begins + "/" + frames + "/" + ends + "/" + cancels + "/" + scenes;
     }
 }

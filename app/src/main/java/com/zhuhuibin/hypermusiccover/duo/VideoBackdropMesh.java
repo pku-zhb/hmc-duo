@@ -90,6 +90,14 @@ final class VideoBackdropMesh extends View implements Choreographer.FrameCallbac
                 + (failure == null ? "" : " fallback=" + failure);
     }
 
+    static String traceLine() {
+        VideoBackdropMesh v = view;
+        return v == null ? " mesh=none" : " mesh[a=" + Main.r3(v.renderAlpha)
+                + "/" + Main.r3(v.lastPresentedAlpha) + " band=" + Main.r3(v.fullArtworkAlpha)
+                + " state=" + v.state.epoch() + "/" + v.state.revealed()
+                + " visibility=" + CoverBackdrop.presenterAlpha(v) + "]";
+    }
+
     static void show(boolean on, boolean moving, float[] spec) {
         if (!on) {
             if (view != null) view.wanted = false;

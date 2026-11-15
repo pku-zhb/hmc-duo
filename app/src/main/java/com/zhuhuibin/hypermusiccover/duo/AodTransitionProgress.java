@@ -34,12 +34,20 @@ final class AodTransitionProgress {
     }
 
     synchronized void scene(Object nextWindow, long nextRevision, boolean aod, boolean nativeAnimationPlanned) {
+        scene(nextWindow, nextRevision, aod, nativeAnimationPlanned, false);
+    }
+
+    synchronized void scene(Object nextWindow, long nextRevision, boolean aod,
+                            boolean nativeAnimationPlanned, boolean nativeCompletionExpected) {
         domain(nextWindow, nextRevision, aod);
-        // setIsDozing can precede the native animation's final frame. It is an endpoint only
-        // when no native run owns the fraction; cold entry needs no synthetic frame/timer.
-        if (nativeAnimationPlanned) {
+        // Doze/display intent can arrive before mWillDoAodAnim is set. Once the native
+        // controller is bound, only its frames/completion can publish a new endpoint.
+        // Otherwise a wake briefly publishes 0, retires the AOD presenter, then jumps
+        // back toward 1 at onBegin. Native non-animated resets also dispatch completion.
+        // A cold domain or an unavailable native source still has an immediate endpoint.
+        if (nativeAnimationPlanned || nativeCompletionExpected && into != aod) {
             if (!running || into != aod) begin(nextWindow, nextRevision, aod);
-        } else if (!running) {
+        } else if (!running && !(nativeCompletionExpected && interrupted)) {
             fraction = aod ? 1f : 0f; into = aod; epoch++;
             interrupted = false;
         }

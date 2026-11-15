@@ -15,9 +15,12 @@ also resets that field to zero before notifying listeners.
 `AodTransitionProgress` publishes an absolute fraction, zero for the lit lock screen and one
 for full-screen AOD. Native begin/update/complete/cancel events own a running transition.
 Reversal begins from the last actually published fraction. Native doze/display events provide
-cold endpoints when no animation exists; a native `mIsAnimating`/`mWillDoAodAnim` plan keeps an
-early doze event from prematurely publishing the final endpoint. Window identity and geometry
-revision bound the snapshot. A different window or display revision cannot borrow the previous
+cold endpoints for a new domain or when the native event source is unavailable. Once the native
+controller is bound, changed doze/display intent retains the last published fraction until a
+native frame or explicit completion arrives. `mIsAnimating`/`mWillDoAodAnim` can still be false
+when wake intent arrives, so those flags cannot prove that the native transition is finished.
+The existing `completeFullAodAnim` hook also commits native resets without animation frames.
+Window identity and geometry revision bound the snapshot. A different window or display revision cannot borrow the previous
 window's progress.
 
 The held clock's AOD zoom and wake consume this fraction. Ordinary/custom AOD remains native.
@@ -58,9 +61,11 @@ in that same height timeline symmetrically. Native 100-percent mode remains unto
 ## Verification boundary
 
 JVM regressions cover cold endpoint publication, local-to-absolute direction conversion, early
-doze state during a planned transition, cancellation/reversal continuity, geometry-domain
+doze state before a delayed native begin, cancellation/reversal continuity, geometry-domain
 invalidation, opaque outgoing coverage, lyric geometry rebasing, and compact seek endpoints.
 Compilation and these policy tests do not establish visual smoothness or native callback order
 on every supported device. Real sleep/wake, interrupted transitions, and physical fold changes
-still require device observation. `aodprobe` and `lyricstate` expose bounded native progress
+still require device observation. The opt-in bounded `motiontrace` includes the last published
+backdrop surface/source/owner/epoch, both renderers' submitted/raw alpha and effective parent
+alpha, and the native progress event. `aodprobe` and `lyricstate` also expose native progress
 fields for that verification.

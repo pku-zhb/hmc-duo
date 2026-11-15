@@ -1042,6 +1042,12 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
                 + " fade=" + v.getTransitionAlpha() + " chain=" + chain + traceLine();
     }
 
+    static String backdropTraceLine() {
+        Wash w = sView == null ? null : sView.wash;
+        return w == null ? " wash=none" : " wash[a=" + w.lastBackdropAlpha + " want=" + w.want
+                + " native=" + w.nativeReveal + " visibility=" + CoverBackdrop.presenterAlpha(w) + "]";
+    }
+
     /** Read-only and used only by the existing bounded motion trace/state diagnostic. */
     static String traceLine() {
         CoverCardLayer v = sView;
