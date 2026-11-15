@@ -23,6 +23,7 @@ final class FoldMusicRuntime {
     private static int lastWidth, lastHeight;
     private static boolean lastEnabled;
     private static long columnsRevision = -1;
+    private static final LyricFrameReadiness lyricFrame = new LyricFrameReadiness();
 
     static boolean sideBySide() {
         return columns != null && columnsRevision == Main.screenGeometry().revision && combinedRequested()
@@ -101,6 +102,7 @@ final class FoldMusicRuntime {
                 update();
             } catch (Throwable error) {
                 failed = true;
+                lyricFrame.reset();
                 reason = "layout unavailable: " + error.getClass().getSimpleName();
                 publish(null);
                 Xp.w(Main.TAG + "fold music: " + error);
@@ -117,6 +119,7 @@ final class FoldMusicRuntime {
         observer = null;
         listener = null;
         publish(null);
+        lyricFrame.reset();
         CompactPlayerRuntime.restore();
         root = null;
         reason = "not attached";
@@ -124,6 +127,7 @@ final class FoldMusicRuntime {
 
     static void refresh() {
         failed = false;
+        lyricFrame.reset();
         if (root != null) root.invalidate();
     }
 
@@ -137,6 +141,7 @@ final class FoldMusicRuntime {
             lastWidth = v.getWidth();
             lastHeight = v.getHeight();
             lastEnabled = Main.sFoldMusicLayout;
+            lyricFrame.reset();
             publish(null);
         }
         if (columns != null && columnsRevision != Main.screenGeometry().revision) publish(null);
@@ -160,11 +165,12 @@ final class FoldMusicRuntime {
             if (card == null) card = Main.findLockScreenView("mi_media_controls");
             if (card != null && card.isAttachedToWindow() && card.isShown()
                     && card.getHeight() > 0 && card.getParent() instanceof View) {
-                FoldMusicLayout.Box area = LockScreenRailRuntime.content(v, scratch)
+                FoldMusicLayout.Box area = LockScreenRailRuntime.logicalContent(scratch) != null
                         ? new FoldMusicLayout.Box(scratch.left, scratch.top, scratch.right, scratch.bottom)
                         : new FoldMusicLayout.Box(0, 0, v.getWidth(), v.getHeight());
-                next = measureColumns(v, area, card);
-            }
+                if (!LockScreenRailRuntime.logicalContentPending()) next = measureColumns(v, area, card);
+                else lyricFrame.reset();
+            } else lyricFrame.reset();
             if (!failed) reason = next == null ? "waiting for measured clock/player room" : "combined artwork and lyrics";
         } else if (!failed) {
             reason = !Main.sFoldMusicLayout ? "disabled" : !wideCandidate()
@@ -189,6 +195,7 @@ final class FoldMusicRuntime {
     }
 
     private static FoldMusicLayout.Columns measureColumns(View window, FoldMusicLayout.Box content, View card) {
+        lyricFrame.reset();
         if (card == null || !card.isAttachedToWindow() || card.getHeight() <= 0
                 || !map(card, window, new FoldMusicLayout.Box(0, 0, card.getWidth(), card.getHeight()), scratch))
             return null;
@@ -196,10 +203,14 @@ final class FoldMusicRuntime {
                 scratch.left, scratch.top, scratch.right, scratch.bottom);
         window.getLocationOnScreen(at);
         float clock = ClockCollapse.contentBottomFor(window) - at[1];
+        if (!Float.isFinite(clock) || clock < 0f) return null;
         Insets insets = RailWindowInsets.read(window);
         float density = window.getResources().getDisplayMetrics().density;
         float shortcutTop = LockScreenRailRuntime.active() && Main.sForceNotificationFloor ? Float.NaN
                 : window.getHeight() - insets.bottom - 80f * density;
+        // An actual measurement can legitimately find too little room for two columns.
+        // Keep that decision separate from a temporarily missing clock/player frame.
+        lyricFrame.measured(Main.screenGeometry().revision, window.getWidth(), window.getHeight());
         return FoldMusicLayout.columns(content.right, window.getHeight(), density,
                 window.getResources().getConfiguration().smallestScreenWidthDp,
                 content.left, content.top, 0f, insets.bottom, clock, nativePlayer, shortcutTop);
@@ -237,6 +248,22 @@ final class FoldMusicRuntime {
     static boolean lyrics(View target, RectF result) {
         FoldMusicLayout.Columns c = columns;
         return sideBySide() && c != null && map(root, target, c.lyrics, result);
+    }
+
+    /** Text topology follows the shared plan even across a temporary display-power edge. */
+    static View logicalLyrics(RectF result) {
+        FoldMusicLayout.Columns c = columns;
+        if (!combinedRequested() || c == null || root == null || !root.isAttachedToWindow()
+                || columnsRevision != Main.screenGeometry().revision) return null;
+        result.set(c.lyrics.left, c.lyrics.top, c.lyrics.right, c.lyrics.bottom);
+        return root;
+    }
+
+    static boolean lyricFramePending() {
+        if (!combinedRequested()) return false;
+        if (columns != null && columnsRevision == Main.screenGeometry().revision) return false;
+        return root == null || !root.isAttachedToWindow()
+                || lyricFrame.pending(Main.screenGeometry().revision, root.getWidth(), root.getHeight());
     }
 
     static String describe() {
