@@ -24,6 +24,7 @@ final class LockScreenRailRuntime {
     private static boolean wasCombined;
     private static long planRevision = -1;
     private static int planWidth, planHeight;
+    private static final LyricFrameReadiness lyricFrame = new LyricFrameReadiness();
     private static final IdentityHashMap<View, ControlOffset> clockOffsets = new IdentityHashMap<>();
     private static final class ControlOffset {
         float baseline, written, delta;
@@ -59,6 +60,7 @@ final class LockScreenRailRuntime {
             try { update(); }
             catch (Throwable error) {
                 plan = null;
+                lyricFrame.reset();
                 RailStatusRuntime.hide();
                 restore();
                 reason = "adapter unavailable: " + error.getClass().getSimpleName();
@@ -73,6 +75,7 @@ final class LockScreenRailRuntime {
         if (observer != null && observer.isAlive() && listener != null) observer.removeOnPreDrawListener(listener);
         observer = null; listener = null;
         plan = null;
+        lyricFrame.reset();
         sessionEligible = false;
         restore();
         root = null;
@@ -85,6 +88,7 @@ final class LockScreenRailRuntime {
         RailStatusRuntime.hide();
         restore();
         plan = null;
+        lyricFrame.reset();
         railXPinned = false;
         if (root != null) root.invalidate();
         MiniPlayerRuntime.refresh();
@@ -103,6 +107,7 @@ final class LockScreenRailRuntime {
             railXPinned = false;
             RailStatusRuntime.hide();
             plan = null;
+            lyricFrame.reset();
             restore();
             note(Main.sRightRail ? "outside lock screen" : "disabled");
             return;
@@ -115,6 +120,7 @@ final class LockScreenRailRuntime {
                 || planHeight != root.getHeight()) {
             restore();
             plan = null;
+            lyricFrame.reset();
             railXPinned = false;
             revision = Main.screenGeometry().revision;
             planWidth = root.getWidth(); planHeight = root.getHeight();
@@ -122,6 +128,7 @@ final class LockScreenRailRuntime {
         boolean aodFrozen = holdGeometry();
         boolean retained = RailLifecycle.retain(sessionEligible, plan != null, planRevision, revision);
         RightRailLayout.Plan next = retained ? plan : planForWindow();
+        lyricFrame.measured(revision, planWidth, planHeight);
         if (next != null) planRevision = revision;
         plan = next;
         if (next != null) RailStatusRuntime.update(root, next);
@@ -415,6 +422,25 @@ final class LockScreenRailRuntime {
     static boolean content(View host, RectF out) {
         RightRailLayout.Plan p = plan;
         return reflowing() && p != null && map(root, host, presentedContent(), out);
+    }
+    /**
+     * The owned text frame in window coordinates. Unlike content(), this does not depend on
+     * a native child currently consuming the plan, or invert an animated consumer's scale.
+     * The returned window is the coordinate owner; callers map position separately from width.
+     */
+    static View logicalContent(RectF out) {
+        if (!Main.sReflowLockContent || !active() || root == null || !root.isAttachedToWindow()
+                || lyricFrame.pending(Main.screenGeometry().revision, root.getWidth(), root.getHeight())) return null;
+        FoldMusicLayout.Box content = presentedContent();
+        if (content == null) return null;
+        out.set(content.left, content.top, content.right, content.bottom);
+        return root;
+    }
+    /** A current unavailable plan permits a window fallback; an unmeasured plan does not. */
+    static boolean logicalContentPending() {
+        return Main.sRightRail && Main.sReflowLockContent && Main.keyguardLocked()
+                && !Main.bouncerShown() && (root == null || !root.isAttachedToWindow()
+                    || lyricFrame.pending(Main.screenGeometry().revision, root.getWidth(), root.getHeight()));
     }
     /** Empty space beside the rail follows content gestures; actual controls claim their own hits. */
     static boolean contentSwipeArea(View host, RectF out) {

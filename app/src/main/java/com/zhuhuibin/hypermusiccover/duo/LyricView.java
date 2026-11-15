@@ -315,18 +315,60 @@ final class LyricView extends View {
     private int builtDepthBlur = LyricDepthBlur.DEFAULT;
     private float sidePx;
     private final android.graphics.RectF columnBounds = new android.graphics.RectF();
+    private final android.graphics.RectF logicalColumn = new android.graphics.RectF();
+    private final Matrix columnMatrix = new Matrix(), columnInverse = new Matrix();
     private boolean inColumns;
+    private boolean textFrameReady;
+    private String textFrameSource = "waiting";
+    private float mappedColumnWidth;
     private int columnWidth;
     private float columnLeft;
 
     private int textViewportWidth() { return columnWidth > 0 ? columnWidth : getWidth(); }
 
-    /** Keep the view in its native window; reflow text into a mapped column without scaling it. */
+    /**
+     * Line breaking belongs to the shared logical frame. Mapping that frame into this view
+     * inverts followSwipeZoom's AOD/swipe scale: its mapped width is presentation geometry,
+     * not a new paragraph width. Only map its center and vertical band; glyphs inherit the
+     * view's transform once, without reflowing on every frame of a wake.
+     */
     private boolean refreshColumns() {
-        boolean split = FoldMusicRuntime.lyrics(this, columnBounds);
-        boolean narrowed = !split && LockScreenRailRuntime.content(this, columnBounds);
-        int width = split || narrowed ? Math.max(1, Math.round(columnBounds.width())) : getWidth();
-        float left = split || narrowed ? columnBounds.left : 0f;
+        View owner = FoldMusicRuntime.logicalLyrics(logicalColumn);
+        boolean split = owner != null;
+        if (!split) owner = FoldMusicRuntime.lyricFramePending()
+                ? null : LockScreenRailRuntime.logicalContent(logicalColumn);
+        boolean narrowed = owner != null;
+        String source = split ? "both" : narrowed ? "rail" : "window";
+        boolean ready = true;
+        int width = getWidth();
+        float left = 0f;
+        if (split || narrowed) {
+            columnMatrix.reset(); owner.transformMatrixToGlobal(columnMatrix);
+            columnInverse.reset(); transformMatrixToGlobal(columnInverse);
+            ready = columnInverse.invert(columnInverse);
+            if (ready) {
+                columnInverse.preConcat(columnMatrix);
+                columnBounds.set(logicalColumn);
+                columnInverse.mapRect(columnBounds);
+                LyricTextFrame frame = LyricTextFrame.at(logicalColumn.width(), columnBounds.centerX());
+                ready = frame != null && Float.isFinite(columnBounds.top)
+                        && Float.isFinite(columnBounds.bottom);
+                if (ready) {
+                    width = frame.width;
+                    left = frame.left;
+                    mappedColumnWidth = columnBounds.width();
+                }
+            }
+        } else if (FoldMusicRuntime.lyricFramePending()
+                || LockScreenRailRuntime.logicalContentPending()) {
+            // An unpublished owner frame is not a full-window paragraph. Wait for its plan;
+            // a temporarily absent native card during AOD must not change text topology.
+            ready = false;
+            source = "waiting";
+        } else mappedColumnWidth = width;
+        textFrameReady = ready && width > 0;
+        textFrameSource = source;
+        if (!textFrameReady) return false;
         boolean changed = split != inColumns || width != columnWidth || left != columnLeft;
         inColumns = split;
         columnWidth = width;
@@ -345,6 +387,10 @@ final class LyricView extends View {
     private StaticLayout[] roma = new StaticLayout[0];
     private StaticLayout[] onlineTrans = new StaticLayout[0];
     private StaticLayout[] bgLay = new StaticLayout[0];
+    /** Worker-owned copies of the committed row layouts; depth never re-queries text/style. */
+    private BlurRow[] blurRows = new BlurRow[0];
+    private int[] rowBlurChoice = new int[0];
+    private int lastBlurLevel;
     /** Top of each line in content coordinates, and its full height with translation. */
     private float[] base = new float[0];
     private float[] height = new float[0];
@@ -657,7 +703,7 @@ final class LyricView extends View {
         // them, and laying the empty set out at once cut the lines off in one frame instead of
         // letting them fade.
         if (refreshColumns()) changed = true;
-        if (textViewportWidth() > 0 && (LockLyrics.version() != version || textViewportWidth() != layoutWidth
+        if (textFrameReady && textViewportWidth() > 0 && (LockLyrics.version() != version || textViewportWidth() != layoutWidth
                 // The translation switch changes the layout, not just the drawing: it takes a
                 // row out from under every line, so it is asked for the same way a new lyric set
                 // is. Compared against what the layout in use was built with, not the field, or
@@ -1270,6 +1316,7 @@ final class LyricView extends View {
 
     private boolean syncPresentation() {
         boolean changed = followAodDim() | followHostAlpha() | followSwipeZoom();
+        changed |= refreshColumns();
         if (LockLyrics.wantsShown()) changed |= updatePresentationBand();
         return changed;
     }
@@ -1778,7 +1825,7 @@ final class LyricView extends View {
             public void run() {
                 final Built b = build(v, width, ls, p, bp, tp, rp, op, transOn, alignOn,
                         style, buildTextPx, buildSidePx);
-                prepareLayoutBlur(b, position, depthBlur, p, tp, rp, op, bp);
+                prepareLayoutBlur(b, position, depthBlur);
                 post(new Runnable() {
                     @Override
                     public void run() {
@@ -1790,7 +1837,7 @@ final class LyricView extends View {
                         wantStyle = null;
                         // Stale by the time it landed, or asked for and then frozen by the lyrics
                         // being switched off: the next step asks again when it is due.
-                        if (v != LockLyrics.version() || width != textViewportWidth()
+                        if (!textFrameReady || v != LockLyrics.version() || width != textViewportWidth()
                                 || transOn != LockLyrics.below()
                                 || alignOn != LockLyrics.sAlign
                                 || !style.sameLayout(LockLyrics.sStyle)
@@ -1821,6 +1868,7 @@ final class LyricView extends View {
         int align;
         List<LyricLine> lines;
         StaticLayout[] main, trans, roma, onlineTrans, bgLay;
+        BlurRow[] blurRows;
         float[] base, height, dotsTop;
         float[][] charX, charXBg;
         int[][] clusterEnd, clusterEndBg;
@@ -1828,16 +1876,8 @@ final class LyricView extends View {
     }
 
     /** Publish a measured row and its initial depth together, never sharp while a worker catches up. */
-    private void prepareLayoutBlur(Built b, int position, int depth, TextPaint p, TextPaint tp,
-                                   TextPaint rp, TextPaint op, TextPaint bp) {
+    private void prepareLayoutBlur(Built b, int position, int depth) {
         long started = SystemClock.uptimeMillis();
-        // StaticLayouts retain their TextPaint. Blur work must never mutate the paints
-        // carried by the just-built sharp layouts.
-        p = new TextPaint(p);
-        tp = new TextPaint(tp);
-        rp = new TextPaint(rp);
-        op = new TextPaint(op);
-        bp = new TextPaint(bp);
         b.depthBlur = depth;
         b.blurPad = (int) Math.ceil((BLUR_NEXT_DP + BLUR_DP_PER_ROW * BLUR_MAX_ROWS)
                 * density * 2f * Math.max(1f, depth / 100f));
@@ -1845,7 +1885,6 @@ final class LyricView extends View {
         if (depth == 0 || b.lines.isEmpty()) return;
         int focus = 0;
         while (focus + 1 < b.lines.size() && b.lines.get(focus + 1).start <= position) focus++;
-        int onlineMode = LockLyrics.sOnlineTranslateMode;
         // The visible window plus the renderer's existing lead-in range. One texture per
         // row is enough to preserve depth until its exact neighbour radius is ready.
         for (int i = Math.max(0, focus - 6); i <= Math.min(b.lines.size() - 1, focus + 12); i++) {
@@ -1853,11 +1892,11 @@ final class LyricView extends View {
                     i > focus ? i - focus : focus - i + 1));
             int width = b.main[i].getWidth();
             float radius = LyricDepthBlur.radiusDp(rows, depth) * density;
-            b.blurTextures[i][rows - 1] = makeBlurred(b.lines.get(i), width,
+            b.blurTextures[i][rows - 1] = makeBlurred(b.blurRows[i],
                     width + 2 * b.blurPad, Math.round(b.height[i]) + 2 * b.blurPad,
-                    b.blurPad, radius, p, tp, rp, op, bp,
+                    b.blurPad, radius,
                     TRANS_GAP_DP * density, ONLINE_TRANS_GAP_DP * density, BG_GAP_DP * density,
-                    rows >= BLUR_QUARTER_ROWS ? 4 : 2, b.align, b.transOn, onlineMode);
+                    rows >= BLUR_QUARTER_ROWS ? 4 : 2);
         }
         b.tookMs += SystemClock.uptimeMillis() - started;
     }
@@ -1902,6 +1941,7 @@ final class LyricView extends View {
         b.roma = new StaticLayout[n];
         b.onlineTrans = new StaticLayout[n];
         b.bgLay = new StaticLayout[n];
+        b.blurRows = new BlurRow[n];
         b.base = new float[n];
         b.height = new float[n];
         b.dotsTop = new float[n];
@@ -1970,6 +2010,7 @@ final class LyricView extends View {
             }
             b.base[i] = y;
             b.height[i] = h;
+            b.blurRows[i] = new BlurRow(b.main[i], b.bgLay[i], b.roma[i], b.onlineTrans[i]);
             y += h + gap;
         }
         b.tookMs = SystemClock.uptimeMillis() - t0;
@@ -2003,6 +2044,8 @@ final class LyricView extends View {
         roma = b.roma;
         onlineTrans = b.onlineTrans;
         bgLay = b.bgLay;
+        blurRows = b.blurRows;
+        rowBlurChoice = new int[n];
         charXBg = b.charXBg;
         base = b.base;
         height = b.height;
@@ -2355,6 +2398,7 @@ final class LyricView extends View {
     protected void onDraw(Canvas canvas) {
         LockLyrics.noteStill("draw");
         long t0 = System.nanoTime();
+        java.util.Arrays.fill(rowBlurChoice, 0);
         int columnSave = canvas.save();
         canvas.translate(columnLeft, 0f);
         if (pageFade >= 1f) drawLyrics(canvas);
@@ -2364,6 +2408,7 @@ final class LyricView extends View {
             canvas.restoreToCount(page);
         }
         canvas.restoreToCount(columnSave);
+        noteLayoutTrace();
         long took = System.nanoTime() - t0;
         drawNsSum += took;
         if (took > drawNsMax) drawNsMax = took;
@@ -2777,6 +2822,7 @@ final class LyricView extends View {
         canvas.translate(x, y);
         canvas.scale(sc, sc, pivotX, 0f);
         if (words) {
+            rowBlurChoice[i] |= 1;
             // The full-line blur would preview unsung glyphs, so Eye-candy alone skips it.
             float k = blur[i] <= 0f ? 0f : clamp01(blur[i] / Math.max(0.01f, blurFor(1)));
             drawWords(canvas, i, eyeCandy ? a : a * (1f - k), e);
@@ -2820,9 +2866,11 @@ final class LyricView extends View {
         if (alpha <= 0.002f) return;
         Bitmap b = radius <= 0f ? null : blurredFor(i, rowsFor(radius));
         if (b == null) {
+            rowBlurChoice[i] |= 1;
             drawStatic(canvas, i, alpha, whiteness);
             return;
         }
+        rowBlurChoice[i] |= 1 << lastBlurLevel;
         // A blur spreads a glyph's ink over more pixels, so the same alpha reads fainter the more it
         // is blurred. Compensated a little, so distance reads as depth rather than as fading out.
         float boost = 1f + BLUR_ALPHA_PER_DP * (radius / density);
@@ -2885,11 +2933,18 @@ final class LyricView extends View {
      */
     private Bitmap blurredFor(int i, int rows) {
         Bitmap[] have = blurBmp[i];
-        if (have[rows - 1] != null) return have[rows - 1];
+        if (have[rows - 1] != null) {
+            lastBlurLevel = rows;
+            return have[rows - 1];
+        }
         requestBlur(i, rows);
         for (int gap = 1; gap < BLUR_MAX_ROWS; gap++) {
-            if (rows - gap >= 1 && have[rows - gap - 1] != null) return have[rows - gap - 1];
+            if (rows - gap >= 1 && have[rows - gap - 1] != null) {
+                lastBlurLevel = rows - gap;
+                return have[rows - gap - 1];
+            }
             if (rows + gap <= BLUR_MAX_ROWS && have[rows + gap - 1] != null) {
+                lastBlurLevel = rows + gap;
                 return have[rows + gap - 1];
             }
         }
@@ -2915,24 +2970,18 @@ final class LyricView extends View {
 
     private void requestBlur(final int i, final int rows) {
         if (builtDepthBlur == 0 || rows < 1 || rows > BLUR_MAX_ROWS
-                || i < 0 || i >= blurBmp.length) return;
+                || i < 0 || i >= blurBmp.length || i >= blurRows.length
+                || !blurRows[i].valid) return;
         if (blurBmp[i][rows - 1] != null) return;
         if (!blurPending.add(i * 8 + rows)) return;
-        // Everything the other thread needs, taken here: the paints are this view's and change on
-        // every frame, so it gets copies, and it lays the text out again for itself.
+        // The row snapshot was made with the committed layout, before publication. Only
+        // the blur worker uses its paints; neither current preferences nor a drawing frame
+        // can change its typography or translation content.
         final int gen = buildGen;
-        final LyricLine l = lines.get(i);
-        final int alignOn = builtAlign;
-        final int belowMode = builtTrans;
-        final int onlineMode = LockLyrics.sOnlineTranslateMode;
+        final BlurRow row = blurRows[i];
         final int width = main[i].getWidth();
         final int fullW = width + 2 * blurPad, fullH = Math.round(height[i]) + 2 * blurPad;
         final float radius = blurFor(rows);
-        final TextPaint p = new TextPaint(paint);
-        final TextPaint tp = new TextPaint(transPaint);
-        final TextPaint rp = new TextPaint(romaPaint);
-        final TextPaint op = new TextPaint(onlineTransPaint);
-        final TextPaint bp = new TextPaint(bgPaint);
         final int pad = blurPad;
         final float transGap = TRANS_GAP_DP * density;
         final float onlineTransGap = ONLINE_TRANS_GAP_DP * density;
@@ -2943,8 +2992,8 @@ final class LyricView extends View {
             public void run() {
                 // Slider changes can supersede queued work before the worker starts it.
                 if (gen != buildGen) return;
-                final Bitmap b = makeBlurred(l, width, fullW, fullH, pad, radius, p, tp, rp, op, bp,
-                        transGap, onlineTransGap, bgGap, down, alignOn, belowMode, onlineMode);
+                final Bitmap b = makeBlurred(row, fullW, fullH, pad, radius,
+                        transGap, onlineTransGap, bgGap, down);
                 post(new Runnable() {
                     @Override
                     public void run() {
@@ -2967,10 +3016,10 @@ final class LyricView extends View {
      * Off the UI thread: the line at 1/down of the resolution, blurred. The blur scales with the
      * canvas.
      */
-    private static Bitmap makeBlurred(LyricLine l, int width, int fullW, int fullH, int pad,
-                                      float radius, TextPaint p, TextPaint tp, TextPaint rp, TextPaint op,
-                                      TextPaint bp, float transGap, float onlineTransGap,
-                                      float bgGap, int down, int alignOn, int belowMode, int onlineMode) {
+    private static Bitmap makeBlurred(BlurRow row, int fullW, int fullH, int pad,
+                                      float radius, float transGap, float onlineTransGap,
+                                      float bgGap, int down) {
+        if (row == null || row.main == null || !row.valid) return null;
         try {
             Bitmap b = Bitmap.createBitmap(Math.max(1, fullW / down), Math.max(1, fullH / down),
                     Bitmap.Config.ARGB_8888);
@@ -2978,64 +3027,80 @@ final class LyricView extends View {
             c.scale(1f / down, 1f / down);
             c.translate(pad, pad);
             BlurMaskFilter mf = new BlurMaskFilter(radius, BlurMaskFilter.Blur.NORMAL);
-            Layout.Alignment align = alignFor(l.opposite, alignOn);
-            p.setShader(null);
-            p.clearShadowLayer();
-            p.setAlpha(255);
-            p.setMaskFilter(mf);
-            String displayText = l.displayText();
-            StaticLayout lay = StaticLayout.Builder.obtain(displayText, 0, displayText.length(), p, width)
-                    .setAlignment(align)
-                    .setIncludePad(false)
-                    .setBreakStrategy(android.graphics.text.LineBreaker.BREAK_STRATEGY_BALANCED)
-                    .build();
-            lay.draw(c);
-            float below = lay.getHeight();
-            if (l.bg != null) {
-                bp.setShader(null);
-                bp.setColor(0xFFFFFFFF);
-                bp.setAlpha(Math.round(255f * BG_ALPHA));
-                bp.setMaskFilter(mf);
-                StaticLayout bl = StaticLayout.Builder.obtain(l.bg.text, 0, l.bg.text.length(),
-                                bp, width)
-                        .setAlignment(align)
-                        .setIncludePad(false)
-                        .setBreakStrategy(android.graphics.text.LineBreaker.BREAK_STRATEGY_BALANCED)
-                        .build();
+            blurInk(row.main, mf, 1f);
+            row.main.draw(c);
+            float below = row.main.getHeight();
+            if (row.bg != null) {
+                blurInk(row.bg, mf, BG_ALPHA);
                 int save = c.save();
                 c.translate(0f, below + bgGap);
-                bl.draw(c);
+                row.bg.draw(c);
                 c.restoreToCount(save);
-                below += bgGap + bl.getHeight();
+                below += bgGap + row.bg.getHeight();
             }
-            String localRoma = (belowMode & LockLyrics.BELOW_ROMA) != 0 ? l.renderedRoma() : null;
-            String translation = (belowMode & LockLyrics.BELOW_TRANS) != 0
-                    ? LyricTranslationLogic.translationFor(l, onlineMode) : null;
-            float romaHeight = 0f;
-            if (localRoma != null) {
-                rp.setAlpha(Math.round(255f * TRANS_ALPHA));
-                rp.setMaskFilter(mf);
-                StaticLayout r = StaticLayout.Builder.obtain(localRoma, 0, localRoma.length(), rp, width)
-                        .setAlignment(align)
-                        .setIncludePad(false)
-                        .build();
+            if (row.roma != null) {
+                blurInk(row.roma, mf, TRANS_ALPHA);
                 c.translate(0f, below + transGap);
-                r.draw(c);
-                romaHeight = r.getHeight();
+                row.roma.draw(c);
             }
-            if (translation != null) {
-                op.setAlpha(Math.round(255f * TRANS_ALPHA));
-                op.setMaskFilter(mf);
-                StaticLayout t = StaticLayout.Builder.obtain(translation, 0, translation.length(), op, width)
-                        .setAlignment(align)
-                        .setIncludePad(false)
-                        .build();
-                c.translate(0f, localRoma == null ? below + transGap : romaHeight + onlineTransGap);
-                t.draw(c);
+            if (row.translation != null) {
+                blurInk(row.translation, mf, TRANS_ALPHA);
+                c.translate(0f, row.roma == null ? below + transGap : row.roma.getHeight() + onlineTransGap);
+                row.translation.draw(c);
             }
             return b;
         } catch (Throwable t) {
             return null;
+        }
+    }
+
+    private static void blurInk(StaticLayout layout, BlurMaskFilter mask, float alpha) {
+        TextPaint p = layout.getPaint();
+        p.setShader(null);
+        p.clearShadowLayer();
+        p.setColor(0xFFFFFFFF);
+        p.setAlpha(Math.round(255f * alpha));
+        p.setMaskFilter(mask);
+    }
+
+    /**
+     * An immutable paragraph topology with private worker paints. Copy at build time, while
+     * the new sharp layouts are still worker-owned, and verify every native line boundary.
+     * If Android cannot reproduce a boundary, the sharp row is the safe fallback; a blur
+     * texture with different wrapping is never published.
+     */
+    private static final class BlurRow {
+        final StaticLayout main, bg, roma, translation;
+        final boolean valid;
+
+        BlurRow(StaticLayout main, StaticLayout bg, StaticLayout roma, StaticLayout translation) {
+            this.main = copy(main, true);
+            this.bg = copy(bg, true);
+            this.roma = copy(roma, false);
+            this.translation = copy(translation, false);
+            valid = this.main != null && (bg == null || this.bg != null)
+                    && (roma == null || this.roma != null)
+                    && (translation == null || this.translation != null);
+        }
+
+        private static StaticLayout copy(StaticLayout source, boolean balanced) {
+            if (source == null) return null;
+            CharSequence text = source.getText();
+            StaticLayout copy = StaticLayout.Builder.obtain(text, 0, text.length(),
+                            new TextPaint(source.getPaint()), source.getWidth())
+                    .setAlignment(source.getAlignment())
+                    .setIncludePad(false)
+                    .setBreakStrategy(balanced ? android.graphics.text.LineBreaker.BREAK_STRATEGY_BALANCED
+                            : android.graphics.text.LineBreaker.BREAK_STRATEGY_SIMPLE)
+                    .build();
+            if (copy.getLineCount() != source.getLineCount() || copy.getHeight() != source.getHeight()) return null;
+            for (int i = 0; i < source.getLineCount(); i++) {
+                if (copy.getLineStart(i) != source.getLineStart(i)
+                        || copy.getLineEnd(i) != source.getLineEnd(i)
+                        || copy.getLineBaseline(i) != source.getLineBaseline(i)
+                        || copy.getLineLeft(i) != source.getLineLeft(i)) return null;
+            }
+            return copy;
         }
     }
 
@@ -4071,6 +4136,39 @@ final class LyricView extends View {
         }
     }
 
+    private static final int LAYOUT_TRACE_LIMIT = 48;
+    private final java.util.ArrayDeque<String> layoutTrace = new java.util.ArrayDeque<>();
+    private String lastLayoutTraceKey = "";
+    private int lastLayoutTraceGeneration = -1;
+    private long lastLayoutTraceAt;
+
+    /** Bounded metadata only: no lyric text, track identity or player tokens. */
+    private void noteLayoutTrace() {
+        long at = SystemClock.uptimeMillis();
+        // Sample before allocating diagnostic strings. Every layout publication bypasses
+        // this bound, even when two commits arrive within one sampling interval.
+        if (buildGen == lastLayoutTraceGeneration && at - lastLayoutTraceAt < 100L) return;
+        lastLayoutTraceAt = at;
+        StringBuilder rows = new StringBuilder();
+        for (int i = Math.max(0, focus - 1); i < Math.min(main.length, focus + 4); i++) {
+            if (rows.length() > 0) rows.append(',');
+            rows.append(i).append(':').append(main[i].getLineCount()).append('/')
+                    .append(blurRows[i].valid ? blurRows[i].main.getLineCount() : -1).append('/')
+                    .append(rowBlurChoice[i]);
+        }
+        String key = "v" + version + "/g" + buildGen + " frame=" + textFrameSource
+                + (textFrameReady ? "" : "?") + " viewport=" + getWidth()
+                + " logical=" + columnWidth + " mapped=" + Math.round(mappedColumnWidth)
+                + " inner=" + (main.length == 0 ? 0 : main[0].getWidth())
+                + " style=" + r2(textPx) + "/" + (layoutStyle == null ? 0 : layoutStyle.weight)
+                + " ambient=" + ambientText + " focus=" + focus + " rows(main/blur/mask)=" + rows;
+        if (key.equals(lastLayoutTraceKey)) return;
+        lastLayoutTraceKey = key;
+        lastLayoutTraceGeneration = buildGen;
+        layoutTrace.addLast("@" + at + " " + key);
+        while (layoutTrace.size() > LAYOUT_TRACE_LIMIT) layoutTrace.removeFirst();
+    }
+
     String describe() {
         int words = 0;
         for (LyricLine l : lines) if (l.hasDisplayWords()) words++;
@@ -4099,6 +4197,7 @@ final class LyricView extends View {
                         + "(" + LockLyrics.bandSource() + ")" : "none")
                 + " looping=" + looping + " parent=" + (getParent() instanceof ViewGroup)
                 + " aodProgress=[" + AodTransitionRuntime.describe() + "]"
+                + " layoutTrace=[" + String.join(" | ", layoutTrace) + "]"
                 // The last few frames that moved, oldest first: what the page did while the lock
                 // screen was leaving, and which reading was late with it. Only frames that move
                 // are in it, so a burst is one event. See trace().
