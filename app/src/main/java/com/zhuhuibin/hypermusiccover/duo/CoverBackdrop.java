@@ -189,6 +189,13 @@ final class CoverBackdrop {
                 scene.sourceIdentity, scene.geometryRevision, scene.generation) && handoff.retains(renderer);
     }
 
+    /** Retiring an upper renderer requires opaque current-composition proof, not page intent. */
+    static boolean coveredBy(int renderer, Snapshot scene) {
+        return scene.rendererWanted && handoff.matches(scene.epoch, scene.window,
+                scene.sourceIdentity, scene.geometryRevision, scene.generation)
+                && handoff.coveredBy(renderer);
+    }
+
     /** Sampling follows the final renderer submission, not requested cover or AOD flags. */
     static boolean samplingBackdropIn(View source) {
         Snapshot scene = snapshot();

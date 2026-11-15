@@ -850,7 +850,14 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
             AodTransitionProgress.Snapshot aod = AodTransitionRuntime.snapshot();
             v.wash.show(true, enteredFullAod || aod.running && aod.into);
             if (v.wash.lastBackdropGeneration != scene.generation) v.wash.invalidate();
+        } else if (CoverBackdrop.coveredBy(ArtworkBackdropState.MESH, scene)) {
+            // The awake renderer sits below Wash. Once it has submitted this complete
+            // composition opaquely, retire the upper display list in the same transaction.
+            // A second Wash fade would first erase its sharp band and cover the ready
+            // awake band with opaque blur, then reveal it again over OUT_MS.
+            v.wash.hideNow();
         } else if (scene.rendererWanted && scene.desiredRenderer == ArtworkBackdropState.MESH) {
+            // Without incoming opaque proof retain the existing scene fade contract.
             v.wash.show(false, false);
         } else v.wash.hideNow();
     }
@@ -1897,10 +1904,12 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
             boolean retained = CoverBackdrop.retains(ArtworkBackdropState.STILL, scene);
             // Retain the complete submitted composition, including the clear band. Wake
             // changes the desired renderer before the incoming native fraction reaches it.
-            boolean foreground = scene.fullArtworkWanted
-                    && (scene.surface == CoverBackdrop.SURFACE_FULL_AOD || retained);
             boolean fadingOut = scene.rendererWanted && !want
                     && scene.desiredRenderer == ArtworkBackdropState.MESH;
+            // An uncommitted scene fade also keeps the whole composition. Its fill must
+            // never obscure a ready lower band after erasing only its own foreground.
+            boolean foreground = scene.fullArtworkWanted
+                    && (scene.surface == CoverBackdrop.SURFACE_FULL_AOD || retained || fadingOut);
             if ((!scene.rendererWanted && !foreground) || scene.window != getRootView()
                     || (scene.desiredRenderer != ArtworkBackdropState.STILL
                         && !retained && !foreground && !fadingOut)) {

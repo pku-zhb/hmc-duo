@@ -171,6 +171,12 @@ final class ArtworkBackdropState {
             drawnGeneration[renderer] = -1;
         }
 
+        /** Opaque submitted pixels for this exact composition may replace an upper presenter. */
+        boolean coveredBy(int renderer) {
+            return renderer == desired && renderer == owner && currentFrame(renderer)
+                    && presented[renderer] >= .995f;
+        }
+
         boolean retains(int renderer) { return owner == renderer && desired != renderer && local(); }
         boolean local() {
             return desired != NATIVE && owner != NATIVE && presented[owner] > .001f

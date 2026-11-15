@@ -398,4 +398,41 @@ public class ArtworkBackdropStateTest {
         assertFalse(handoff.presented(2L, ArtworkBackdropState.MESH, window, 7L, 3L, 6, 1f));
     }
 
+    @Test public void wakeRetiresTheUpperStillCompositionOnlyAfterCompleteLowerCoverage() {
+        ArtworkBackdropState.Handoff handoff = new ArtworkBackdropState.Handoff();
+        Object window = new Object();
+        handoff.select(1L, ArtworkBackdropState.STILL, window, 2L, 1L, 5);
+        handoff.presented(1L, ArtworkBackdropState.STILL, window, 2L, 1L, 5, 1f);
+        handoff.select(2L, ArtworkBackdropState.MESH, window, 2L, 1L, 5);
+        // Merely selecting the awake renderer cannot remove the upper still display list.
+        assertFalse(handoff.coveredBy(ArtworkBackdropState.MESH));
+        assertTrue(handoff.retains(ArtworkBackdropState.STILL));
+        for (float coverage : new float[]{.1f, .5f, .99f}) {
+            handoff.presented(2L, ArtworkBackdropState.MESH, window, 2L, 1L, 5, coverage);
+            assertFalse(handoff.coveredBy(ArtworkBackdropState.MESH));
+            assertTrue(handoff.retains(ArtworkBackdropState.STILL));
+        }
+        handoff.presented(2L, ArtworkBackdropState.MESH, window, 2L, 1L, 5, 1f);
+        assertTrue(handoff.coveredBy(ArtworkBackdropState.MESH));
+        assertFalse(handoff.retains(ArtworkBackdropState.STILL));
+        assertFalse(handoff.coveredBy(ArtworkBackdropState.STILL));
+    }
+
+    @Test public void oldCoverageCannotRetireTheUpperRendererForAnotherComposition() {
+        ArtworkBackdropState.Handoff handoff = new ArtworkBackdropState.Handoff();
+        Object window = new Object();
+        handoff.select(1L, ArtworkBackdropState.MESH, window, 2L, 1L, 5);
+        // First presentation can own a renderer while still partially visible.
+        handoff.presented(1L, ArtworkBackdropState.MESH, window, 2L, 1L, 5, .5f);
+        assertFalse(handoff.coveredBy(ArtworkBackdropState.MESH));
+        handoff.presented(1L, ArtworkBackdropState.MESH, window, 2L, 1L, 5, 1f);
+        assertTrue(handoff.coveredBy(ArtworkBackdropState.MESH));
+        handoff.select(2L, ArtworkBackdropState.MESH, window, 2L, 2L, 6);
+        assertFalse(handoff.coveredBy(ArtworkBackdropState.MESH));
+        assertFalse(handoff.presented(1L, ArtworkBackdropState.MESH, window, 2L, 1L, 5, 1f));
+        assertFalse(handoff.coveredBy(ArtworkBackdropState.MESH));
+        handoff.presented(2L, ArtworkBackdropState.MESH, window, 2L, 2L, 6, 1f);
+        assertTrue(handoff.coveredBy(ArtworkBackdropState.MESH));
+    }
+
 }
