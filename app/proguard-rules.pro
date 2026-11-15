@@ -10,6 +10,12 @@
 -keep class com.zhuhuibin.hypermusiccover.duo.Main { *; }
 -keep class com.zhuhuibin.hypermusiccover.duo.WallpaperProbe { *; }
 
+# Optional material providers discover this exact versioned interface across module loaders.
+-keep interface com.zhuhuibin.hypermusiccover.duo.NativeMaterialTarget { *; }
+-keepclassmembers class * implements com.zhuhuibin.hypermusiccover.duo.NativeMaterialTarget {
+    public *** hmcMaterial*(...);
+}
+
 # The Xposed API is compileOnly - it exists in the host process at runtime and is deliberately
 # not packaged, so R8 sees dangling references to it.
 -dontwarn io.github.libxposed.**

@@ -11453,6 +11453,12 @@ public class Main extends XposedModule {
         sSysReadAt = 0L;
     }
 
+    /** The native keyguard-state callback has returned; do not reuse a pre-event lock answer. */
+    static void nativeOwnedMaterialSceneChanged() {
+        forgetSysReads();
+        NativeOwnedMaterialBridge.refresh();
+    }
+
     private static boolean readKeyguardLocked() {
         try {
             android.app.KeyguardManager km = (android.app.KeyguardManager)

@@ -5,6 +5,18 @@ import java.util.List;
 import static org.junit.Assert.*;
 
 public class NativePaletteBatchTest {
+    @Test public void completeOwnedBoundaryRestoresBulkAndLegacyOnlyAfterOuterReturn() {
+        NativePaletteBatch<Object> batch = new NativePaletteBatch<>();
+        Object view = new Object();
+        batch.begin(view); batch.mark(view); batch.completed(view);
+        batch.begin(view); batch.completed(view);
+        assertFalse(batch.finish(view));
+        assertTrue(batch.finish(view));
+        assertFalse(batch.finish(view));
+        batch.begin(view); batch.mark(view);
+        assertTrue(batch.finish(view));
+        assertTrue(batch.drain().isEmpty());
+    }
     @Test public void twoClearsAndThreeAddsRestoreOnceAtTheCompleteRecipeBoundary() {
         NativePaletteBatch<Object> batch = new NativePaletteBatch<>();
         Object view = new Object();

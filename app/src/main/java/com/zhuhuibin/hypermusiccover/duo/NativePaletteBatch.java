@@ -27,6 +27,15 @@ final class NativePaletteBatch<T> {
         return dirty.remove(target) != null;
     }
 
+    /** Complete owned recipes publish once even when their last write used the bulk API. */
+    synchronized boolean finish(T target) {
+        Integer count = depth.get(target);
+        if (count == null) return false;
+        if (count > 1) { depth.put(target, count - 1); return false; }
+        depth.remove(target); dirty.remove(target);
+        return true;
+    }
+
     /** An explicit complete palette supersedes any preceding legacy writes. */
     synchronized void completed(T target) { dirty.remove(target); }
     synchronized void remove(T target) { dirty.remove(target); depth.remove(target); }
