@@ -140,8 +140,11 @@ final class FoldMusicRuntime {
             publish(null);
         }
         if (columns != null && columnsRevision != Main.screenGeometry().revision) publish(null);
-        // AOD changes visibility, not the same-window combined page's layout generation.
-        if (columns != null && combinedRequested() && nativeAodScene()
+        // The held-clock latch outlives wake. Retain the old native height only through
+        // actual AOD/motion, then fit the common plan to the current measured header.
+        if (columns != null && combinedRequested() && FoldMusicLayout.retainColumns(
+                Main.screenOnCached(), MiniPlayerScene.INSTANCE.getFullScreenAodActive(),
+                ClockCollapse.aodTransitioning())
                 && Main.keyguardLocked() && !Main.bouncerShown()
                 && !MiniPlayerScene.INSTANCE.getKeyguardGoingAway()) return;
         // Keep the outgoing artwork/lyric plan until the native header leaves the screen.
@@ -174,10 +177,14 @@ final class FoldMusicRuntime {
     static FoldMusicLayout.Box combinedPlayer(View window, FoldMusicLayout.Box content) {
         if (!combinedRequested() || !Main.coverModeOn() || window == null || content == null) return null;
         FoldMusicLayout.Columns c = columns;
-        if (c != null && columnsRevision == Main.screenGeometry().revision
-                && (nativeAodScene() || MiniPlayerRuntime.railMediaExitActive()))
-            return c.player;
-        FoldMusicLayout.Columns measured = measureColumns(window, content, currentNativeCard());
+        // The native stack, artwork and lyrics consume one published plan. Independently
+        // fitting the stack from its raw content frame loses the landscape leading inset.
+        if (c != null && columnsRevision == Main.screenGeometry().revision) return c.player;
+        Insets safe = RailWindowInsets.read(window);
+        FoldMusicLayout.Box presented = RailContentFrame.presentation(content, window.getWidth(),
+                window.getHeight(), window.getResources().getDisplayMetrics().density, safe.right, true);
+        FoldMusicLayout.Columns measured = measureColumns(window, presented, currentNativeCard());
+        if (measured != null) publish(measured);
         return measured == null ? null : measured.player;
     }
 

@@ -59,6 +59,64 @@ public class FoldMusicLayoutTest {
         assertEquals(c.player.width(), FoldMusicLayout.artwork(c.artworkRoom, 1, 2.75f).side, .001f);
     }
 
+    @Test public void fullHeightPlayerReplacesTheCapturedAodFrameAfterWakeMotionEnds() {
+        FoldMusicLayout.Columns captured = capturedColumns(1247.1956f, 380.86096f, 954f, 1f);
+        assertNotNull(captured);
+        assertEquals(953.5048f, captured.player.width(), .001f);
+        assertEquals(380.86096f, captured.player.height(), .001f);
+        assertTrue(FoldMusicLayout.retainColumns(false, true, false));
+        assertTrue(FoldMusicLayout.retainColumns(true, false, true));
+        // The clock's held flag can still be true here. It is not a geometry-retention input.
+        assertFalse(FoldMusicLayout.retainColumns(true, false, false));
+        for (float top : new float[]{1128f, 1130f}) {
+            FoldMusicLayout.Columns awake = capturedColumns(top, 511f, 954f, 1f);
+            assertNotNull(awake);
+            assertEquals(top, awake.player.top, .001f);
+            assertEquals(511f, awake.player.height(), .001f);
+            assertTrue(awake.player.width() < captured.player.width());
+            CoverCardStyle.Rect artwork = FoldMusicLayout.artwork(awake.artworkRoom, 1f, 2.75f);
+            assertEquals(44f, awake.player.top - artwork.y - artwork.side, .001f);
+            assertEquals(awake.player.width(), artwork.side, .001f);
+            assertEquals((awake.player.left + awake.player.right) / 2f,
+                    artwork.x + artwork.side / 2f, .001f);
+        }
+    }
+
+    @Test public void fullHeightFramesKeepOneLeadingInsetAndIgnoreThePreviouslyAssignedWidth() {
+        for (float scale : new float[]{.5f, 1f, 1.5f}) {
+            for (float top : new float[]{1128f, 1130f}) {
+                for (float oldWidth : new float[]{841f, 954f, 1246f, 1805f, 841f}) {
+                    FoldMusicLayout.Columns plan = capturedColumns(top, 511f, oldWidth, scale);
+                    assertNotNull(plan);
+                    CoverCardStyle.Rect artwork = FoldMusicLayout.artwork(plan.artworkRoom, 1f, 2.75f*scale);
+                    assertEquals(575.1875f, (plan.player.left + plan.player.right) / (2f*scale), .001f);
+                    assertEquals(plan.player.left, artwork.x, .001f);
+                    assertEquals(plan.player.width(), artwork.side, .001f);
+                    assertEquals(44f*scale, plan.player.top - artwork.y - artwork.side, .001f);
+                    assertEquals(1117.375f, plan.lyrics.left / scale, .001f);
+                }
+            }
+        }
+    }
+
+    @Test public void nativePlayerSafetyUsesTheWindowWhileLyricsKeepTheirOwnBottomAir() {
+        FoldMusicLayout.Columns safe = columns(775f, 650f, 1f, 350f, 270f);
+        assertNotNull(safe);
+        assertTrue(safe.player.bottom > safe.lyrics.bottom);
+        assertEquals(598f, safe.lyrics.bottom, .001f);
+        assertEquals(620f, safe.player.bottom, .001f);
+        assertNull(columns(775f, 650f, 1f, 350f, 277f));
+        assertNull(FoldMusicLayout.columns(775f, 650f, 1f, 650, 0, 24, 0, 24, 80,
+                new FoldMusicLayout.Box(31, 350, 484, 620), 600));
+    }
+
+    private FoldMusicLayout.Columns capturedColumns(float top, float nativeHeight, float oldWidth, float scale) {
+        return FoldMusicLayout.columns(2157.75f*scale, 1672f*scale, 2.75f*scale, 608,
+                33f*scale, 0, 0, 0, 172.6908f*scale,
+                new FoldMusicLayout.Box(98f*scale, top*scale, (98f+oldWidth)*scale,
+                        (top+nativeHeight)*scale), Float.NaN);
+    }
+
     @Test public void nativePlayerTopKeepsTheArtworkOutOfItsTouchAndClippingFrame() {
         for (int top = 0; top < 650; top += 10) {
             FoldMusicLayout.Columns c = columns(775, 650, 1, top, 110);

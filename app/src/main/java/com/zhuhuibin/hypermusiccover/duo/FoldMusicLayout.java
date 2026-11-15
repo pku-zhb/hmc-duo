@@ -12,6 +12,11 @@ final class FoldMusicLayout {
                 && width > height * 1.05f;
     }
 
+    /** A held clock remains latched after wake; only actual doze/motion retains old geometry. */
+    static boolean retainColumns(boolean screenOn, boolean fullScreenAod, boolean nativeAodMotion) {
+        return !screenOn || fullScreenAod || nativeAodMotion;
+    }
+
     static final class Box {
         final float left, top, right, bottom;
         Box(float left, float top, float right, float bottom) {
@@ -50,12 +55,17 @@ final class FoldMusicLayout {
         float air = FoldArtworkLayout.CONTENT_AIR_DP * density;
         float top = Math.max(insetTop, clockBottom) + gap + air;
         float bottom = height - insetBottom - gap - air;
-        if (Float.isFinite(shortcutsTop) && shortcutsTop > 0f)
+        // The native player owns its measured height and bottom padding. Lyrics reserve
+        // additional breathing room; that narrower lyric band must not reject a safe card.
+        float nativeBottomLimit = height - insetBottom;
+        if (Float.isFinite(shortcutsTop) && shortcutsTop > 0f) {
             bottom = Math.min(bottom, shortcutsTop - gap);
+            nativeBottomLimit = Math.min(nativeBottomLimit, shortcutsTop);
+        }
         float artworkBottom = Math.min(nativePlayer.top - gap, bottom);
         float side = Math.min(column, artworkBottom - top);
         if (column < MIN_LYRIC_DP * density || side < 120f * density || bottom <= top
-                || nativePlayer.bottom > bottom + gap) return null;
+                || nativePlayer.bottom > nativeBottomLimit) return null;
         // A short artwork slot reduces the player to the same square width, instead of
         // consuming the lyric column. Its native 75/100 height is independent of this width.
         float playerLeft = left + (column - side) / 2f;
