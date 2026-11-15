@@ -197,5 +197,6 @@ internal object RailStatusRuntime {
     @JvmStatic fun describe() = "${view?.describe() ?: "not attached"} holdX=$holdingX " +
         "nativeInkX=$nativeInkX correctedInkX=$correctedInkX " +
         "offsetYDp=${RailStatusLayout.normalizeOffsetY(Main.sRailStatusOffsetYDp)} error=$error " +
+        "tapBounds=${touchBounds.left},${touchBounds.top},${touchBounds.right},${touchBounds.bottom} " +
         RailControlCenter.describe()
 }
