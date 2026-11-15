@@ -122,7 +122,10 @@ final class LockScreenLayoutDiagnostics {
             out.put("visibleBounds", new JSONArray(new int[]{visible.left, visible.top, visible.right, visible.bottom}));
         if (v instanceof android.widget.SeekBar) {
             android.widget.SeekBar seek = (android.widget.SeekBar) v;
-            out.put("progress", seek.getProgress()); out.put("max", seek.getMax());
+            out.put("progress", seek.getProgress()); out.put("min", seek.getMin()); out.put("max", seek.getMax());
+            out.put("padding", new JSONArray(new int[]{seek.getPaddingLeft(), seek.getPaddingTop(),
+                    seek.getPaddingRight(), seek.getPaddingBottom()}));
+            out.put("layoutDirection", seek.getLayoutDirection());
         }
         out.put("alpha", v.getAlpha());
         out.put("scaleX", v.getScaleX()); out.put("scaleY", v.getScaleY());
