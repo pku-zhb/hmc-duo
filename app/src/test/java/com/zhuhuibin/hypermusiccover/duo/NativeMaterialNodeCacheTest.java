@@ -72,4 +72,24 @@ public class NativeMaterialNodeCacheTest {
         assertNull(cache.blur(node, -1, 24, true));
         assertNull(cache.blur(node, 8, 24, false));
     }
+
+    @Test public void completeFrameReadbackUsesOnlyAcceptedImmutableNodeState() {
+        NativeMaterialNodeCache<Object> cache = new NativeMaterialNodeCache<>();
+        Object node = new Object();
+        assertNull(cache.currentGlass(node));
+        assertNull(cache.currentBlur(node));
+        cache.track(node);
+        cache.glass(node, recipe(.6f), true);
+        cache.blur(node, 8, 24, true);
+        // A rejected setter and an outside caller cannot replace the accepted snapshot.
+        cache.glass(node, recipe(.9f), false);
+        cache.blur(node, 2, 6, false);
+        float[] glass = cache.currentGlass(node);
+        int[] blur = cache.currentBlur(node);
+        glass[34] = .1f; blur[0] = 0;
+        assertArrayEquals(recipe(.6f), cache.currentGlass(node), 0f);
+        assertArrayEquals(new int[]{8, 24}, cache.currentBlur(node));
+        cache.glass(node, null, true);
+        assertNull(cache.currentGlass(node));
+    }
 }

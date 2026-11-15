@@ -138,6 +138,7 @@ final class NativeMediaBackdrop {
         if (!available || Boolean.TRUE.equals(replay.get())) return;
         View source = binding.source(), owner = binding.owner();
         if (source == null || owner == null) return;
+        if (NativeGlassRelay.nativeUpdateInProgress(source)) return;
         boolean attached = source.isAttachedToWindow() && owner.isAttachedToWindow();
         lease.attachmentChanged(attached);
         if (!attached) return;
