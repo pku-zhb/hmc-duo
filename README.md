@@ -10,6 +10,11 @@ and [HyperMusicCover](https://github.com/zyl6932/HyperMusicCover).
 Device coverage is focused on the maintainer's foldable phone; compatibility with
 other devices is not established.
 
+Version 0.2.16 follows the media identity committed to the native player when
+its view is reused for another source, and rejects callbacks from an older
+subscription generation. It includes all 0.2.15 scene and AOD changes. See the
+0.2.16 record.
+
 Version 0.2.15 makes artwork/lyrics and non-music cards mutually exclusive,
 retains full artwork during AOD renderer handoff, and stabilizes lyric blur
 updates. Content layouts gain inner-screen margins and a centered rail lane.
