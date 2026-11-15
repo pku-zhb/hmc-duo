@@ -10,67 +10,12 @@ and [HyperMusicCover](https://github.com/zyl6932/HyperMusicCover).
 Device coverage is focused on the maintainer's foldable phone; compatibility with
 other devices is not established.
 
-Version 0.2.18 commits the native track identity and scene before dispatching
-artwork work. First entry after returning to the clock no longer depends on a
-later metadata callback, and superseded exits cannot clear a newer selection.
-It includes the renderer and layout fixes below. See the
-0.2.18 record.
-
-Version 0.2.17 retires the upper AOD renderer atomically after the incoming
-complete artwork is presented, avoiding a second blur-only fade over the ready
-foreground. It includes the media-identity and scene changes below. See the
-0.2.17 record.
-
-Version 0.2.16 follows the media identity committed to the native player when
-its view is reused for another source, and rejects callbacks from an older
-subscription generation. It includes all 0.2.15 scene and AOD changes. See the
-0.2.16 record.
-
-Version 0.2.15 makes artwork/lyrics and non-music cards mutually exclusive,
-retains full artwork during AOD renderer handoff, and stabilizes lyric blur
-updates. Content layouts gain inner-screen margins and a centered rail lane.
-Artwork time is fixed to the status cluster; tapping that cluster requests the
-native Control Center with its normal restrictions. See the
-0.2.15 record for validation boundaries.
-
-Version 0.2.14 connects the inner-screen AOD option to the native AOD plugin's
-independent display eligibility check. See the 0.2.14 record.
-It includes 0.2.13, which aligns inner-screen content inside the right-rail safe frame.
-Landscape artwork+lyrics use equal usable columns, with the player matching the
-artwork width; inner dates move upward. A default-off inner full-screen-AOD option
-extends the native per-display gate while preserving master/style policy.
-Artwork, clock and lyric presentation consume the native AOD progress and a
-shared post-clock geometry boundary. Backdrop handoffs keep outgoing pixels
-opaque until the incoming renderer is ready, and compact seek visibility follows
-actual player height. See the 0.2.13 record for scope
-and the distinction between host checks and device/visual acceptance.
-
-Version 0.2.12 publishes complete clock poses atomically and requires a valid,
-committed pose before treating AOD as held. It includes 0.2.11's replacement-time
-acquisition during direct full-AOD entry when its
-resource becomes ready, with native and replacement visibility committed together.
-It includes 0.2.10's artwork backgrounds for the current window and orientation,
-stabilizes the paused lyric clock and keeps empty compact lyrics on the native
-background. It includes 0.2.9's rebinding of controls when the media card is replaced during
-folding, without metadata-dependent or timed retries. Notification-blocked pages
-also retain the native background until an explicit page selection reopens them.
-It includes 0.2.8's consolidation of page, background and clock ownership across lock/AOD
-transitions instead of adding timing retries. Native inner card widths are preserved;
-single pages use the safe-window center and only the combined page moves the column.
-Player height has compact 75% and native 100% presets. Release-obfuscated capsules
-and shortcut plates can follow the final media material. See the
-0.2.12 record for causes and validation boundaries.
-
-Version 0.2.5 was the preceding candidate. It includes all 0.2.4
-fixes, including last-lockscreen state recovery after AMap, and adds the
-maintainer-provided WeChat support image with an original-image gallery export.
-The existing 0.2.4 archive remains unchanged. Settings are grouped by purpose,
-make prerequisites visible and retain existing configuration keys. Native swipe
-feathering now applies per card, including media/live cards and shelf-covered
-notifications. Clock destinations
-include inner portrait, and music glass can sample the local artwork backdrop
-while another module owns its recipe. See the release record
-for confirmed causes, host checks and the remaining manually operated visual checks.
+Version 0.2.19 retires removed native media holders without allowing a stale
+layout callback to restore them. It includes unified music/non-music scenes,
+complete artwork handoff across AOD, native media identity tracking and foldable
+layout corrections. See the release record for causes,
+host checks and the separate device-validation boundary. Earlier implementation
+records remain in docs/releases.
 
 ## Features
 
