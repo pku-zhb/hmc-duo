@@ -92,4 +92,26 @@ public class NativeMaterialNodeCacheTest {
         cache.glass(node, null, true);
         assertNull(cache.currentGlass(node));
     }
+
+    @Test public void aThrowAfterAnUncertainNativeWriteCannotPromoteOldGlassOnAPaletteOnlyFrame() {
+        NativeMaterialNodeCache<Object> cache = new NativeMaterialNodeCache<>();
+        NativeMaterialBatch<Object> batches = new NativeMaterialBatch<>();
+        Object node = new Object(), source = new Object();
+        cache.track(node);
+        cache.glass(node, recipe(.6f), true);
+        cache.blur(node, 8, 24, true);
+        // Native may already have accepted B before a downstream hook throws.
+        // Keep the original exception path, but retire only that uncertain channel.
+        cache.uncertainGlass(node);
+        assertArrayEquals(new int[]{8, 24}, cache.currentBlur(node));
+        NativeMaterialBatch.Frame<Object> palette = batches.begin(source);
+        batches.defer(source);
+        assertTrue(batches.end(palette, true));
+        assertNull(cache.currentGlass(node));
+        assertNull(cache.glass(node, recipe(.6f), false));
+        cache.glass(node, recipe(.9f), true);
+        cache.uncertainBlur(node);
+        assertArrayEquals(recipe(.9f), cache.currentGlass(node), 0f);
+        assertNull(cache.currentBlur(node));
+    }
 }

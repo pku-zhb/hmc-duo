@@ -33,7 +33,8 @@ final class NativeGlassRelay {
     private static GlassProfile appliedProfile;
     private static GlassProfile.Blur appliedBlur;
     private static GlassProfile.Background appliedBackground;
-    private static boolean installed, glassInstalled, blurInstalled, backgroundInstalled, refreshPosted, paletteFramePosted;
+    private static boolean installed, refreshPosted, paletteFramePosted;
+    private static volatile boolean glassInstalled, blurInstalled, backgroundInstalled;
     private static Method glassSetter, blurSetter;
     private static Method backgroundRadius, backgroundScale, backgroundColors;
     private static Method readRadius, readScale, readColors;
@@ -65,6 +66,10 @@ final class NativeGlassRelay {
 
     static boolean nativeUpdateInProgress(View source) { return nativeBatches.active(source); }
 
+    static boolean nativeUpdateSucceeded(NativeMaterialBatch.Frame<View> frame) {
+        return frame == null || !nativeBatches.failed(frame);
+    }
+
     /** Complete owned recipes restore their final palette once, before returning to draw. */
     static void beginOwnedPaletteUpdate(View target) {
         Integer role = targets.get(target);
@@ -90,6 +95,7 @@ final class NativeGlassRelay {
             glassSetter = View.class.getMethod("setMiGlass", float[].class);
             Method commit = RenderNode.class.getDeclaredMethod("setMiGlass", float[].class);
             Xp.api().hook(commit).intercept(chain -> {
+                if (!glassInstalled) return chain.proceed();
                 Object node = chain.getThisObject();
                 NativeMaterialCommitScope.Frame<View> frame = scopes.matching(node);
                 if (frame == null && !nodeCommits.tracked(node)) return chain.proceed();
@@ -98,7 +104,14 @@ final class NativeGlassRelay {
                     float[] values = profile.forScene(frame.nightMode, frame.awake);
                     if (values != null) { args[0] = values; ++applications; }
                 }
-                Object result = chain.proceed(args);
+                Object result;
+                try { result = chain.proceed(args); }
+                catch (Throwable error) {
+                    // A downstream callback can throw after the native write. Its actual
+                    // node state is uncertain, so no later palette-only frame may reuse it.
+                    nodeCommits.uncertainGlass(node);
+                    throw error;
+                }
                 float[] accepted = nodeCommits.glass(node, args[0] instanceof float[] ? (float[]) args[0] : null,
                         Boolean.TRUE.equals(result));
                 frame = scopes.matching(node);
@@ -119,6 +132,7 @@ final class NativeGlassRelay {
             blurSetter = View.class.getMethod("setMiGlassBlurRadius", int.class, int.class);
             Method commit = RenderNode.class.getDeclaredMethod("setMiGlassBlurRadius", int.class, int.class);
             Xp.api().hook(commit).intercept(chain -> {
+                if (!blurInstalled) return chain.proceed();
                 Object node = chain.getThisObject();
                 NativeMaterialCommitScope.Frame<View> frame = scopes.matching(node);
                 if (frame == null && !nodeCommits.tracked(node)) return chain.proceed();
@@ -127,7 +141,12 @@ final class NativeGlassRelay {
                     int[] values = blur.forScene(frame.nightMode, frame.awake);
                     if (values != null) { args[0] = values[0]; args[1] = values[1]; ++blurApplications; }
                 }
-                Object result = chain.proceed(args);
+                Object result;
+                try { result = chain.proceed(args); }
+                catch (Throwable error) {
+                    nodeCommits.uncertainBlur(node);
+                    throw error;
+                }
                 int[] accepted = nodeCommits.blur(node, (Integer) args[0], (Integer) args[1],
                         Boolean.TRUE.equals(result));
                 frame = scopes.matching(node);
@@ -161,6 +180,9 @@ final class NativeGlassRelay {
             Method add = View.class.getMethod("addMiBackgroundBlendColor", int.class, int.class);
             for (Method setter : new Method[]{backgroundRadius, backgroundScale, backgroundColors, clear, add}) {
                 Xp.api().hook(setter).intercept(chain -> {
+                    // Failed installation can leave earlier hooks alive. The complete set
+                    // is the admission boundary; partial observers must stay native no-ops.
+                    if (!backgroundInstalled) return chain.proceed();
                     View view = (View) chain.getThisObject();
                     Integer role = targets.get(view);
                     boolean source = role == null && sourceBinding.isSource(view);
@@ -292,6 +314,7 @@ final class NativeGlassRelay {
         // Deoptimize only these two known callers, not class loading or unrelated rendering.
         Xp.api().deoptimize(setter);
         Xp.api().hook(setter).intercept(chain -> {
+            if (setter == glassSetter ? !glassInstalled : !blurInstalled) return chain.proceed();
             Object self = chain.getThisObject();
             if (!(self instanceof View)) return chain.proceed();
             View view = (View) self;

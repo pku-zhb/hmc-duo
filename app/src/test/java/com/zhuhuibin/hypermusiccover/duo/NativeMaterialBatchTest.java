@@ -71,6 +71,30 @@ public class NativeMaterialBatchTest {
         assertTrue(batches.end(retry, true));
     }
 
+    @Test public void aCaughtInnerFailureKeepsBothThePreviousRelayAndRecordedRecipe() {
+        NativeMaterialBatch<Object> batches = new NativeMaterialBatch<>();
+        Object source = new Object();
+        List<String> previous = List.of("complete blend", "complete glass");
+        List<String> recorded = new ArrayList<>();
+        NativeMaterialBatch.Frame<Object> outer = batches.begin(source);
+        NativeMaterialBatch.Frame<Object> blur = batches.begin(source);
+        recorded.add("partial blur clear");
+        batches.defer(source);
+        assertFalse(batches.end(blur, false));
+        // The outer method catches the inner failure and returns normally. Both the
+        // snapshot publisher and the independent legacy recorder must share the verdict.
+        boolean publishRelay = batches.end(outer, true);
+        List<String> relay = publishRelay ? recorded : previous;
+        List<String> recipe = batches.failed(outer) ? previous : recorded;
+        assertSame(previous, relay);
+        assertSame(previous, recipe);
+        assertTrue(batches.failed(outer));
+        NativeMaterialBatch.Frame<Object> next = batches.begin(source);
+        assertFalse(batches.failed(next));
+        batches.defer(source);
+        assertTrue(batches.end(next, true));
+    }
+
     @Test public void anotherSourceCannotFinishOrDirtyTheCurrentSourcesTransaction() {
         NativeMaterialBatch<Object> batches = new NativeMaterialBatch<>();
         Object first = new Object(), second = new Object();

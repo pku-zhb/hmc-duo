@@ -434,17 +434,25 @@ object MiniPlayerRuntime {
                         recordTarget = candidateBg
                         recording = ArrayList()
                     }
-                    val nativeUpdate = if (mine) NativeGlassRelay.beginNativeUpdate(candidateBg) else null
+                    // Nested initialization shares the complete outer batch, including a
+                    // failure the outer OEM effect might catch. Recording remains outer-only.
+                    val nativeUpdate = NativeGlassRelay.beginNativeUpdate(candidateBg)
                     effectDepth++
                     var successful = false
                     val result = try {
                         chain.proceed().also { successful = true }
                     } catch (error: Throwable) {
-                        if (mine) { recording = null; recordTarget = null }
+                        // A caught nested failure still invalidates this complete recording.
+                        if (mine || candidateBg != null && candidateBg === recordTarget) {
+                            recording = null; recordTarget = null
+                        }
                         throw error
                     } finally {
                         effectDepth--
                         NativeGlassRelay.endNativeUpdate(nativeUpdate, successful)
+                    }
+                    if (mine && !NativeGlassRelay.nativeUpdateSucceeded(nativeUpdate)) {
+                        recording = null; recordTarget = null
                     }
                     if (mine) NativeMediaBackdrop.refresh()
                     val recorded = recording

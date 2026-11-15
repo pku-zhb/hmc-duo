@@ -21,6 +21,9 @@ final class NativeMaterialBatch<T> {
 
     boolean active(T source) { return matching(source) != null; }
 
+    /** The legacy recipe recorder shares this verdict after the synchronous scope ends. */
+    boolean failed(Frame<T> frame) { return frame.owner.failed; }
+
     /** The native node has already accepted this write; postpone only its relay publication. */
     boolean defer(T source) {
         Frame<T> frame = matching(source);
