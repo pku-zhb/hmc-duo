@@ -29,6 +29,16 @@ final class NativeMaterialNodeCache<N> {
         return state == null || state.blur == null ? null : state.blur.clone();
     }
 
+    synchronized void uncertainGlass(N node) {
+        State state = nodes.get(node);
+        if (state != null) state.glass = null;
+    }
+
+    synchronized void uncertainBlur(N node) {
+        State state = nodes.get(node);
+        if (state != null) state.blur = null;
+    }
+
     /** Unknown/rejected writes cannot seed a cache; unchanged known values can be reused. */
     synchronized float[] glass(N node, float[] values, boolean changed) {
         State state = nodes.get(node);
