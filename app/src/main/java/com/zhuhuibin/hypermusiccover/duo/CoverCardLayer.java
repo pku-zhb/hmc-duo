@@ -849,7 +849,8 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
         } else if (on) {
             AodTransitionProgress.Snapshot aod = AodTransitionRuntime.snapshot();
             v.wash.show(true, enteredFullAod || aod.running && aod.into);
-            if (v.wash.lastBackdropGeneration != scene.generation) v.wash.invalidate();
+            if (v.wash.lastBackdropGeneration != scene.generation
+                    || CoverBackdrop.needsPresentation(ArtworkBackdropState.STILL, scene)) v.wash.invalidate();
         } else if (CoverBackdrop.coveredBy(ArtworkBackdropState.MESH, scene)) {
             // The awake renderer sits below Wash. Once it has submitted this complete
             // composition opaquely, retire the upper display list in the same transaction.
@@ -1864,6 +1865,11 @@ final class CoverCardLayer extends View implements Choreographer.FrameCallback {
             lastBackdropGeneration = -1;
             if (getVisibility() != GONE) setVisibility(GONE);
             CoverBackdrop.rendererHidden(ArtworkBackdropState.STILL);
+        }
+
+        @Override protected void onDetachedFromWindow() {
+            hideNow();
+            super.onDetachedFromWindow();
         }
 
         /** Scales this view so that its bounds land on the whole display. */

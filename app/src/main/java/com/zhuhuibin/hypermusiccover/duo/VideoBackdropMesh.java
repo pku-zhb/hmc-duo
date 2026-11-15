@@ -232,7 +232,8 @@ final class VideoBackdropMesh extends View implements Choreographer.FrameCallbac
             return;
         }
         int generation = CoverCardLayer.backdropGeneration();
-        boolean changed = v.state.source() != generation;
+        boolean changed = v.state.source() != generation
+                || CoverBackdrop.needsPresentation(ArtworkBackdropState.MESH, scene);
         if (Main.sVideoWallpaper && Main.sCover != null
                 && Main.sCover.getAlpha() != v.lastVideoAlpha) changed = true;
         v.state.select(generation);
