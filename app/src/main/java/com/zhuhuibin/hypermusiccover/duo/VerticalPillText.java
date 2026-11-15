@@ -51,18 +51,34 @@ final class VerticalPillText {
     }
 
     static List<Run> layout(CharSequence text, float cell, float height, ToDoubleFunction<String> measure) {
+        return layout(text, cell, height, measure, ignored -> cell);
+    }
+
+    /** An upright em is independent of horizontal font line spacing; tall ink keeps its room. */
+    static float uprightAdvance(float em, float ascent, float descent, int inkTop, int inkBottom) {
+        if (!Float.isFinite(em) || !Float.isFinite(ascent) || !Float.isFinite(descent)
+                || em <= 0 || descent < ascent || inkBottom < inkTop) return Float.NaN;
+        float baselineCenter = (ascent + descent) / 2f;
+        return Math.max(em, 2f * Math.max(baselineCenter - inkTop, inkBottom - baselineCenter));
+    }
+
+    static List<Run> layout(CharSequence text, float cell, float height, ToDoubleFunction<String> measure,
+                            ToDoubleFunction<String> measureUpright) {
         if (!Float.isFinite(cell) || !Float.isFinite(height) || cell <= 0 || height < cell) return List.of();
         List<Run> source = runs(text);
         ArrayList<Run> measured = new ArrayList<>();
         float total = 0;
         for (Run run : source) {
-            float advance = run.orientation == Orientation.SIDEWAYS ? Math.max(cell, (float) measure.applyAsDouble(run.text)) : cell;
+            float advance = Math.max(cell, (float) (run.orientation == Orientation.SIDEWAYS
+                    ? measure.applyAsDouble(run.text) : measureUpright.applyAsDouble(run.text)));
             if (!Float.isFinite(advance)) return List.of();
             measured.add(new Run(run.text, run.orientation, advance)); total += advance;
         }
         if (total <= height) return measured;
         ArrayList<Run> result = new ArrayList<>();
-        float remaining = height - cell;
+        float ellipsis = Math.max(cell, (float) measureUpright.applyAsDouble("︙"));
+        if (!Float.isFinite(ellipsis) || ellipsis > height) return List.of();
+        float remaining = height - ellipsis;
         for (Run run : measured) {
             if (run.advance <= remaining) {
                 result.add(run); remaining -= run.advance; continue;
@@ -87,7 +103,7 @@ final class VerticalPillText {
         // Remove an opening bracket that would otherwise introduce only the truncation mark.
         if (!result.isEmpty() && "︵︷︹︻︽︿﹁﹃".contains(result.get(result.size()-1).text))
             result.remove(result.size()-1);
-        result.add(new Run("︙", Orientation.UPRIGHT, cell));
+        result.add(new Run("︙", Orientation.UPRIGHT, ellipsis));
         return result;
     }
 
