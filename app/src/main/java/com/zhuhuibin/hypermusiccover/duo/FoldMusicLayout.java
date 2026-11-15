@@ -47,8 +47,9 @@ final class FoldMusicLayout {
         float gap = GAP_DP * density;
         float left = insetLeft + gap, right = width - insetRight - gap;
         float column = (right - left - gap) / 2f;
-        float top = Math.max(insetTop, clockBottom) + gap;
-        float bottom = height - insetBottom - gap;
+        float air = FoldArtworkLayout.CONTENT_AIR_DP * density;
+        float top = Math.max(insetTop, clockBottom) + gap + air;
+        float bottom = height - insetBottom - gap - air;
         if (Float.isFinite(shortcutsTop) && shortcutsTop > 0f)
             bottom = Math.min(bottom, shortcutsTop - gap);
         float artworkBottom = Math.min(nativePlayer.top - gap, bottom);

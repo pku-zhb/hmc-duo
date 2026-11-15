@@ -1,13 +1,16 @@
 package com.zhuhuibin.hypermusiccover.duo
 
 import android.graphics.Matrix
+import android.graphics.RectF
+import android.view.MotionEvent
 import android.view.View
+import android.view.ViewConfiguration
 import android.view.ViewGroup
 import android.view.ViewGroupOverlay
 import kotlin.math.ceil
 import kotlin.math.roundToInt
 
-/** A display-only overlay inherits native keyguard transforms without entering its constraint solver. */
+/** An overlay inherits native transforms; window routing observes taps without owning drags. */
 internal object RailStatusRuntime {
     private var view: RailStatusView? = null
     private var parent: ViewGroup? = null
@@ -21,6 +24,13 @@ internal object RailStatusRuntime {
     private var nativeInkX = Float.NaN
     private var correctedInkX = Float.NaN
     private var timeReadyWindow: View? = null
+    private var touchWindow: View? = null
+    private val touchBounds = RectF()
+    private val drawnBounds = RectF()
+    private val windowOrigin = IntArray(2)
+    private val tap = RailStatusTap()
+
+    @JvmStatic fun install(loader: ClassLoader) = RailControlCenter.install(loader)
 
     @JvmStatic fun update(window: View, plan: RightRailLayout.Plan) {
         runCatching {
@@ -44,6 +54,7 @@ internal object RailStatusRuntime {
                 overlay = container.overlay
                 view = RailStatusView(container.context).also { status ->
                     status.visibility = View.INVISIBLE
+                    status.setOnClickListener { RailControlCenter.open() }
                     overlay?.add(status)
                 }
             }
@@ -84,6 +95,8 @@ internal object RailStatusRuntime {
             status.translationX = left-status.left + correctionX
             status.translationY = top-status.top + correctionY
             status.visibility = View.VISIBLE
+            updateTouchBounds(window, container, plan, status.left + status.translationX,
+                status.top + status.translationY, bounds.width(), bounds.height())
             status.setListening(true)
             publishTimeReadiness()
             refreshTime()
@@ -95,10 +108,61 @@ internal object RailStatusRuntime {
         }
     }
 
-    /** Reposition only the status overlay on the next native frame; retain all rail geometry. */
-    @JvmStatic fun refreshPosition() { parent?.rootView?.invalidate() }
+    /** A lower status cluster also moves the capsule lane's upper boundary. */
+    @JvmStatic fun refreshPosition() { LockScreenRailRuntime.refresh() }
+
+    private fun updateTouchBounds(window: View, container: ViewGroup, plan: RightRailLayout.Plan,
+                                  left: Float, top: Float, width: Float, height: Float) {
+        touchBounds.setEmpty(); touchWindow = null
+        containerToWindow.reset(); container.transformMatrixToGlobal(containerToWindow)
+        windowInverse.reset(); window.transformMatrixToGlobal(windowInverse)
+        if (!windowInverse.invert(windowInverse)) return
+        containerToWindow.postConcat(windowInverse)
+        drawnBounds.set(left, top, left + width, top + height)
+        containerToWindow.mapRect(drawnBounds)
+        val safe = RailWindowInsets.read(window)
+        val bounds = RailStatusLayout.touchArea(FoldMusicLayout.Box(drawnBounds.left,
+            drawnBounds.top, drawnBounds.right, drawnBounds.bottom), plan.content.right,
+            window.width - safe.right.toFloat(), plan.content.top, plan.strip.top,
+            window.resources.displayMetrics.density) ?: return
+        touchBounds.set(bounds.left, bounds.top, bounds.right, bounds.bottom)
+        touchWindow = window
+    }
+
+    private fun tapEligible(window: View): Boolean = touchWindow === window.rootView &&
+        !touchBounds.isEmpty && LockScreenRailRuntime.active() && view?.visibility == View.VISIBLE &&
+        Main.screenOnCached() && Main.keyguardLocked() && Main.onKeyguardNow() &&
+        !Main.bouncerShown() && !Main.controlCenterShown() && !MiniPlayerScene.aodActive &&
+        !MiniPlayerScene.blocksMiniPlayer && !MiniPlayerScene.keyguardGoingAway
+
+    private fun contains(window: View, event: MotionEvent): Boolean {
+        window.rootView.getLocationOnScreen(windowOrigin)
+        return touchBounds.contains(event.rawX - windowOrigin[0], event.rawY - windowOrigin[1])
+    }
+
+    /** Returns true only for a completed tap. DOWN/MOVE always continue through native dispatch. */
+    @JvmStatic fun routeTouch(window: View, event: MotionEvent): Boolean {
+        val eligible = tapEligible(window)
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> tap.start(eligible && contains(window, event), event.rawX,
+                event.rawY, ViewConfiguration.get(window.context).scaledTouchSlop.toFloat(), event.downTime)
+            MotionEvent.ACTION_MOVE, MotionEvent.ACTION_POINTER_DOWN, MotionEvent.ACTION_POINTER_UP -> {
+                if (!eligible) tap.cancel()
+                else tap.move(event.rawX, event.rawY, event.pointerCount, event.downTime)
+            }
+            MotionEvent.ACTION_UP -> {
+                val completed = tap.finish(eligible && contains(window, event), event.rawX, event.rawY,
+                    event.pointerCount, event.downTime, event.eventTime,
+                    ViewConfiguration.getLongPressTimeout().toLong())
+                if (completed) return RailControlCenter.open()
+            }
+            MotionEvent.ACTION_CANCEL -> tap.cancel()
+        }
+        return false
+    }
 
     @JvmStatic fun hide() {
+        touchBounds.setEmpty(); touchWindow = null; tap.cancel()
         holdingX = false; nativeInkX = Float.NaN; correctedInkX = Float.NaN
         view?.apply { visibility = View.INVISIBLE; setTimeAlpha(0f); setListening(false) }
         publishTimeReadiness()
@@ -132,5 +196,6 @@ internal object RailStatusRuntime {
     }
     @JvmStatic fun describe() = "${view?.describe() ?: "not attached"} holdX=$holdingX " +
         "nativeInkX=$nativeInkX correctedInkX=$correctedInkX " +
-        "offsetYDp=${RailStatusLayout.normalizeOffsetY(Main.sRailStatusOffsetYDp)} error=$error"
+        "offsetYDp=${RailStatusLayout.normalizeOffsetY(Main.sRailStatusOffsetYDp)} error=$error " +
+        RailControlCenter.describe()
 }

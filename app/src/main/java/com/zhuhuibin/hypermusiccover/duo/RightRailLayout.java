@@ -22,6 +22,12 @@ final class RightRailLayout {
 
     static Plan plan(float width, float height, float density, float leftInset, float topInset,
                      float rightInset, float bottomInset, float indicatorExtent) {
+        return plan(width, height, density, leftInset, topInset, rightInset, bottomInset,
+                indicatorExtent, 0f);
+    }
+
+    static Plan plan(float width, float height, float density, float leftInset, float topInset,
+                     float rightInset, float bottomInset, float indicatorExtent, float statusOffsetYDp) {
         if (!FoldMusicLayout.finite(width, height, density, leftInset, topInset, rightInset,
                 bottomInset, indicatorExtent) || density <= 0 || width <= 0 || height <= 0
                 || leftInset < 0 || topInset < 0 || rightInset < 0 || bottomInset < 0
@@ -32,16 +38,17 @@ final class RightRailLayout {
         float right = width - rightInset - RIGHT_EDGE_DP * density;
         float left = right - thickness;
         float contentRight = width - rightInset - CONTENT_RESERVE_DP * density;
-        float companionTop = topInset + TOP_CONTROL_RESERVE_DP * density;
+        float companionTop = topInset + (TOP_CONTROL_RESERVE_DP
+                + Math.max(0f, RailStatusLayout.normalizeOffsetY(statusOffsetYDp))) * density;
         RailShortcutLayout shortcuts = RailShortcutLayout.plan(width, height, density, rightInset, bottomInset);
         if (shortcuts == null) return null;
         float limit = shortcuts.capsuleBottom - indicatorExtent;
         float length = Math.min(CAPSULE_LENGTH_DP * density, limit - companionTop - thickness - gap);
-        float ceiling = companionTop + thickness + gap;
-        float center = Math.max(ceiling + length / 2,
-                Math.min((topInset + height - bottomInset) / 2 - (narrow ? 16f : 12f) * density,
-                    limit - length / 2));
-        float bottom = width / density < 600f && height >= width ? limit : center + length / 2;
+        // The fallback's pill and companion form one group. The detached strip uses the
+        // entire same status-to-shortcut lane and centers its actual seats within it.
+        float groupHeight = thickness + gap + length;
+        float groupTop = companionTop + (limit - companionTop - groupHeight) / 2f;
+        float bottom = groupTop + groupHeight;
         float top = bottom - length;
         if (left < leftInset || length < 140f * density || contentRight - leftInset < 260f * density)
             return null;
@@ -53,7 +60,7 @@ final class RightRailLayout {
         return new Plan(new FoldMusicLayout.Box(left, top, right, bottom),
                 new FoldMusicLayout.Box(left, top - gap - thickness, right, top - gap),
                 new FoldMusicLayout.Box(leftInset, topInset, contentRight, height - bottomInset),
-                new FoldMusicLayout.Box(left, companionTop, right, bottom),
+                new FoldMusicLayout.Box(left, companionTop, right, limit),
                 centerX, controlY, controlSpan, 0f, 0f);
     }
 

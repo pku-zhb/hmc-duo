@@ -6,9 +6,9 @@ import static org.junit.Assert.*;
 public class FoldDateLayoutTest {
     @Test public void bothInnerRotationsUseTheSameHigherLineWithoutOuterCameraClearance() {
         for (float density : new float[]{1, 1.5f, 2.75f, 3}) {
-            assertEquals(24 * density, FoldDateLayout.line(608 * density, 860 * density,
+            assertEquals(36 * density, FoldDateLayout.line(608 * density, 860 * density,
                     density, 60 * density), .001f);
-            assertEquals(24 * density, FoldDateLayout.line(860 * density, 608 * density,
+            assertEquals(36 * density, FoldDateLayout.line(860 * density, 608 * density,
                     density, 60 * density), .001f);
         }
     }

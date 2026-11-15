@@ -3315,7 +3315,8 @@ final class ClockCollapse {
             float lift = LockScreenRailRuntime.nativeClockLift();
             top = m.inkTop + lift;
             unit = m.unit;
-            date = LockScreenRailRuntime.nativeDateTop(m.dateTop);
+            // The date keeps the content scene's computed enter/exit pose, including its
+            // ordinary native endpoint on close; the replacement time owns only the glyphs.
         }
         boolean written;
         android.os.Trace.beginSection("MC c.write"); try { written = writePose(m, top, unit, date, phase == Phase.ENTER && sGlyphTail); } finally { android.os.Trace.endSection(); }

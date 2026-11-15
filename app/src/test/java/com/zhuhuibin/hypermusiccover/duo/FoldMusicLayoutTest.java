@@ -52,7 +52,7 @@ public class FoldMusicLayoutTest {
                 0, 66, 0, 0, 180, new FoldMusicLayout.Box(559, 832, 1805, 1341), Float.NaN);
         assertNotNull(c);
         assertEquals(1012.875f, c.lyrics.width(), .001f);
-        assertEquals(564, c.player.width(), .001f);
+        assertEquals(531, c.player.width(), .001f);
         assertEquals(832, c.player.top, .001f);
         assertEquals(1341, c.player.bottom, .001f);
         assertEquals(788, c.artworkRoom.bottom, .001f);

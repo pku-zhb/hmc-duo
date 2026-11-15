@@ -85,6 +85,7 @@ internal object RailShortcutRuntime {
     }
 
     @JvmStatic fun install(loader: ClassLoader) {
+        RailStatusRuntime.install(loader)
         runCatching {
             val cls = Xp.findClass("com.android.keyguard.shortcut.MiuiShortcutController", loader)
             Xp.hookAll(cls, "addShortcutViews") { chain ->

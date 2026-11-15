@@ -36,8 +36,11 @@ public class RailContentFrameTest {
         for (int[] window : new int[][]{{1672,2364},{2364,1672}}) {
             RightRailLayout.Plan p = RightRailLayout.plan(window[0], window[1], 2.75f, 0, 126, 0, 0, 0);
             FoldMusicLayout.Box single = RailContentFrame.presentation(p.content, window[0], window[1], 2.75f, 0, false);
-            assertEquals((window[0] - 75f * 2.75f) / 2f, (single.left + single.right) / 2f, .01f);
-            assertSame(p.content, RailContentFrame.presentation(p.content, window[0], window[1], 2.75f, 0, true));
+            float leading = window[0] > window[1] ? 12f * 2.75f : 0f;
+            assertEquals((window[0] - 75f * 2.75f + leading) / 2f, (single.left + single.right) / 2f, .01f);
+            FoldMusicLayout.Box combined = RailContentFrame.presentation(p.content, window[0], window[1], 2.75f, 0, true);
+            assertEquals(single.left, combined.left, 0f);
+            assertEquals(p.content.right, combined.right, 0f);
         }
         RightRailLayout.Plan outer = RightRailLayout.plan(1168,1712,2.75f,0,126,0,0,0);
         assertSame(outer.content, RailContentFrame.presentation(outer.content,1168,1712,2.75f,0,false));

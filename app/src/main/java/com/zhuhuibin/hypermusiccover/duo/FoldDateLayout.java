@@ -14,7 +14,7 @@ final class FoldDateLayout {
                 || width <= 0f || height <= 0f)
             return Float.NaN;
         // The inner camera is outside the centered date's horizontal lane in both rotations.
-        if (inner(width, height, density)) return 24f * density;
+        if (inner(width, height, density)) return 36f * density;
         return Math.max(64f * density, Math.max(0f, outerSafeTop) + 8f * density);
     }
 }

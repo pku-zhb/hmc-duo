@@ -46,7 +46,7 @@ internal object RailIslandStrip {
         val pillHeight = if (hidden > 0) width else
             minOf(desired, height - (count - 1) * (width + gap)).coerceAtLeast(width)
         val total = pillHeight + (count - 1) * (width + gap)
-        var y = height - total
+        var y = (height - total) / 2f
         val slots = shown.map { key ->
             val primary = key == primaryKey
             val h = if (primary) pillHeight else width

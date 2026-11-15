@@ -70,8 +70,28 @@ class RailIslandStripTest {
             assertEquals(0, p.hidden)
             assertTrue(p.slots.first().top >= 0f)
             p.slots.zipWithNext().forEach { (a, b) -> assertTrue(a.top + a.height + 8f <= b.top + .001f) }
-            assertEquals(460f, p.slots.last().let { it.top + it.height }, .001f)
+            assertEquals(230f, (p.slots.first().top + p.slots.last().let { it.top + it.height }) / 2f, .001f)
             assertEquals(selected, p.slots.single { it.primary }.key)
+        }
+    }
+    @Test fun everyDisplayCentersTheCompleteGroupIncludingItsBubbles() {
+        for (density in listOf(1f, 1.5f, 2.75f, 3f)) {
+            for ((width, height) in listOf(425f to 700f, 650f to 850f, 850f to 650f)) {
+                val rail = RightRailLayout.plan(width*density, height*density, density,
+                    0f, 46f*density, 0f, 24f*density, 0f)!!
+                for (count in 1..6) {
+                    val seats = (1..count).map { "seat-$it" }
+                    for (selected in seats) {
+                        val plan = RailIslandStrip.layout(seats, selected, rail.strip.width(),
+                            rail.strip.height(), density, false)!!
+                        val first = plan.slots.first().top
+                        val bottom = plan.slots.last().let { it.top + it.height }
+                        assertEquals(rail.strip.height()/2f, (first+bottom)/2f, .001f)
+                        assertTrue(first >= 0f)
+                        assertTrue(bottom <= rail.strip.height()+.001f)
+                    }
+                }
+            }
         }
     }
     @Test fun overflowHidesOnlyTheTopAndPreservesEveryKeyForLeftSideExpansion() {

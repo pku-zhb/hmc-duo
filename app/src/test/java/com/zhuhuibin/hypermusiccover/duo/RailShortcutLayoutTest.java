@@ -4,15 +4,15 @@ import org.junit.Test;
 import static org.junit.Assert.*;
 
 public class RailShortcutLayoutTest {
-    @Test public void standaloneButtonsMatchTheAcceptedOuterColumn() {
+    @Test public void standaloneButtonsMoveUpEightDpWithoutChangingTheirHitSize() {
         RailShortcutLayout p = RailShortcutLayout.plan(1168, 1712, 2.75f, 0, 0);
         assertNotNull(p);
         assertEquals(1060.75f, centerX(p.torch), .001f);
         assertEquals(centerX(p.camera), centerX(p.torch), 0);
         assertEquals(132f, p.torch.width(), 0);
-        assertEquals(1379.25f, p.torch.top, .001f);
-        assertEquals(1529.125f, p.camera.top, .001f);
-        assertEquals(1345.5625f, p.capsuleBottom, .001f);
+        assertEquals(1357.25f, p.torch.top, .001f);
+        assertEquals(1507.125f, p.camera.top, .001f);
+        assertEquals(1323.5625f, p.capsuleBottom, .001f);
     }
 
     @Test public void systemInsetsKeepEveryPartOfTheColumnTogether() {
@@ -24,9 +24,9 @@ public class RailShortcutLayoutTest {
                 assertNotNull(p); assertNotNull(rail);
                 assertEquals(48, p.camera.width()/d, .001f);
                 assertEquals(6.5f, (p.camera.top-p.torch.bottom)/d, .001f);
-                assertEquals(12.25f+9, (p.torch.top-rail.pill.bottom)/d, .001f);
+                assertEquals(12.25f+9, (p.torch.top-rail.strip.bottom)/d, .001f);
                 assertEquals(centerX(rail.pill), centerX(p.camera), .001f);
-                assertEquals(Math.max(18.5f, bottom), (750*d-p.camera.bottom)/d, .001f);
+                assertEquals(Math.max(26.5f, bottom + 8f), (750*d-p.camera.bottom)/d, .001f);
             }
         }
     }

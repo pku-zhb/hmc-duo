@@ -26,8 +26,17 @@ final class FoldMusicRuntime {
 
     static boolean sideBySide() {
         return columns != null && columnsRevision == Main.screenGeometry().revision && combinedRequested()
-                && (Main.screenOnCached() || MiniPlayerScene.INSTANCE.getFullScreenAodActive());
+                && unifiedSceneVisible();
     }
+
+    /** Keep one column plan while the native doze callback crosses the screen-power edge. */
+    private static boolean nativeAodScene() {
+        return MiniPlayerScene.INSTANCE.getFullScreenAodActive()
+                || ClockCollapse.followsNativeAod() && Main.keyguardLocked()
+                && !MiniPlayerScene.INSTANCE.getKeyguardGoingAway();
+    }
+
+    private static boolean unifiedSceneVisible() { return Main.screenOnCached() || nativeAodScene(); }
 
     static boolean wideCandidate() {
         View v = root;
@@ -132,15 +141,15 @@ final class FoldMusicRuntime {
         }
         if (columns != null && columnsRevision != Main.screenGeometry().revision) publish(null);
         // AOD changes visibility, not the same-window combined page's layout generation.
-        if (columns != null && combinedRequested() && MiniPlayerScene.INSTANCE.getFullScreenAodActive()
+        if (columns != null && combinedRequested() && nativeAodScene()
                 && Main.keyguardLocked() && !Main.bouncerShown()
                 && !MiniPlayerScene.INSTANCE.getKeyguardGoingAway()) return;
         // Keep the outgoing artwork/lyric plan until the native header leaves the screen.
         if (columns != null && MiniPlayerRuntime.railMediaExitActive() && Main.keyguardLocked()
                 && !MiniPlayerScene.INSTANCE.getKeyguardGoingAway()) return;
         boolean wanted = !failed && combinedRequested() && Main.coverModeOn()
-                && (Main.screenOnCached() || MiniPlayerScene.INSTANCE.getFullScreenAodActive())
-                && (Main.onKeyguardNow() || MiniPlayerScene.INSTANCE.getFullScreenAodActive()) && Main.keyguardLocked()
+                && unifiedSceneVisible()
+                && (Main.onKeyguardNow() || nativeAodScene()) && Main.keyguardLocked()
                 && !Main.bouncerShown() && !LockIslands.INSTANCE.spreadingNow();
         FoldMusicLayout.Columns next = null;
         if (wanted) {
@@ -166,7 +175,7 @@ final class FoldMusicRuntime {
         if (!combinedRequested() || !Main.coverModeOn() || window == null || content == null) return null;
         FoldMusicLayout.Columns c = columns;
         if (c != null && columnsRevision == Main.screenGeometry().revision
-                && (MiniPlayerScene.INSTANCE.getFullScreenAodActive() || MiniPlayerRuntime.railMediaExitActive()))
+                && (nativeAodScene() || MiniPlayerRuntime.railMediaExitActive()))
             return c.player;
         FoldMusicLayout.Columns measured = measureColumns(window, content, currentNativeCard());
         return measured == null ? null : measured.player;

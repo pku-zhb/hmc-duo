@@ -578,60 +578,6 @@ private fun ClockGroup(
 ) {
     val context = LocalContext.current
     Column {
-        WindowDropdownPreference(
-            insideMargin = featurePreferenceMargin,
-            title = stringResource(R.string.clock_artwork_destination),
-            summary = stringResource(R.string.clock_artwork_destination_summary),
-            items = listOf(stringResource(R.string.clock_artwork_shrink),
-                stringResource(R.string.clock_artwork_date), stringResource(R.string.clock_artwork_status)),
-            selectedIndex = module.artworkClockDestination, enabled = enabled,
-            onSelectedIndexChange = {
-                onChange(module.copy(artworkClockDestination = it,
-                    artworkClockRow = it == 1))
-                ModuleBridge.setArtworkClockDestination(context, it)
-            },
-        )
-        if (module.artworkClockDestination == 1) WindowDropdownPreference(
-            insideMargin = featurePreferenceMargin,
-            title = stringResource(R.string.clock_artwork_row_side),
-            items = listOf(stringResource(R.string.clock_artwork_row_left), stringResource(R.string.clock_artwork_row_right)),
-            selectedIndex = if (module.artworkClockBeforeDate) 0 else 1, enabled = enabled,
-            onSelectedIndexChange = {
-                onChange(module.copy(artworkClockBeforeDate = it == 0))
-                ModuleBridge.setRailSetting(context, "artworkClockBeforeDate", it == 0)
-            },
-        )
-        // Cap the collapsed clock at 55% to leave enough space for the big artwork.
-        if (module.artworkClockDestination == 0) ValueSlider(
-            title = stringResource(R.string.clock_size),
-            summary = stringResource(R.string.clock_size_summary),
-            value = (if (module.clockSize > 0f) module.clockSize else DEFAULT_CLOCK_SIZE)
-                .coerceIn(CLOCK_SIZE_MIN, 0.55f),
-            valueRange = CLOCK_SIZE_MIN..0.55f,
-            detent = DEFAULT_CLOCK_SIZE,
-            enabled = enabled,
-            label = { "${(it * 100f).roundToInt()}%" },
-            onValueChange = {
-                val size = (it * 100f).roundToInt() / 100f
-                onChange(module.copy(clockSize = size))
-                ModuleBridge.setClockSize(context, size)
-            },
-        )
-        // Three rows were here and are gone: how far the date and the clock are moved together,
-        // how solid the liquid-glass styles go, and the spring the whole transition runs on. All
-        // three are fixed now - the first at the value cover mode has always been tuned to, the
-        // second at the OEM's own ramp end, and the spring at the OEM's preset for this
-        // transition, which is also what the wallpaper's crossfade is derived from. A fourth, the
-        // full-screen AOD keeping cover mode's small clock, is fixed on. See Main and LyricStyle
-        // for each value.
-        //
-        // Not a cover setting and not tied to cover mode: it is the clock the lock screen always
-        // has. It sits here because this is the page about the clock, and it is a switch rather
-        // than something always on because it changes what the clock looks like - which the
-        // other restrictions this module lifts do not.
-        //
-        // The summary is the switch's own caveat, asked for by the user: the hook is on the
-        // clock's isColonShow, so it can only speak for a style that has a colon to show.
         SwitchPreference(
             insideMargin = featurePreferenceMargin,
             title = stringResource(R.string.clock_force_colon),

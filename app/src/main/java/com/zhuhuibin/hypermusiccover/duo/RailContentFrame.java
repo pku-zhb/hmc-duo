@@ -35,7 +35,11 @@ final class RailContentFrame {
                                             float density, float rightInset, boolean combined) {
         // The right sidebar is occupied in every page and on every display. Native card
         // width remains a separate policy; it must not change this shared center axis.
-        return rail;
+        if (rail == null || !FoldArtworkLayout.innerLandscape(width, height, density)) return rail;
+        // Keep the existing sidebar reserve; only the inner landscape's leading edge
+        // needs more air. Portrait retains its accepted horizontal composition.
+        return new FoldMusicLayout.Box(rail.left + FoldArtworkLayout.CONTENT_AIR_DP * density,
+                rail.top, rail.right, rail.bottom);
     }
 
     static RailContentFrame aroundCard(FoldMusicLayout.Box player, int parentLeft,

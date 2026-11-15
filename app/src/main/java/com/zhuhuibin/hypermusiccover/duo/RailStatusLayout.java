@@ -29,6 +29,20 @@ final class RailStatusLayout {
         return new FoldMusicLayout.Box(left, top, left + WIDTH * scale, top + HEIGHT * scale);
     }
 
+    /** Add forgiving tap room without reaching into content, capsule seats or the shortcuts. */
+    static FoldMusicLayout.Box touchArea(FoldMusicLayout.Box drawn, float sidebarLeft,
+                                        float sidebarRight, float safeTop, float seatsTop, float density) {
+        if (drawn == null || !FoldMusicLayout.finite(drawn.left, drawn.top, drawn.right,
+                drawn.bottom, sidebarLeft, sidebarRight, safeTop, seatsTop, density) || density <= 0f)
+            return null;
+        float padding = 8f * density;
+        float left = Math.max(sidebarLeft, drawn.left - padding);
+        float right = Math.min(sidebarRight, drawn.right + padding);
+        float top = Math.max(safeTop, drawn.top - padding);
+        float bottom = Math.min(seatsTop, drawn.bottom + padding);
+        return right > left && bottom > top ? new FoldMusicLayout.Box(left, top, right, bottom) : null;
+    }
+
     static final class Offset {
         final float x, y;
         Offset(float x, float y) { this.x = x; this.y = y; }

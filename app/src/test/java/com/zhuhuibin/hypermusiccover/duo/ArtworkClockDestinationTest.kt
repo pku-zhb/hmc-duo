@@ -5,17 +5,17 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class ArtworkClockDestinationTest {
-    @Test fun legacyRowSwitchKeepsItsChoice() {
-        assertEquals(ArtworkClockDestination.DATE_ROW,
+    @Test fun legacyRowSwitchMigratesToTheSidebarTime() {
+        assertEquals(ArtworkClockDestination.STATUS,
             SettingsBackup.readArtworkClockDestination(JSONObject("""{"artworkClockRow":true}""")))
-        assertEquals(ArtworkClockDestination.SHRINK,
+        assertEquals(ArtworkClockDestination.STATUS,
             SettingsBackup.readArtworkClockDestination(JSONObject("""{"artworkClockRow":false}""")))
     }
 
-    @Test fun explicitDestinationWinsOverTheLegacyBackupFlag() {
+    @Test fun everyLegacyDestinationMigratesToTheFixedSidebarTime() {
         for (mode in 0..2) for (legacy in listOf(true, false)) {
             val json = JSONObject().put("artworkClockRow", legacy).put("artworkClockDestination", mode)
-            assertEquals(mode, SettingsBackup.readArtworkClockDestination(json))
+            assertEquals(ArtworkClockDestination.STATUS, SettingsBackup.readArtworkClockDestination(json))
         }
     }
 
@@ -23,7 +23,7 @@ class ArtworkClockDestinationTest {
         assertNull(SettingsBackup.readArtworkClockDestination(JSONObject()))
         assertNull(SettingsBackup.readArtworkClockDestination(JSONObject("""{"artworkClockRow":"bad"}""")))
         assertNull(SettingsBackup.readArtworkClockDestination(JSONObject("""{"artworkClockDestination":"bad"}""")))
-        assertEquals(ArtworkClockDestination.DATE_ROW,
+        assertEquals(ArtworkClockDestination.STATUS,
             SettingsBackup.readArtworkClockDestination(JSONObject("""{"artworkClockDestination":99}""")))
     }
 

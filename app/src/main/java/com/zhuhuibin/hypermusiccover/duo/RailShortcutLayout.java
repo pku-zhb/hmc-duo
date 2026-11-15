@@ -2,7 +2,7 @@ package com.zhuhuibin.hypermusiccover.duo;
 
 /** One fixed coordinate contract for native shortcut wrappers and the capsule above them. */
 final class RailShortcutLayout {
-    static final float DIAMETER_DP = 48f, GAP_DP = 6.5f, BOTTOM_DP = 18.5f;
+    static final float DIAMETER_DP = 48f, GAP_DP = 6.5f, BOTTOM_DP = 26.5f;
     static final float CAPSULE_GAP_DP = 12.25f;
     final FoldMusicLayout.Box torch, camera;
     final float capsuleBottom;
@@ -18,7 +18,7 @@ final class RailShortcutLayout {
         float centerX = width - rightInset - RightRailLayout.RIGHT_EDGE_DP * density - railWidth / 2f;
         float size = DIAMETER_DP * density;
         float left = centerX - size / 2f;
-        float bottom = height - Math.max(bottomInset, BOTTOM_DP * density);
+        float bottom = height - Math.max(bottomInset + 8f * density, BOTTOM_DP * density);
         float cameraTop = bottom - size;
         float torchTop = cameraTop - size - GAP_DP * density;
         if (left < 0 || torchTop < 0) return null;

@@ -2,6 +2,8 @@ package com.zhuhuibin.hypermusiccover.duo;
 
 /** Fold presentation and fitting rules in one coordinate system. */
 final class FoldArtworkLayout {
+    static final float CONTENT_AIR_DP = 12f;
+
     static boolean innerPortrait(float width, float height, float density) {
         return inner(width, height, density) && height > width * 1.05f;
     }

@@ -33,11 +33,6 @@ final class LockScreenRailRuntime {
             written = baseline + delta;
             if (v.getTranslationY() != written) v.setTranslationY(written);
         }
-        void target(View v, float target) {
-            if (v.getTranslationY() != written) baseline = v.getTranslationY();
-            delta = target - baseline;
-            apply(v);
-        }
         void restore(View v) { if (v.getTranslationY() == written) v.setTranslationY(baseline); }
     }
     private static String reason = "not attached";
@@ -170,7 +165,8 @@ final class LockScreenRailRuntime {
         Insets safe = RailWindowInsets.read(root);
         return RightRailLayout.plan(root.getWidth(), root.getHeight(),
                 root.getResources().getDisplayMetrics().density,
-                safe.left, safe.top, safe.right, safe.bottom, MiniPlayerRuntime.railIndicatorExtent());
+                safe.left, safe.top, safe.right, safe.bottom, MiniPlayerRuntime.railIndicatorExtent(),
+                Main.sRailStatusOffsetYDp);
     }
 
     static boolean holdGeometry() {
@@ -329,27 +325,14 @@ final class LockScreenRailRuntime {
             if (target != null && target.isShown() && !targets.contains(target)) targets.add(target);
         }
         View date = Main.visibleDate();
-        boolean innerDate = date != null && innerDateWindow();
         boolean dateInClock = false;
         for (View target : targets) if (under(date, target)) dateInClock = true;
-        if (date != null && date.isShown() && !innerDate && !dateInClock && !targets.contains(date)) targets.add(date);
+        if (date != null && date.isShown() && !dateInClock && !targets.contains(date)) targets.add(date);
         float delta = nativeClockLift();
         for (View target : targets) {
             ControlOffset lease = clockOffsets.get(target);
             if (lease == null) { lease = new ControlOffset(target, delta); clockOffsets.put(target, lease); }
             lease.apply(target);
-        }
-        if (innerDate && date.isShown() && date.getParent() instanceof View
-                && map(date, root, new FoldMusicLayout.Box(0, 0, date.getWidth(), date.getHeight()), box)) {
-            float drawnTop = box.top;
-            if (map((View) date.getParent(), root, new FoldMusicLayout.Box(0, 0, 1, 1), box)
-                    && Math.abs(box.height()) > .001f) {
-                ControlOffset lease = clockOffsets.get(date);
-                if (lease == null) { lease = new ControlOffset(date, 0f); clockOffsets.put(date, lease); }
-                float line = FoldDateLayout.line(root.getWidth(), root.getHeight(),
-                        root.getResources().getDisplayMetrics().density, 0f);
-                lease.target(date, date.getTranslationY() + (line - drawnTop) / box.height());
-            }
         }
     }
 
@@ -358,17 +341,9 @@ final class LockScreenRailRuntime {
         return active() && root != null ? -12f * root.getResources().getDisplayMetrics().density : 0f;
     }
 
-    private static boolean innerDateWindow() {
-        return active() && root != null && FoldDateLayout.inner(root.getWidth(), root.getHeight(),
-                root.getResources().getDisplayMetrics().density);
-    }
-
-    /** The idle date lease and the cover exit animation share their final screen-space line. */
+    /** Idle and cover-exit dates share the native pose; only an open content scene lifts it. */
     static float nativeDateTop(float nativeTop) {
-        if (!innerDateWindow()) return nativeTop + nativeClockLift();
-        int[] origin = new int[2]; root.getLocationOnScreen(origin);
-        return origin[1] + FoldDateLayout.line(root.getWidth(), root.getHeight(),
-                root.getResources().getDisplayMetrics().density, 0f);
+        return nativeTop + nativeClockLift();
     }
 
     static void clockReleased() {
@@ -463,7 +438,10 @@ final class LockScreenRailRuntime {
         float density = view.getResources().getDisplayMetrics().density;
         if (!content(view, box)) return style.place(view.getWidth(), view.getHeight(), density, clock, media, aspect);
         float left = box.left, width = box.width();
-        CoverCardStyle.Rect r = style.place(width, view.getHeight(), density, clock, media, aspect);
+        float air = root != null && FoldDateLayout.inner(root.getWidth(), root.getHeight(), density)
+                ? FoldArtworkLayout.CONTENT_AIR_DP * density : 0f;
+        CoverCardStyle.Rect r = style.place(width, view.getHeight() - air, density,
+                clock + air, media - air, aspect);
         return r == null ? null : new CoverCardStyle.Rect(r.x + left, r.y, r.side);
     }
     static String describe() {

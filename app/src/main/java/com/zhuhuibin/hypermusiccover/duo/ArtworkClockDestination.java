@@ -1,15 +1,15 @@
 package com.zhuhuibin.hypermusiccover.duo;
 
-/** The artwork page's clock destination; legacy row settings retain their meaning. */
+/** The artwork page uses the sidebar time; retain old constants for inactive implementations. */
 public final class ArtworkClockDestination {
     public static final int SHRINK = 0, DATE_ROW = 1, STATUS = 2;
     private ArtworkClockDestination() {}
 
     public static int normalize(int mode) {
-        return mode >= SHRINK && mode <= STATUS ? mode : DATE_ROW;
+        return STATUS;
     }
 
-    public static int fromLegacy(boolean row) { return row ? DATE_ROW : SHRINK; }
+    public static int fromLegacy(boolean row) { return STATUS; }
 
     static boolean sceneRequested(boolean cover, boolean player, boolean notifications, boolean navigation) {
         return navigation || cover && !player && !notifications;

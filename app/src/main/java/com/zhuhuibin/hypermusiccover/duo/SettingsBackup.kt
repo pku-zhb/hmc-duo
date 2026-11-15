@@ -75,7 +75,7 @@ object SettingsBackup {
             put(extra, value)
         }
     }
-    /** A missing module section must not reset a device's selected clock destination. */
+    /** Restore old destinations through the fixed sidebar-time policy. */
     internal fun readArtworkClockDestination(json: JSONObject): Int? = when {
         json.has("artworkClockDestination") -> runCatching {
             ArtworkClockDestination.normalize(json.getInt("artworkClockDestination"))
@@ -160,8 +160,8 @@ object SettingsBackup {
             json.put("forceNotificationFloor", module.forceNotificationFloor)
             json.put("hideLockStatusBar", module.hideLockStatusBar)
             writeInnerFullScreenAod(json, module)
-            json.put("artworkClockRow", module.artworkClockDestination == ArtworkClockDestination.DATE_ROW)
-            json.put("artworkClockDestination", module.artworkClockDestination)
+            json.put("artworkClockRow", false)
+            json.put("artworkClockDestination", ArtworkClockDestination.STATUS)
             json.put("artworkClockBeforeDate", module.artworkClockBeforeDate)
             json.put("wallpaperDim", module.wallpaperDim)
             if (module.clockSize > 0f) json.put(KEY_CLOCK_SIZE, module.clockSize.toDouble())

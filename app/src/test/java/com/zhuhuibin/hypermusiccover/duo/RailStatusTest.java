@@ -4,6 +4,28 @@ import org.junit.Test;
 import static org.junit.Assert.*;
 
 public class RailStatusTest {
+    @Test public void tapRoomIsClippedToTheSidebarAndNeverReachesCapsulesOrContent() {
+        for (float density : new float[]{1f, 1.5f, 2.75f, 3f}) {
+            for (float[] size : new float[][]{{425, 700}, {650, 850}, {850, 650}}) {
+                for (float offset : new float[]{-24, 0, 24, 80}) {
+                    RightRailLayout.Plan rail = RightRailLayout.plan(size[0]*density,
+                            size[1]*density, density, 0, 46*density, 10*density, 24*density, 0, offset);
+                    assertNotNull(rail);
+                    FoldMusicLayout.Box status = RailStatusLayout.place((rail.pill.left+rail.pill.right)/2,
+                            46*density, density, offset);
+                    FoldMusicLayout.Box hit = RailStatusLayout.touchArea(status, rail.content.right,
+                            (size[0]-10)*density, rail.content.top, rail.strip.top, density);
+                    assertNotNull(hit);
+                    assertTrue(hit.left >= rail.content.right);
+                    assertTrue(hit.right <= (size[0]-10)*density);
+                    assertTrue(hit.top >= rail.content.top);
+                    assertTrue(hit.bottom <= rail.strip.top);
+                    assertTrue(status.bottom + 9.5f*density <= rail.strip.top);
+                }
+            }
+        }
+    }
+
     @Test public void referenceClusterAlignsWithCapsulesAndClearsTheFirstBubble() {
         RightRailLayout.Plan rail = RightRailLayout.plan(1168, 1712, 2.75f, 0, 126, 0, 0, 0);
         FoldMusicLayout.Box status = RailStatusLayout.place((rail.pill.left+rail.pill.right)/2, 126, 2.75f);
