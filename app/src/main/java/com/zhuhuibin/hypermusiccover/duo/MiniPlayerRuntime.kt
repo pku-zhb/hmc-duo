@@ -1120,7 +1120,6 @@ object MiniPlayerRuntime {
     private var contentDensity = 1f
     private var contentSlop = 0f
     private var contentVelocity: VelocityTracker? = null
-    private var contentScrollTarget = false
     private var contentNativeScrollReleased = false
     const val CONTENT_NATIVE_CONTROL = 3
 
@@ -1182,10 +1181,10 @@ object MiniPlayerRuntime {
                     it.contentCollapseAt(ev.rawX, ev.rawY)
             } else null
             contentKey = contentOwner?.contentExpansionTarget(ev.rawX, ev.rawY)
-            contentScrollTarget = contentOwner?.contentStartsOnCard(ev.rawX, ev.rawY) == true
-            val atTop = !contentScrollTarget || contentOwner?.nativeStackAtTop(true) != false
             val canCollapse = contentOwner?.contentCollapseAt(ev.rawX, ev.rawY) == true
-            contentSwipe.start(contentKey != null, canCollapse, nativeControl, contentScrollTarget, atTop)
+            // contentOwner only owns empty pixels. Re-testing allocated row/header bounds
+            // here can turn a clipped/hidden card's empty tail back into a native stream.
+            contentSwipe.start(contentKey != null, canCollapse, nativeControl)
             contentCancelled = false
             contentNativeScrollReleased = false
             if (nativeControl) { releasePress(); endRoute() }
@@ -1205,7 +1204,7 @@ object MiniPlayerRuntime {
             if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
                 contentVelocity?.recycle(); contentVelocity = null
                 contentSwipe.reset()
-                contentOwner = null; contentKey = null; contentScrollTarget = false
+                contentOwner = null; contentKey = null
             }
             return CONTENT_NATIVE_CONTROL
         }
@@ -1221,8 +1220,7 @@ object MiniPlayerRuntime {
             if (held) contentCancelled = true
         }
         if (action == MotionEvent.ACTION_DOWN) contentCancelled = false
-        if (action == MotionEvent.ACTION_MOVE && contentSwipe.move(dx, dy, contentSlop,
-                !contentScrollTarget || contentOwner?.nativeStackAtTop(false) != false)) {
+        if (action == MotionEvent.ACTION_MOVE && contentSwipe.move(dx, dy, contentSlop)) {
             releasePress()
             endRoute()
             noteTouch("content swipe claimed dy=${dy.toInt()} target=${contentKey?.takeLast(16)}")
@@ -1244,7 +1242,7 @@ object MiniPlayerRuntime {
             }
             contentVelocity?.recycle(); contentVelocity = null
             contentSwipe.reset(); contentCancelled = false
-            contentOwner = null; contentKey = null; contentScrollTarget = false
+            contentOwner = null; contentKey = null
         }
         return if (held) 2 else 0
     }
@@ -8302,16 +8300,6 @@ private class MiniPlayerController(
         (railMediaExiting() || railReturn != null || railNoteExit != null || nativeRailNote != null ||
             musicCarded(controller?.takeIf(::isUsable)) || NumState.notificationNeedsCollapse() ||
             LockIslands.releasedKeys().any { it != MUSIC_ISLAND })
-
-    /** A DOWN on the clock or empty space never starts a native notification-list scroll. */
-    fun contentStartsOnCard(x: Float, y: Float): Boolean {
-        if (releasedRowAt(x, y) != null) return true
-        val header = Main.miniPlayerMediaHeader() ?: return false
-        if (!header.isShown || MiniPlayerRuntime.effectiveViewAlpha(header) <= .01f ||
-            header.width <= 0 || header.height <= 0) return false
-        val xy = IntArray(2).also(header::getLocationOnScreen)
-        return x >= xy[0] && x < xy[0] + header.width && y >= xy[1] && y < xy[1] + header.height
-    }
 
     fun expandRailSelection(key: String): Boolean {
         if (key == STACK_ISLAND && NumState.notificationOpening()) return true

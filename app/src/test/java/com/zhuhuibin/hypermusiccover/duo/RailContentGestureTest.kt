@@ -6,22 +6,22 @@ import org.junit.Test
 class RailContentGestureTest {
     @Test fun bottomNotificationDismissalStaysNativeWhileOtherIslandsAreFolded() {
         val g = RailContentGesture()
-        g.start(true, true, false, startsOnScrollableCard = true)
-        assertFalse(g.move(40f, -12f, 8f, true))
+        g.start(true, true, onNativeControl = true)
+        assertFalse(g.move(40f, -12f, 8f))
         assertTrue(g.nativeControl)
-        assertFalse(g.move(65f, -90f, 8f, true))
+        assertFalse(g.move(65f, -90f, 8f))
         assertEquals(RailContentGesture.Action.NONE, g.commit(65f, -90f, -2000f, 1f, false))
-        g.start(true, true, false, startsOnScrollableCard = true)
-        assertFalse(g.move(3f, -24f, 8f, true))
+        g.start(true, true, onNativeControl = true)
+        assertFalse(g.move(3f, -24f, 8f))
         assertTrue(g.nativeControl)
     }
 
     @Test fun everyDirectionOnAnExistingCardStaysNativeEvenAtTheListTop() {
         for ((x, y) in listOf(0f to -120f, 0f to 120f, 120f to 0f, -120f to 0f)) {
             val g = RailContentGesture()
-            g.start(true, true, false, startsOnScrollableCard = true, atListTop = true)
+            g.start(true, true, onNativeControl = true)
             assertTrue(g.nativeControl)
-            assertFalse(g.move(x, y, 8f, true))
+            assertFalse(g.move(x, y, 8f))
             assertEquals(RailContentGesture.Action.NONE, g.commit(x, y, y * 30f, 1f, false))
         }
     }
@@ -29,7 +29,7 @@ class RailContentGestureTest {
         val g = RailContentGesture()
         g.start(canExpand = true, canCollapse = true, onNativeControl = true)
         for ((x, y) in listOf(45f to -15f, 120f to -75f, 120f to 120f)) {
-            assertFalse(g.move(x, y, 8f, true))
+            assertFalse(g.move(x, y, 8f))
             assertTrue(g.nativeControl)
             assertEquals(RailContentGesture.Action.NONE, g.commit(x, y, 3000f, 1f, false))
         }
@@ -39,38 +39,53 @@ class RailContentGestureTest {
     @Test fun replacementDownReleasesTheOldOwnerAndStartsAnIndependentGesture() {
         val g = RailContentGesture()
         g.start(true, true, false)
-        assertTrue(g.move(0f, -20f, 8f, true))
+        assertTrue(g.move(0f, -20f, 8f))
         g.start(true, true, true)
         assertFalse(g.claimed)
         assertTrue(g.nativeControl)
         g.start(false, true, false)
         assertFalse(g.nativeControl)
-        assertTrue(g.move(0f, 20f, 8f, true))
+        assertTrue(g.move(0f, 20f, 8f))
         assertEquals(RailContentGesture.Action.COLLAPSE, g.commit(0f, 60f, 0f, 1f, false))
     }
 
     @Test fun clockAndEmptyContentCanCollapseEvenWhenNoCapsuleRemains() {
         val g = RailContentGesture()
-        g.start(canExpand = false, canCollapse = true, onNativeControl = false,
-            startsOnScrollableCard = false, atListTop = false)
-        assertFalse(g.move(1f, 3f, 8f, false))
-        assertTrue(g.move(2f, 20f, 8f, false))
-        assertFalse(g.move(2f, 60f, 8f, false))
+        g.start(canExpand = false, canCollapse = true, onNativeControl = false)
+        assertFalse(g.move(1f, 3f, 8f))
+        assertTrue(g.move(2f, 20f, 8f))
+        assertFalse(g.move(2f, 60f, 8f))
         assertEquals(RailContentGesture.Action.COLLAPSE, g.commit(2f, 60f, 0f, 1f, false))
     }
 
-    @Test fun scrollingAListFromAwayFromItsTopCannotBecomeACollapseMidGesture() {
+    @Test fun nativeListScrollingCannotBecomeACollapseMidGesture() {
         val g = RailContentGesture()
-        g.start(false, true, false, startsOnScrollableCard = true, atListTop = false)
-        assertFalse(g.move(0f, 40f, 8f, false))
-        assertFalse(g.move(0f, 100f, 8f, true))
+        g.start(false, true, onNativeControl = true)
+        assertFalse(g.move(0f, 40f, 8f))
+        assertFalse(g.move(0f, 100f, 8f))
         assertEquals(RailContentGesture.Action.NONE, g.commit(0f, 100f, 2000f, 1f, false))
+    }
+
+    @Test fun anEmptyTailBelowAClippedCardCanExpandAndCollapseWithoutBorrowingItsScrollState() {
+        // The native row can allocate 600 px while only its first 180 px are drawn.
+        // DOWN in the remaining content belongs to the same empty-space policy in both directions.
+        val downY = 420f
+        val onVisibleCard = downY >= 100f && downY < 280f
+        assertTrue(RailContentRegion.emptySpace(downY, 24f, 800f, onVisibleCard))
+        val g = RailContentGesture()
+        g.start(true, true, onVisibleCard)
+        assertFalse(g.nativeControl)
+        assertTrue(g.move(0f, -20f, 8f))
+        assertEquals(RailContentGesture.Action.EXPAND, g.commit(0f, -70f, 0f, 1f, false))
+        g.start(true, true, onVisibleCard)
+        assertTrue(g.move(0f, 20f, 8f))
+        assertEquals(RailContentGesture.Action.COLLAPSE, g.commit(0f, 70f, 0f, 1f, false))
     }
 
     @Test fun shortReversedAndCancelledDownwardDragsDoNotCollapse() {
         val g = RailContentGesture()
         g.start(false, true, false)
-        assertTrue(g.move(0f, 20f, 8f, true))
+        assertTrue(g.move(0f, 20f, 8f))
         assertEquals(RailContentGesture.Action.NONE, g.commit(0f, 20f, 0f, 1f, false))
         assertEquals(RailContentGesture.Action.NONE, g.commit(0f, -60f, 2000f, 1f, false))
         assertEquals(RailContentGesture.Action.NONE, g.commit(0f, 60f, 0f, 1f, true))
@@ -79,15 +94,15 @@ class RailContentGestureTest {
     @Test fun horizontalNotificationDismissalDoesNotCollapse() {
         val g = RailContentGesture()
         g.start(false, true, false)
-        assertFalse(g.move(40f, 10f, 8f, true))
-        assertFalse(g.move(40f, 80f, 8f, true))
+        assertFalse(g.move(40f, 10f, 8f))
+        assertFalse(g.move(40f, 80f, 8f))
     }
 
     @Test fun theAcceptedGapGuardStillClaimsDiagonalUpwardDragsAndCommitsOnlyDeliberateOnes() {
         val g = RailContentGesture()
         g.start(true, true, false)
-        assertFalse(g.move(-20f, -2f, 8f, true))
-        assertTrue(g.move(-40f, -12f, 8f, true))
+        assertFalse(g.move(-20f, -2f, 8f))
+        assertTrue(g.move(-40f, -12f, 8f))
         assertEquals(RailContentGesture.Action.NONE, g.commit(-60f, -30f, -1200f, 1f, false))
         assertEquals(RailContentGesture.Action.EXPAND, g.commit(-20f, -70f, 0f, 1f, false))
     }
