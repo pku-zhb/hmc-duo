@@ -10,6 +10,12 @@ and [HyperMusicCover](https://github.com/zyl6932/HyperMusicCover).
 Device coverage is focused on the maintainer's foldable phone; compatibility with
 other devices is not established.
 
+Version 0.2.18 commits the native track identity and scene before dispatching
+artwork work. First entry after returning to the clock no longer depends on a
+later metadata callback, and superseded exits cannot clear a newer selection.
+It includes the renderer and layout fixes below. See the
+0.2.18 record.
+
 Version 0.2.17 retires the upper AOD renderer atomically after the incoming
 complete artwork is presented, avoiding a second blur-only fade over the ready
 foreground. It includes the media-identity and scene changes below. See the
