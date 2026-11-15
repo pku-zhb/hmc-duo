@@ -8,27 +8,24 @@ internal class RailContentGesture {
     private val expansion = RailExpandGesture()
     private val collapse = MiniPlayerCollapseGesture()
     private var action = Action.NONE
-    private var scrollableCard = false
     var nativeControl = false
         private set
     val claimed: Boolean get() = action != Action.NONE
 
-    fun start(canExpand: Boolean, canCollapse: Boolean, onNativeControl: Boolean,
-              startsOnScrollableCard: Boolean = false, atListTop: Boolean = true) {
+    fun start(canExpand: Boolean, canCollapse: Boolean, onNativeControl: Boolean) {
         reset()
-        nativeControl = onNativeControl || startsOnScrollableCard
-        scrollableCard = startsOnScrollableCard
+        nativeControl = onNativeControl
         expansion.start(canExpand && !nativeControl)
-        collapse.start(canCollapse && !nativeControl && (!scrollableCard || atListTop))
+        collapse.start(canCollapse && !nativeControl)
     }
 
     /** True exactly once, when the original native recipient needs a CANCEL. */
-    fun move(dx: Float, dy: Float, slop: Float, atListTop: Boolean): Boolean {
+    fun move(dx: Float, dy: Float, slop: Float): Boolean {
         if (nativeControl || claimed) return false
         if (expansion.move(dx, dy, slop)) {
             collapse.reset()
             action = Action.EXPAND
-        } else if (collapse.move(dx, dy, slop, !scrollableCard || atListTop)) {
+        } else if (collapse.move(dx, dy, slop, true)) {
             expansion.reset()
             action = Action.COLLAPSE
         }
@@ -51,6 +48,5 @@ internal class RailContentGesture {
         collapse.reset()
         action = Action.NONE
         nativeControl = false
-        scrollableCard = false
     }
 }
