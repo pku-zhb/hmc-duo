@@ -66,18 +66,108 @@ public class ArtworkBackdropStateTest {
         assertFalse(handoff.needsPresentation(ArtworkBackdropState.MESH, 1f));
     }
 
-    @Test public void aDifferentOriginalSourceCannotBorrowAnOutgoingFrameWithTheSameGeneration() {
+    @Test public void aNewSourceRetainsTheActualPresenterWithoutBorrowingItsCompositionProof() {
         ArtworkBackdropState.Handoff handoff = new ArtworkBackdropState.Handoff();
         Object window = new Object();
         handoff.select(1L, ArtworkBackdropState.MESH, window, 41L, 7L, 11);
         handoff.presented(1L, ArtworkBackdropState.MESH, window, 41L, 7L, 11, 1f);
         handoff.select(2L, ArtworkBackdropState.MESH, window, 42L, 7L, 11);
-        assertFalse(handoff.local());
-        assertEquals(-1, handoff.generation());
+        assertTrue(handoff.local());
+        assertEquals(11, handoff.generation());
+        assertEquals(41L, handoff.ownerSource());
+        assertEquals(1L, handoff.ownerEpoch());
+        assertFalse(handoff.coveredBy(ArtworkBackdropState.MESH));
+        assertTrue(handoff.needsPresentation(ArtworkBackdropState.MESH, 1f));
+        assertEquals(1L, handoff.sourceRetentions());
         assertFalse(handoff.presented(2L, ArtworkBackdropState.MESH, window, 41L, 7L, 11, 1f));
         assertFalse(handoff.invisible(1L, ArtworkBackdropState.MESH, window, 41L));
         handoff.presented(2L, ArtworkBackdropState.MESH, window, 42L, 7L, 11, 1f);
         assertEquals(42L, handoff.ownerSource());
+    }
+
+    @Test public void sourcePreparationAndCrossfadeNeverRestoreTheNativeSampler() {
+        ArtworkBackdropState.Handoff handoff = new ArtworkBackdropState.Handoff();
+        NativeSamplingLease sampler = new NativeSamplingLease();
+        Object window = new Object();
+        sampler.bind(2, true, 0);
+        handoff.select(1L, ArtworkBackdropState.MESH, window, 41L, 7L, 11);
+        handoff.presented(1L, ArtworkBackdropState.MESH, window, 41L, 7L, 11, 1f);
+        sampler.committed(handoff.local());
+        // publish() changes source identity before its async composition has replaced current.
+        handoff.select(2L, ArtworkBackdropState.MESH, window, 42L, 7L, 11);
+        assertFalse(sampler.needsApply(handoff.local()));
+        assertFalse(handoff.presented(1L, ArtworkBackdropState.MESH, window, 41L, 7L, 11, 1f));
+        // adoptPending() starts a real previous/current crossfade in the same presenter.
+        handoff.select(3L, ArtworkBackdropState.MESH, window, 42L, 7L, 12);
+        for (float coverage : new float[]{.01f, .25f, .75f, .99f}) {
+            assertFalse(handoff.presented(3L, ArtworkBackdropState.MESH, window, 42L, 7L, 12, coverage));
+            assertEquals(41L, handoff.ownerSource());
+            assertFalse(handoff.coveredBy(ArtworkBackdropState.MESH));
+            assertFalse(sampler.needsApply(handoff.local()));
+        }
+        assertTrue(handoff.presented(3L, ArtworkBackdropState.MESH, window, 42L, 7L, 12, 1f));
+        assertEquals(42L, handoff.ownerSource());
+        assertTrue(handoff.coveredBy(ArtworkBackdropState.MESH));
+        assertFalse(sampler.needsApply(handoff.local()));
+        // A distinct same-track quality source follows exactly the same contract.
+        handoff.select(4L, ArtworkBackdropState.MESH, window, 43L, 7L, 12);
+        assertEquals(42L, handoff.ownerSource());
+        assertFalse(sampler.needsApply(handoff.local()));
+        assertEquals(2L, handoff.sourceRetentions());
+    }
+
+    @Test public void sourceAndRendererChangesKeepOnlyTheRealOutgoingPresenter() {
+        ArtworkBackdropState.Handoff handoff = new ArtworkBackdropState.Handoff();
+        Object window = new Object();
+        handoff.select(1L, ArtworkBackdropState.MESH, window, 41L, 7L, 11);
+        handoff.presented(1L, ArtworkBackdropState.MESH, window, 41L, 7L, 11, 1f);
+        handoff.select(2L, ArtworkBackdropState.STILL, window, 42L, 8L, 12);
+        assertTrue(handoff.retains(ArtworkBackdropState.MESH));
+        assertEquals(41L, handoff.ownerSource());
+        handoff.presented(2L, ArtworkBackdropState.STILL, window, 42L, 8L, 12, .5f);
+        assertTrue(handoff.retains(ArtworkBackdropState.MESH));
+        assertFalse(handoff.coveredBy(ArtworkBackdropState.STILL));
+        handoff.presented(2L, ArtworkBackdropState.STILL, window, 42L, 8L, 12, 1f);
+        assertFalse(handoff.retains(ArtworkBackdropState.MESH));
+        assertTrue(handoff.coveredBy(ArtworkBackdropState.STILL));
+        assertEquals(42L, handoff.ownerSource());
+    }
+
+    @Test public void aPreparedCandidateCannotReplaceAWithdrawnOutgoingSource() {
+        ArtworkBackdropState.Handoff handoff = new ArtworkBackdropState.Handoff();
+        Object window = new Object();
+        handoff.select(1L, ArtworkBackdropState.STILL, window, 41L, 7L, 11);
+        handoff.presented(1L, ArtworkBackdropState.STILL, window, 41L, 7L, 11, 1f);
+        // This lower renderer was valid for source 41, not the next requested source.
+        handoff.presented(1L, ArtworkBackdropState.MESH, window, 41L, 7L, 11, 1f);
+        handoff.select(2L, ArtworkBackdropState.MESH, window, 42L, 7L, 12);
+        handoff.withdraw(ArtworkBackdropState.STILL);
+        assertFalse(handoff.local());
+        assertFalse(handoff.coveredBy(ArtworkBackdropState.MESH));
+        assertTrue(handoff.presented(2L, ArtworkBackdropState.MESH, window, 42L, 7L, 12, .1f));
+        assertTrue(handoff.local());
+        assertEquals(42L, handoff.ownerSource());
+    }
+
+    @Test public void disappearingOutgoingSourceRevokesTheSamplerBeforeIncomingProof() {
+        ArtworkBackdropState.Handoff handoff = new ArtworkBackdropState.Handoff();
+        NativeSamplingLease sampler = new NativeSamplingLease();
+        Object window = new Object();
+        sampler.bind(2, true, 0);
+        handoff.select(1L, ArtworkBackdropState.MESH, window, 41L, 7L, 11);
+        handoff.presented(1L, ArtworkBackdropState.MESH, window, 41L, 7L, 11, 1f);
+        sampler.committed(handoff.local());
+        handoff.select(2L, ArtworkBackdropState.MESH, window, 42L, 7L, 11);
+        assertFalse(handoff.invisible(1L, ArtworkBackdropState.MESH, window, 41L));
+        assertTrue(handoff.local());
+        assertTrue(handoff.invisible(2L, ArtworkBackdropState.MESH, window, 42L));
+        assertTrue(sampler.needsApply(handoff.local()));
+        sampler.committed(handoff.local());
+        assertFalse(sampler.local());
+        // Returning to the same source cannot revive a hidden presenter's lease.
+        handoff.select(3L, ArtworkBackdropState.MESH, window, 41L, 7L, 11);
+        assertFalse(handoff.local());
+        assertFalse(handoff.presented(1L, ArtworkBackdropState.MESH, window, 41L, 7L, 11, 1f));
     }
 
     @Test public void aNewWindowAndANativeSceneBothWithdrawTheRetainedSourceImmediately() {

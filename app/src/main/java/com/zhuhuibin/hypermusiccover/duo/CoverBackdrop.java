@@ -189,6 +189,13 @@ final class CoverBackdrop {
                 scene.sourceIdentity, scene.geometryRevision, scene.generation) && handoff.retains(renderer);
     }
 
+    /** Visibility restoration must submit a real frame again, even with a reusable display list. */
+    static boolean needsPresentation(int renderer, Snapshot scene) {
+        return scene.rendererWanted && handoff.matches(scene.epoch, scene.window,
+                scene.sourceIdentity, scene.geometryRevision, scene.generation)
+                && handoff.needsPresentation(renderer, 1f);
+    }
+
     /** Retiring an upper renderer requires opaque current-composition proof, not page intent. */
     static boolean coveredBy(int renderer, Snapshot scene) {
         return scene.rendererWanted && handoff.matches(scene.epoch, scene.window,
@@ -217,7 +224,8 @@ final class CoverBackdrop {
                 + " generation=" + scene.generation + " committed="
                 + (handoff.local() ? handoff.generation() : -1) + " ownerEpoch=" + handoff.ownerEpoch()
                 + " geometry=" + scene.geometryRevision + " ownerGeometry=" + handoff.ownerGeometry()
-                + " source=" + scene.sourceIdentity + " ownerSource=" + handoff.ownerSource() + " window="
+                + " source=" + scene.sourceIdentity + " ownerSource=" + handoff.ownerSource()
+                + " sourceRetentions=" + handoff.sourceRetentions() + " window="
                 + (scene.window == null ? "none" : Integer.toHexString(System.identityHashCode(scene.window)))
                 + " hidden=" + scene.hidden + " foregroundReady=" + scene.foregroundReady
                 + " lyricsReady=" + scene.wantsLyrics + " cover=" + scene.cover
@@ -313,16 +321,18 @@ final class CoverBackdrop {
                 scene.sourceIdentity, scene.geometryRevision, scene.generation);
         for (int renderer = ArtworkBackdropState.MESH; renderer <= ArtworkBackdropState.STILL; renderer++) {
             View view = presenters[renderer];
-            if (view != null && (!view.isAttachedToWindow() || !view.isShown()
-                    || view.getRootView() != scene.window)) handoff.withdraw(renderer);
+            if (view != null && !presenterVisible(view, scene.window)) {
+                pending[renderer] = null;
+                presenters[renderer] = null;
+                handoff.withdraw(renderer);
+            }
         }
         if (!commitFrames) return;
         for (int renderer = ArtworkBackdropState.MESH; renderer <= ArtworkBackdropState.STILL; renderer++) {
             Presented frame = pending[renderer];
             if (frame == null) continue;
             pending[renderer] = null;
-            if (!frame.renderer.isAttachedToWindow() || !frame.renderer.isShown()
-                    || frame.renderer.getRootView() != scene.window) continue;
+            if (!presenterVisible(frame.renderer, scene.window)) continue;
             if (frame.alpha <= .001f) {
                 handoff.invisible(frame.scene.epoch, renderer, frame.renderer.getRootView(), frame.scene.sourceIdentity);
                 continue;
@@ -332,6 +342,21 @@ final class CoverBackdrop {
                     frame.scene.sourceIdentity, frame.scene.geometryRevision, frame.generation, frame.alpha))
                 presenters[renderer] = frame.renderer;
         }
+    }
+
+    /** A retained display list is a lease only while its real presenter can reach this window. */
+    private static boolean presenterVisible(View view, View window) {
+        if (window == null || !view.isAttachedToWindow() || !view.isShown()
+                || view.getRootView() != window || view.getWindowVisibility() != View.VISIBLE
+                || view.getWidth() <= 0 || view.getHeight() <= 0) return false;
+        float alpha = 1f;
+        for (View current = view; current != null;
+                current = current.getParent() instanceof View ? (View) current.getParent() : null) {
+            alpha *= current.getAlpha() * current.getTransitionAlpha();
+            if (!Float.isFinite(alpha) || alpha <= .001f
+                    || current.getScaleX() == 0f || current.getScaleY() == 0f) return false;
+        }
+        return true;
     }
 
     private static void refreshDimVisibility(Snapshot scene) {

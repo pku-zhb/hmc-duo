@@ -72,27 +72,50 @@ final class ArtworkBackdropState {
     int drawn() { return drawn; }
     boolean revealed() { return revealed; }
 
-    /** Actual outgoing pixels retain their original key while the same source is recomposed. */
+    /** Current-composition proof and the actually submitted outgoing presenter have separate lifetimes. */
     static final class Handoff {
         private Object window;
         private long revision, epoch, sourceIdentity = -1L;
-        private int generation = -1, desired, owner;
+        private int generation = -1, desired;
+        private PresenterLease outgoing;
+        private long sourceRetentions;
+
+        /** Never relabel outgoing pixels as the newly requested source or geometry. */
+        private static final class PresenterLease {
+            final int renderer, generation;
+            final Object window;
+            final long source, revision, epoch;
+            PresenterLease(int renderer, Object window, long source, long revision, int generation, long epoch) {
+                this.renderer = renderer; this.window = window; this.source = source;
+                this.revision = revision; this.generation = generation; this.epoch = epoch;
+            }
+        }
         private final float[] presented = new float[3];
         private final Object[] drawnWindow = new Object[3];
         private final long[] drawnRevision = new long[3], drawnSource = new long[3], drawnEpoch = new long[3];
         private final int[] drawnGeneration = new int[3];
 
-        /** Legacy callers have no retained-source key, so geometry changes revoke their proof. */
+        /** Legacy callers have no retained-source key, so geometry or generation changes revoke their lease. */
         void select(long epoch, int desired, Object window, long revision, int generation) {
-            if (this.revision != revision) { owner = NATIVE; clear(MESH); clear(STILL); }
+            if (this.revision != revision || this.sourceIdentity != generation) {
+                outgoing = null;
+                clear(MESH); clear(STILL);
+            }
             select(epoch, desired, window, generation, revision, generation);
         }
 
         void select(long epoch, int desired, Object window, long sourceIdentity,
                     long revision, int generation) {
             boolean valid = desired != NATIVE && window != null && generation >= 0 && sourceIdentity >= 0L;
-            if (!valid || this.window != window || this.sourceIdentity != sourceIdentity) {
-                owner = NATIVE;
+            if (!valid || this.window != window) {
+                outgoing = null;
+                clear(MESH);
+                clear(STILL);
+            } else if (this.sourceIdentity != sourceIdentity) {
+                // Source selection precedes asynchronous composition. The renderer still
+                // owns its previous display list, followed by a real old/new crossfade.
+                // Keep that presenter lease while discarding all new-composition proof.
+                if (local()) sourceRetentions++;
                 clear(MESH);
                 clear(STILL);
             }
@@ -105,7 +128,7 @@ final class ArtworkBackdropState {
             // Only an already committed display list can bridge composition. A partial
             // candidate from the old geometry cannot become a fallback for the new one.
             for (int renderer = MESH; renderer <= STILL; renderer++)
-                if (renderer != owner && !currentFrame(renderer)) clear(renderer);
+                if (renderer != owner() && !currentFrame(renderer)) clear(renderer);
         }
 
         boolean presented(long epoch, int renderer, Object window, long revision,
@@ -120,7 +143,7 @@ final class ArtworkBackdropState {
                 withdraw(renderer);
                 return false;
             }
-            if (owner == renderer && !currentFrame(renderer) && alpha < .995f) return false;
+            if (owner() == renderer && !currentFrame(renderer) && alpha < .995f) return false;
             presented[renderer] = Math.min(1f, alpha);
             drawnWindow[renderer] = window;
             drawnSource[renderer] = sourceIdentity;
@@ -129,14 +152,17 @@ final class ArtworkBackdropState {
             drawnEpoch[renderer] = epoch;
             // First presentation has no outgoing artwork to keep. During a handoff the
             // replacement must actually cover it before the old display list is retired.
-            if (renderer == desired && (owner == NATIVE || alpha >= .995f)) owner = renderer;
+            if (renderer == desired && (owner() == NATIVE || alpha >= .995f))
+                outgoing = new PresenterLease(renderer, window, sourceIdentity, revision, generation, epoch);
             return true;
         }
 
         void withdraw(int renderer) {
             clear(renderer);
-            if (owner == renderer) {
-                owner = currentFrame(desired) && presented[desired] >= .995f ? desired : NATIVE;
+            if (owner() == renderer) {
+                outgoing = currentFrame(desired) && presented[desired] >= .995f
+                        ? new PresenterLease(desired, drawnWindow[desired], drawnSource[desired],
+                            drawnRevision[desired], drawnGeneration[desired], drawnEpoch[desired]) : null;
             }
         }
 
@@ -173,25 +199,25 @@ final class ArtworkBackdropState {
 
         /** Opaque submitted pixels for this exact composition may replace an upper presenter. */
         boolean coveredBy(int renderer) {
-            return renderer == desired && renderer == owner && currentFrame(renderer)
+            return renderer == desired && renderer == owner() && currentFrame(renderer)
                     && presented[renderer] >= .995f;
         }
 
-        boolean retains(int renderer) { return owner == renderer && desired != renderer && local(); }
+        boolean retains(int renderer) { return owner() == renderer && desired != renderer && local(); }
         boolean local() {
-            return desired != NATIVE && owner != NATIVE && presented[owner] > .001f
-                    && drawnWindow[owner] == window && drawnSource[owner] == sourceIdentity;
+            return desired != NATIVE && outgoing != null && outgoing.window == window;
         }
         boolean needsPresentation(int renderer, float alpha) {
-            return desired != NATIVE && renderer == desired && (owner != renderer || !currentFrame(owner))
-                    && (owner == NATIVE || alpha >= .995f);
+            return desired != NATIVE && renderer == desired && (owner() != renderer || !currentFrame(renderer))
+                    && (owner() == NATIVE || alpha >= .995f);
         }
-        int owner() { return owner; }
+        int owner() { return outgoing == null ? NATIVE : outgoing.renderer; }
         int desired() { return desired; }
-        int generation() { return local() ? drawnGeneration[owner] : -1; }
-        long ownerGeometry() { return local() ? drawnRevision[owner] : -1L; }
-        long ownerSource() { return local() ? drawnSource[owner] : -1L; }
-        long ownerEpoch() { return local() ? drawnEpoch[owner] : -1L; }
+        int generation() { return local() ? outgoing.generation : -1; }
+        long ownerGeometry() { return local() ? outgoing.revision : -1L; }
+        long ownerSource() { return local() ? outgoing.source : -1L; }
+        long ownerEpoch() { return local() ? outgoing.epoch : -1L; }
+        long sourceRetentions() { return sourceRetentions; }
         long epoch() { return epoch; }
     }
 }
