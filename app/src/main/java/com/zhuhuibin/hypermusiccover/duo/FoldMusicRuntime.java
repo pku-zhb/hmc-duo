@@ -211,7 +211,10 @@ final class FoldMusicRuntime {
                 scratch.left, scratch.top, scratch.right, scratch.bottom);
         window.getLocationOnScreen(at);
         float clock = ClockCollapse.contentBottomFor(window) - at[1];
-        if (!Float.isFinite(clock) || clock < 0f) return null;
+        if (!Float.isFinite(clock)) return null;
+        ContentMotionMeasurement measurement = NativeContentMotion.measurement(window,
+                NativeContentMotion.owner(window));
+        if (measurement == null) return null;
         Insets insets = RailWindowInsets.read(window);
         float density = window.getResources().getDisplayMetrics().density;
         float shortcutTop = LockScreenRailRuntime.active() && Main.sForceNotificationFloor ? Float.NaN
@@ -219,7 +222,10 @@ final class FoldMusicRuntime {
         // An actual measurement can legitimately find too little room for two columns.
         // Keep that decision separate from a temporarily missing clock/player frame.
         lyricFrame.measured(Main.screenGeometry().revision, window.getWidth(), window.getHeight());
-        return FoldMusicLayout.columns(content.right, window.getHeight(), density,
+        // Measured clock/player coordinates already contain the native owner's current
+        // AOD affine. Remove only that common motion before natural layout fitting, so a
+        // first plan or a rebuilt owner/window cannot apply translation/scale twice.
+        return measurement.columns(content.right, window.getHeight(), density,
                 window.getResources().getConfiguration().smallestScreenWidthDp,
                 content.left, content.top, 0f, insets.bottom, clock, nativePlayer, shortcutTop);
     }
