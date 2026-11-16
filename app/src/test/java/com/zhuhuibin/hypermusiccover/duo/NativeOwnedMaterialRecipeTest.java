@@ -132,10 +132,10 @@ public class NativeOwnedMaterialRecipeTest {
         assertNull(target.glass);
     }
 
-    @Test public void explicitCurrentNativeBlurTypeIsHonoredWithoutUsingTheCachedAodFlag() {
+    @Test public void acceptedCurrentNativeBlurIsHonoredWithoutUsingTheCachedAodFlag() {
         Target target = new Target();
         Resources resources = new Resources();
-        NativeOwnedMaterialRecipe.current(resources, false, true, false, null, null).apply(true, target);
+        NativeOwnedMaterialRecipe.current(resources, false, true, NativeOwnedMaterialRecipe.Mode.BLUR, null, null).apply(true, target);
         assertEquals(0, target.materialType);
         assertEquals(6, target.palette.length);
         assertTrue(target.containerBlur);
@@ -144,12 +144,51 @@ public class NativeOwnedMaterialRecipeTest {
         assertFalse(resources.reads.contains("media_notification_element_blend_shade_color_1"));
     }
 
+    @Test public void explicitNativeNoneStaysFlatEvenWithTheGlobalBlurSwitchEnabled() {
+        for (boolean aod : new boolean[]{false, true}) {
+            Target target = new Target();
+            NativeOwnedMaterialRecipe.current(new Resources(), aod, true,
+                    NativeOwnedMaterialRecipe.Mode.NONE, null, glass(1f)).apply(true, target);
+            assertFalse(target.containerBlur);
+            assertEquals(aod ? "notification_media_fullaod_item_bg" : "notification_media_item_bg", target.background);
+            assertEquals(0, target.materialType);
+            assertEquals(0, target.palette.length);
+            assertNull(target.glass);
+        }
+    }
+
     @Test public void coldAodWithoutBlurStillHasTheNativeFullAodBackground() {
         Target target = new Target();
         NativeOwnedMaterialRecipe.current(new Resources(), true, true, null, null).apply(false, target);
         assertEquals("notification_media_fullaod_item_bg", target.background);
         assertEquals(0, target.palette.length);
         assertFalse(target.containerBlur);
+    }
+
+    @Test public void acceptedShadeBlurUsesItsOwnNativePaletteWithoutGlass() {
+        Resources resources = new Resources(); Target target = new Target();
+        NativeOwnedMaterialRecipe.current(resources, false, true,
+                NativeOwnedMaterialRecipe.Mode.SHADE_BLUR, null, null).apply(true, target);
+        assertEquals(0, target.materialType);
+        assertTrue(resources.reads.contains("media_notification_element_blend_shade_color_1"));
+        assertFalse(resources.reads.contains("media_notification_element_blend_keyguard_color_1"));
+        assertNull(target.glass);
+    }
+
+    @Test public void completeNativeAodFrameOverridesAnAcceptedFlatEndpoint() {
+        int[] palette = {0xff111111, 101, 0xff222222, 102, 0xff333333, 103};
+        for (boolean glassMode : new boolean[]{false, true}) {
+            Target target = new Target();
+            NativeOwnedMaterialRecipe recipe = NativeOwnedMaterialRecipe.current(new Resources(), true, glassMode,
+                    NativeOwnedMaterialRecipe.Mode.NONE, palette, glassMode ? glass(.4f) : null);
+            recipe.apply(true, target);
+            assertFalse(recipe.nativeFlat);
+            assertTrue(target.containerBlur);
+            assertArrayEquals(palette, target.palette);
+            assertEquals(glassMode ? 1 : 0, target.materialType);
+            if (glassMode) assertArrayEquals(glass(.4f), target.glass, 0f);
+            else assertNull(target.glass);
+        }
     }
 
     @Test public void incompleteOrNonfiniteFrameGlassFallsBackToCurrentNativeEndpoint() {

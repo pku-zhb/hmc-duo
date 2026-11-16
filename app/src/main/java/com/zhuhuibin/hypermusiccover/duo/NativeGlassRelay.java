@@ -388,6 +388,11 @@ final class NativeGlassRelay {
         return followsNow() && source != null && source.isShown() && profile != null;
     }
 
+    /** Selection evidence is independent of the optional follow preference and parameter profile. */
+    static boolean isCurrentNativePlayerSource(View source) {
+        return sourceBinding.isSource(source) && sourceStillBound(source);
+    }
+
     private static boolean relaySceneNow() {
         return Main.keyguardLocked() && Main.onKeyguardNow()
                 && !MiniPlayerScene.INSTANCE.getKeyguardGoingAway();
