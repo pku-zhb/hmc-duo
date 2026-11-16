@@ -15,6 +15,8 @@ final class NativeOwnedMaterialBridge {
     private static final WeakHashMap<View, Readiness> readiness = new WeakHashMap<>();
     private static final NativeOwnedMaterialScope<View> recipes = new NativeOwnedMaterialScope<>();
     private static int stateQueries, sceneReads, recipeEntries;
+    private static int refreshRequests, sceneEvents, readinessChecks, reapplications;
+    private static boolean scenePosted, pendingBlockedScene;
     private NativeOwnedMaterialBridge() {}
 
     static boolean register(ImageView element, View container) {
@@ -98,15 +100,52 @@ final class NativeOwnedMaterialBridge {
         if (!(owner instanceof ImageView) || !keyguard(owner)
                 || Looper.myLooper() != Looper.getMainLooper() || Boolean.TRUE.equals(reapplying.get())) return false;
         reapplying.set(true);
-        try { return MiniPlayerRuntime.reapplyOwnedNativeMaterial((ImageView) owner); }
+        try { ++reapplications; return MiniPlayerRuntime.reapplyOwnedNativeMaterial((ImageView) owner); }
         finally { reapplying.remove(); }
     }
     static void refresh() {
         if (Looper.myLooper() != Looper.getMainLooper()) { Main.main().post(NativeOwnedMaterialBridge::refresh); return; }
+        ++refreshRequests;
         for (View owner : registry.owners()) {
             if (!reapply(owner)) {
                 Readiness ready = readiness.get(owner);
                 if (ready != null) ready.applied(false);
+            }
+        }
+    }
+    /** Scene notifications only recover a newly ready pair; settings/AOD still force refresh. */
+    static void sceneChanged() {
+        boolean blocked = MiniPlayerScene.INSTANCE.getKeyguardGoingAway()
+                || MiniPlayerScene.INSTANCE.getControlCenterIsActive()
+                || MiniPlayerScene.INSTANCE.getBlocksMiniPlayer();
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            synchronized (readiness) {
+                // Preserve a blocked->ready transition even if both binder events arrive
+                // before the UI thread consumes this coalesced current-scene request.
+                pendingBlockedScene |= blocked;
+                if (scenePosted) return;
+                scenePosted = true;
+            }
+            Main.main().post(() -> {
+                boolean invalidated;
+                synchronized (readiness) {
+                    scenePosted = false;
+                    invalidated = pendingBlockedScene;
+                    pendingBlockedScene = false;
+                }
+                sceneChangedOnMain(invalidated);
+            });
+            return;
+        }
+        sceneChangedOnMain(blocked);
+    }
+    private static void sceneChangedOnMain(boolean invalidated) {
+        ++sceneEvents;
+        for (View owner : registry.owners()) {
+            Readiness ready = readiness.get(owner);
+            if (ready != null) {
+                if (invalidated) ready.gate.applied(false);
+                ready.changed();
             }
         }
     }
@@ -129,7 +168,9 @@ final class NativeOwnedMaterialBridge {
             gate.applied(ready);
             ImageView owner = element.get();
             if (ready || owner == null || !owner.isAttachedToWindow() || !Main.keyguardLocked()
-                    || MiniPlayerScene.INSTANCE.getKeyguardGoingAway()) { unwatch(); return; }
+                    || MiniPlayerScene.INSTANCE.getKeyguardGoingAway()
+                    || MiniPlayerScene.INSTANCE.getControlCenterIsActive()
+                    || MiniPlayerScene.INSTANCE.getBlocksMiniPlayer()) { unwatch(); return; }
             // Global layout is also the native visibility-change event. The clock host can
             // be a sibling of the element, so an element-only visibility callback is insufficient.
             ViewTreeObserver observer = owner.getViewTreeObserver();
@@ -138,6 +179,7 @@ final class NativeOwnedMaterialBridge {
             }
         }
         private void changed() {
+            ++readinessChecks;
             ImageView owner = element.get();
             boolean ready = owner != null && valid(owner) && keyguard(owner);
             if (gate.update(ready) && !reapply(owner)) ready = false;
@@ -173,6 +215,8 @@ final class NativeOwnedMaterialBridge {
         }
         return "groups=" + groups + " roles=" + (groups * 2) + " claimed=" + claimed
                 + " recipeEntries=" + recipeEntries + " stateQueries=" + stateQueries + " sceneReads=" + sceneReads
+                + " refreshRequests=" + refreshRequests + " sceneEvents=" + sceneEvents
+                + " readinessChecks=" + readinessChecks + " reapplications=" + reapplications
                 + " owners=[" + entries + (groups > 12 ? ";..." : "") + "]";
     }
 }

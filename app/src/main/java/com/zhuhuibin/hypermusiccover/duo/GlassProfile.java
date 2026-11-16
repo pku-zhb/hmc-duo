@@ -14,8 +14,9 @@ final class GlassProfile {
         return new GlassProfile(values, nightMode, awake);
     }
     float[] forScene(int nightMode, boolean awake) {
-        return this.nightMode == nightMode && this.awake == awake ? values.clone() : null;
+        return matchesScene(nightMode, awake) ? values.clone() : null;
     }
+    boolean matchesScene(int nightMode, boolean awake) { return this.nightMode == nightMode && this.awake == awake; }
     boolean same(GlassProfile other) {
         return other != null && nightMode == other.nightMode && awake == other.awake
                 && java.util.Arrays.equals(values, other.values);
@@ -60,10 +61,20 @@ final class GlassProfile {
         boolean forScene(int nightMode, boolean awake) { return this.nightMode == nightMode && this.awake == awake; }
         int[] colors() { return colors.clone(); }
         int[] modes() { return modes.clone(); }
+        boolean hasPalette() { return colors.length > 0; }
+        boolean sameRadius(Background other) {
+            return other != null && radius == other.radius && nightMode == other.nightMode && awake == other.awake;
+        }
+        boolean sameScale(Background other) {
+            return other != null && Float.compare(scale, other.scale) == 0
+                    && nightMode == other.nightMode && awake == other.awake;
+        }
+        boolean samePalette(Background other) {
+            return other != null && nightMode == other.nightMode && awake == other.awake
+                    && java.util.Arrays.equals(colors, other.colors) && java.util.Arrays.equals(modes, other.modes);
+        }
         boolean same(Background other) {
-            return other != null && radius == other.radius && Float.compare(scale, other.scale) == 0 &&
-                    nightMode == other.nightMode && awake == other.awake &&
-                    java.util.Arrays.equals(colors, other.colors) && java.util.Arrays.equals(modes, other.modes);
+            return sameRadius(other) && sameScale(other) && samePalette(other);
         }
     }
 }

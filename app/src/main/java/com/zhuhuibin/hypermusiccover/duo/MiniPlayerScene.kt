@@ -91,6 +91,7 @@ internal object MiniPlayerScene {
     private fun setEditorActive(active: Boolean) {
         if (editorActive == active) return
         editorActive = active
+        NativeOwnedMaterialBridge.sceneChanged()
         StatusBarArtwork.refresh()
         MiniPlayerRuntime.refresh()
     }
@@ -98,6 +99,7 @@ internal object MiniPlayerScene {
     private fun setControlCenterActive(active: Boolean) {
         if (controlCenterActive == active) return
         controlCenterActive = active
+        NativeOwnedMaterialBridge.sceneChanged()
         StatusBarArtwork.refresh()
         MiniPlayerRuntime.refresh()
     }
