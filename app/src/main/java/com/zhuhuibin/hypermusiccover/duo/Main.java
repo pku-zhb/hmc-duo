@@ -11456,7 +11456,7 @@ public class Main extends XposedModule {
     /** The native keyguard-state callback has returned; do not reuse a pre-event lock answer. */
     static void nativeOwnedMaterialSceneChanged() {
         forgetSysReads();
-        NativeOwnedMaterialBridge.refresh();
+        NativeOwnedMaterialBridge.sceneChanged();
     }
 
     private static boolean readKeyguardLocked() {

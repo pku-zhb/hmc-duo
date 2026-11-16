@@ -22,4 +22,22 @@ public class NativeOwnedMaterialReadyTest {
         gate.applied(false); // Failed reapply does not consume readiness.
         assertTrue(gate.update(true));
     }
+    @Test public void unchangedSceneNotificationsNeverReapplyAndUnblockingIsNotDropped() {
+        NativeOwnedMaterialReady gate = new NativeOwnedMaterialReady();
+        gate.applied(true);
+        for (int i = 0; i < 1000; ++i) assertFalse(gate.update(true));
+        assertFalse(gate.update(false)); // Explicit control-center/editor blocking event.
+        for (int i = 0; i < 1000; ++i) assertFalse(gate.update(false));
+        assertTrue(gate.update(true)); // Explicit collapsed/closed event, with no layout required.
+        assertFalse(gate.update(true)); // Duplicate native keyguard notification.
+        gate.applied(false); // A forced settings refresh failed: recovery must remain possible.
+        assertTrue(gate.update(true));
+    }
+    @Test public void coalescedBlockThenReadyStillRequiresOneCurrentRecipe() {
+        NativeOwnedMaterialReady gate = new NativeOwnedMaterialReady();
+        gate.applied(true);
+        gate.applied(false); // Preserve a queued blocked event even if it has already closed.
+        assertTrue(gate.update(true));
+        assertFalse(gate.update(true));
+    }
 }
