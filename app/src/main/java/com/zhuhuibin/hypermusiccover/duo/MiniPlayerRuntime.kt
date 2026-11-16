@@ -387,6 +387,7 @@ object MiniPlayerRuntime {
 
     /** The card's material as it was last dressed: its background, then every call in order. */
     @Volatile private var cardRecipe: List<Recorded>? = null
+    private val ownedMaterialSelection = NativeOwnedMaterialSelection<View, View>()
     private var recording: ArrayList<Recorded>? = null
     private var recordTarget: View? = null
     private var recordDepth = 0
@@ -422,6 +423,10 @@ object MiniPlayerRuntime {
                 Xp.hookAll(cls, "apply") { chain ->
                     val target = chain.args.firstOrNull() as? View
                     val candidateBg = target?.let { holderMediaBg(it) ?: Main.miniPlayerMediaBg(it) }
+                    // The same native node may be redressed outside keyguard. Retire its
+                    // prior selection before any outer attempt, including a failed/unbound one.
+                    if (effectDepth == 0 && candidateBg != null && candidateBg === ownedMaterialSelection.source())
+                        ownedMaterialSelection.clear()
                     // A fold can bind a new native holder before Main's cached card changes.
                     // The relay validates its native lineage and current window itself.
                     val mine = effectDepth == 0 && target != null &&
@@ -473,6 +478,9 @@ object MiniPlayerRuntime {
                         // The native choice must stay current even when Lite's final values
                         // normalize two different native inputs to the same follow profile.
                         cardRecipe = recorded
+                        ownedMaterialSelection.accepted(cls.simpleName, bg, Main.sContainer?.rootView,
+                            Main.screenGeometry().revision, android.content.res.Configuration(target!!.resources.configuration),
+                            target.resources.assets, ownedNativeAodRecipe())
                         if (signature != materialSignature) {
                             materialSignature = signature
                             if (cardEffect != cls.simpleName) Xp.log("MCMini: card material -> ${cls.simpleName}")
@@ -2276,13 +2284,12 @@ object MiniPlayerRuntime {
         return checkNotNull(ownedAodContext)
     }
 
-    private fun currentOwnedGlassMode(): Boolean? = runCatching {
-        val controller = aodController?.get() ?: return null
-        val lazy = Xp.getObjectField(controller, "mNotificationMaterialStateInteractor") ?: return null
-        val interactor = Xp.callMethod(lazy, "get") ?: return null
-        val type = Xp.getObjectField(interactor, "materialType") as? Enum<*> ?: return null
-        when (type.name) { "GLASS" -> true; "BLUR", "NORMAL" -> false; else -> null }
-    }.getOrNull()
+    private fun currentOwnedMaterialMode(context: Context): NativeOwnedMaterialRecipe.Mode? {
+        val source = ownedMaterialSelection.source()
+        return ownedMaterialSelection.current(source, Main.sContainer?.rootView,
+            Main.screenGeometry().revision, context.resources.configuration, context.resources.assets,
+            ownedNativeAodRecipe(), Main.miniPlayerMediaCardPresent() && NativeGlassRelay.isCurrentNativePlayerSource(source))
+    }
 
     /** Reconstruct both native layers without a media effect, player, or provider baseline. */
     private fun freshOwnedRecipe(view: ImageView, container: View, classLoader: ClassLoader) {
@@ -2297,13 +2304,13 @@ object MiniPlayerRuntime {
         val paletteValues = NativeOwnedMaterialAccess.values(paletteContext)
         // Only a current native callback can override the AOD frame's mode. The controller's
         // cached mIsGlassMode starts false and is unrelated to awake GlassOnKeyguard eligibility.
-        val nativeGlassMode = currentOwnedGlassMode()
-        val glassMode = frame?.getOrNull(12) as? Boolean ?: nativeGlassMode ?: true
+        val nativeMode = currentOwnedMaterialMode(ctx)
+        val glassMode = frame?.getOrNull(12) as? Boolean ?: (nativeMode == null || nativeMode == NativeOwnedMaterialRecipe.Mode.GLASS)
         val recipe = NativeOwnedMaterialRecipe.current(object : NativeOwnedMaterialRecipe.Resources {
             override fun color(name: String): Int = paletteContext.getColor(paletteValues.id(paletteResources, "color", name))
             override fun integer(name: String): Int = res.getInteger(values.id(res, "integer", name))
             override fun parameters(name: String): FloatArray = values.parameters(res, name)
-        }, aod, glassMode, nativeGlassMode, frame?.let { IntArray(6) { j -> it[4 + j] as Int } }, frame?.getOrNull(10) as? FloatArray)
+        }, aod, glassMode, nativeMode, frame?.let { IntArray(6) { j -> it[4 + j] as Int } }, frame?.getOrNull(10) as? FloatArray)
         val blurOpened = blurOpenedMethod?.let { runCatching { it.invoke(null, ctx) as Boolean }.getOrNull() } ?: true
         NativeGlassRelay.beginOwnedPaletteUpdate(view)
         try {
@@ -2325,14 +2332,14 @@ object MiniPlayerRuntime {
                 override fun background(drawable: String) {
                     view.setImageDrawable(null)
                     view.background = paletteContext.getDrawable(paletteValues.id(paletteResources, "drawable", drawable))?.mutate()?.also {
-                        if (aod && !blurOpened && it is GradientDrawable) it.setColor(
+                        if (aod && (!blurOpened || recipe.nativeFlat) && it is GradientDrawable) it.setColor(
                             paletteContext.getColor(paletteValues.id(paletteResources, "color", "notification_focus_bg_color")))
                     }
                 }
                 override fun materialType(type: Int) { access.materialType.invoke(null, type, view) }
                 override fun palette(blend: IntArray) {
-                    if (blurOpened) access.roundRect.invoke(null, view, false, false)
-                    access.viewBlurMode.invoke(view, if (blurOpened) 1 else 0)
+                    if (blend.isNotEmpty()) access.roundRect.invoke(null, view, false, false)
+                    access.viewBlurMode.invoke(view, if (blend.isNotEmpty()) 1 else 0)
                     access.palette(view, blend)
                 }
                 override fun glass(parameters: FloatArray) { access.glassParameters.invoke(null, view, parameters) }
