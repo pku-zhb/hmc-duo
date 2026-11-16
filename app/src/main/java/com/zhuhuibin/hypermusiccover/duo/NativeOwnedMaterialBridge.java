@@ -13,6 +13,8 @@ final class NativeOwnedMaterialBridge {
     private static final ThreadLocal<Boolean> reapplying = new ThreadLocal<>();
     private static final ThreadLocal<Boolean> nativeAod = new ThreadLocal<>();
     private static final WeakHashMap<View, Readiness> readiness = new WeakHashMap<>();
+    private static final NativeOwnedMaterialScope<View> recipes = new NativeOwnedMaterialScope<>();
+    private static int stateQueries, sceneReads, recipeEntries;
     private NativeOwnedMaterialBridge() {}
 
     static boolean register(ImageView element, View container) {
@@ -34,11 +36,14 @@ final class NativeOwnedMaterialBridge {
     }
     private static View view(Object target) { return target instanceof View ? (View) target : null; }
     private static boolean valid(View target) {
+        if (recipes.snapshot(target) != null) return true;
         View owner = registry.owner(target), container = registry.container(target);
         return owner != null && container != null && owner.getParent() == container;
     }
     static View owner(Object target) {
         View view = view(target);
+        NativeOwnedMaterialScope.Snapshot<View> recipe = recipes.snapshot(view);
+        if (recipe != null) return recipe.owner;
         return valid(view) ? registry.owner(view) : null;
     }
     static boolean claimed(View target) { return valid(target) && registry.claimed(target); }
@@ -47,16 +52,35 @@ final class NativeOwnedMaterialBridge {
         return valid(view) && registry.claim(view, version);
     }
     static int state(Object target) {
+        ++stateQueries;
         View view = view(target);
         if (!valid(view)) return 0;
-        int state = registry.role(view);
+        NativeOwnedMaterialScope.Snapshot<View> recipe = recipes.snapshot(view);
+        int state = recipe == null ? sceneState(view) : recipe.state;
+        state |= registry.role(view);
+        // Claiming can happen inside any setter of this recipe. Never cache that verdict.
+        if (registry.claimed(view)) state |= NativeMaterialTarget.MATERIAL_CLAIMED;
+        return state;
+    }
+    private static int sceneState(View view) {
+        ++sceneReads;
+        int state = 0;
         if (Main.sFollowNativeMaterial) state |= NativeMaterialTarget.MATERIAL_FOLLOW;
         if (keyguard(view)) state |= NativeMaterialTarget.MATERIAL_KEYGUARD;
         if (Boolean.TRUE.equals(nativeAod.get()) || MiniPlayerRuntime.ownedNativeAodRecipe())
             state |= NativeMaterialTarget.MATERIAL_NATIVE_AOD;
-        if (registry.claimed(view)) state |= NativeMaterialTarget.MATERIAL_CLAIMED;
         return state;
     }
+    /** Register first; provider callbacks reuse this exact pair only until its recipe returns. */
+    static void beginRecipe(View target) {
+        ++recipeEntries;
+        recipes.begin(target, () -> {
+            View owner = registry.owner(target), container = registry.container(target);
+            return owner != null && container != null && owner.getParent() == container
+                    ? new NativeOwnedMaterialScope.Snapshot<>(owner, container, sceneState(owner)) : null;
+        });
+    }
+    static void endRecipe(View target) { recipes.end(target); }
     private static boolean keyguard(View target) {
         View owner = registry.owner(target), container = registry.container(target), host = Main.sContainer;
         return host != null && owner != null && container != null
@@ -148,6 +172,7 @@ final class NativeOwnedMaterialBridge {
                     .append(" aod=").append((elementState & NativeMaterialTarget.MATERIAL_NATIVE_AOD) != 0);
         }
         return "groups=" + groups + " roles=" + (groups * 2) + " claimed=" + claimed
+                + " recipeEntries=" + recipeEntries + " stateQueries=" + stateQueries + " sceneReads=" + sceneReads
                 + " owners=[" + entries + (groups > 12 ? ";..." : "") + "]";
     }
 }
