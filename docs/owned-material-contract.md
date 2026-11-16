@@ -8,7 +8,7 @@ Duo explicitly registers that exact glass element and its exact blur container.
 Methods:
 
 - `int hmcMaterialContractVersion()`: supported protocol version, currently 1.
-- `int hmcMaterialState()`: instantaneous bitmask: glass 1, blur 2, follow 4,
+- `int hmcMaterialState()`: current recipe bitmask: glass 1, blur 2, follow 4,
   current attached keyguard scope 8, native AOD recipe/frame 16, provider claim 32.
 - `View hmcMaterialOwner()`: registered glass element for either member; null for
   an invalid or unregistered pair.
@@ -51,3 +51,30 @@ value shortcut. Owner attach/layout callbacks finish the first measured recipe;
 an unready locked owner temporarily observes native global-layout visibility
 events (the clock host can be a sibling), then removes that observer on success
 or detach. No timer or per-frame readiness polling is used.
+
+## Synchronous recipe and scene boundaries
+
+The complete owned recipe opens `NativeOwnedMaterialBridge.beginRecipe()` only
+after registration and closes it in `finally`. All provider queries during its
+nested setters share one pair/scene snapshot. The provider-claimed bit remains
+live, so the first setter's claim is visible to every later setter. Nothing is
+retained between recipes: the next AOD frame rechecks its current scene, pair and
+native-AOD state. This bounds repeated provider inspection without a timed cache.
+
+Keyguard, control-center and editor events update readiness. Repeated unchanged
+notifications do not replay the full recipe. Blocking by the control center or
+editor removes the global-layout listener; the explicit closing event rechecks
+readiness and applies once before returning. Settings/provider requests and AOD
+completion retain forced-refresh semantics.
+
+The native source still publishes complete accepted frames synchronously. The
+relay compares glass, blur radii, palette, background radius and background scale
+independently. A palette-only frame does not replay unchanged container channels.
+Completing an owned palette restores container radius/scale only after the raw
+recipe actually wrote those channels. Empty source palettes or absent current
+glass evidence cannot erase a complete raw owned palette.
+
+`glassRelay` diagnostics include owned-provider recipe-entry, state-query,
+scene-read, refresh, readiness-check and reapplication counters. Compare deltas
+over separately timestamped transitions; host tests do not establish device
+latency or visual acceptance.
