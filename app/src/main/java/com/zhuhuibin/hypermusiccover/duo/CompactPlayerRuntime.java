@@ -133,7 +133,7 @@ final class CompactPlayerRuntime {
     }
 
     private static View named(View parent, String name) {
-        int id = parent.getResources().getIdentifier(name, "id", "com.android.systemui");
+        int id = LayoutResourceIds.get(parent.getResources(), "id", name);
         return id == 0 ? null : parent.findViewById(id);
     }
 
@@ -144,6 +144,12 @@ final class CompactPlayerRuntime {
     static void update(View root) { update(root, null); }
 
     private static void update(View root, View preferred) {
+        try (LayoutResourceIds.Scope ignored = LayoutResourceIds.scope()) {
+            updateInResourceScope(root, preferred);
+        }
+    }
+
+    private static void updateInResourceScope(View root, View preferred) {
         if (!installed || !Main.keyguardLocked() || Main.bouncerShown()) {
             if (!Main.keyguardLocked()) fullAod = false;
             restore(); return;
@@ -250,7 +256,7 @@ final class CompactPlayerRuntime {
     }
 
     private static int dimension(View view, String name) {
-        int id = view.getResources().getIdentifier(name, "dimen", "com.android.systemui");
+        int id = LayoutResourceIds.get(view.getResources(), "dimen", name);
         return id == 0 ? 0 : view.getResources().getDimensionPixelSize(id);
     }
 
@@ -338,6 +344,12 @@ final class CompactPlayerRuntime {
     }
 
     private static void applySeekAlpha(float factor) {
+        try (LayoutResourceIds.Scope ignored = LayoutResourceIds.scope()) {
+            applySeekAlphaInResourceScope(factor);
+        }
+    }
+
+    private static void applySeekAlphaInResourceScope(float factor) {
         if (card == null) return;
         for (String name : new String[]{"media_progress_bar", "media_elapsed_time", "media_total_time"}) {
             View row = named(card, name);
