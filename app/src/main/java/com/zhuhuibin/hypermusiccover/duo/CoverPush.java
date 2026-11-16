@@ -1249,8 +1249,7 @@ final class CoverPush {
     static ViewGroup coverLayer() {
         View v = Main.sContainer;
         if (v == null) return null;
-        int id = v.getResources().getIdentifier(
-                "keyguard_background_layer", "id", "com.android.systemui");
+        int id = LayoutResourceIds.get(v.getResources(), "id", "keyguard_background_layer");
         View layer = id == 0 ? null : v.getRootView().findViewById(id);
         return layer instanceof ViewGroup ? (ViewGroup) layer : null;
     }
