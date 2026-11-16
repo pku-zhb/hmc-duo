@@ -754,6 +754,7 @@ object MiniPlayerRuntime {
         val ctx = view.context
         val blurOpened = blurOpenedMethod?.let { runCatching { it.invoke(null, ctx) as Boolean }.getOrNull() } ?: true
         NativeOwnedMaterialBridge.beginNativeAod()
+        NativeOwnedMaterialBridge.beginRecipe(view)
         try { runCatching {
             if (blurOpened) {
                 val look = if (NativeOwnedMaterialRecipe.projectPlayer(
@@ -774,7 +775,10 @@ object MiniPlayerRuntime {
                 view.background = bg
                 aodDimFlat = true
             }
-        } } finally { NativeOwnedMaterialBridge.endNativeAod() }
+        } } finally {
+            NativeOwnedMaterialBridge.endRecipe(view)
+            NativeOwnedMaterialBridge.endNativeAod()
+        }
     }
 
     /**
@@ -2239,62 +2243,100 @@ object MiniPlayerRuntime {
         loader?.let { material(view, it) } ?: false
 
     private var ownedDefaultBlurScale: Float? = null
+    private var ownedAodContext: Context? = null
+    private var ownedAodBaseResources = WeakReference<android.content.res.Resources>(null)
+    private var ownedAodBaseAssets: android.content.res.AssetManager? = null
+    private var ownedAodConfiguration: android.content.res.Configuration? = null
 
-    private fun nativeDefaultBlurScale(context: Context): Float = ownedDefaultBlurScale ?: run {
-        // This unregistered owned type has no protocol role and is excluded by providers.
-        // Read only its fresh renderer default; no MediaEffect or native setters run on it.
-        val probe = MaterialElement(context)
-        check(NativeOwnedMaterialBridge.state(probe) == 0)
-        (View::class.java.getMethod("getMiBackgroundBlurScaleRatio").invoke(probe) as Float)
-            .also { require(it.isFinite()); ownedDefaultBlurScale = it }
+    private fun nativeDefaultBlurScale(context: Context, access: NativeOwnedMaterialAccess): Float =
+        ownedDefaultBlurScale ?: run {
+            // A fresh unregistered renderer supplies the OEM default, including its valid 0 sentinel.
+            val probe = MaterialElement(context)
+            check(NativeOwnedMaterialBridge.state(probe) == 0)
+            (access.defaultBlurScale.invoke(probe) as Float)
+                .also { require(it.isFinite()); ownedDefaultBlurScale = it }
+        }
+
+    private fun ownedPaletteContext(context: Context, aod: Boolean): Context {
+        if (!aod) return context
+        runCatching { aodController?.get()?.let { Xp.getObjectField(it, "mFullAodContext") as? Context } }
+            .getOrNull()?.let { return it }
+        // The OEM factory creates this same night context. Cold AOD must not depend on
+        // a player having instantiated its full-AOD callback/controller first.
+        val res = context.resources
+        if (ownedAodBaseResources.get() !== res || ownedAodConfiguration != res.configuration || ownedAodBaseAssets !== res.assets) {
+            ownedAodConfiguration = android.content.res.Configuration(res.configuration)
+            ownedAodBaseResources = WeakReference(res)
+            ownedAodBaseAssets = res.assets
+            ownedAodContext = context.createConfigurationContext(android.content.res.Configuration(res.configuration).apply {
+                uiMode = (uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK.inv()) or
+                    android.content.res.Configuration.UI_MODE_NIGHT_YES
+            })
+        }
+        return checkNotNull(ownedAodContext)
     }
 
-    /** No media effect or temporary media View is used while constructing raw inputs. */
-    private fun freshOwnedRecipe(view: ImageView, classLoader: ClassLoader) {
+    private fun currentOwnedGlassMode(): Boolean? = runCatching {
+        val controller = aodController?.get() ?: return null
+        val lazy = Xp.getObjectField(controller, "mNotificationMaterialStateInteractor") ?: return null
+        val interactor = Xp.callMethod(lazy, "get") ?: return null
+        val type = Xp.getObjectField(interactor, "materialType") as? Enum<*> ?: return null
+        when (type.name) { "GLASS" -> true; "BLUR", "NORMAL" -> false; else -> null }
+    }.getOrNull()
+
+    /** Reconstruct both native layers without a media effect, player, or provider baseline. */
+    private fun freshOwnedRecipe(view: ImageView, container: View, classLoader: ClassLoader) {
         val ctx = view.context
         val res = ctx.resources
-        fun id(type: String, name: String): Int = res.getIdentifier(name, type, "com.android.systemui")
-            .also { require(it != 0) { "no $type/$name" } }
+        val values = NativeOwnedMaterialAccess.values(ctx)
+        val access = NativeOwnedMaterialAccess.get(classLoader)
         val aod = ownedNativeAodRecipe()
         val frame = currentOwnedAodArgs()
-        val controller = aodController?.get()
-        val paletteContext = if (aod) runCatching {
-            controller?.let { Xp.getObjectField(it, "mFullAodContext") as? Context }
-        }.getOrNull() ?: ctx else ctx
-        val glassMode = frame?.getOrNull(12) as? Boolean ?: runCatching {
-            controller?.let { Xp.getObjectField(it, "mIsGlassMode") as? Boolean }
-        }.getOrNull() ?: true
+        val paletteContext = ownedPaletteContext(ctx, aod)
+        val paletteResources = paletteContext.resources
+        val paletteValues = NativeOwnedMaterialAccess.values(paletteContext)
+        // Only a current native callback can override the AOD frame's mode. The controller's
+        // cached mIsGlassMode starts false and is unrelated to awake GlassOnKeyguard eligibility.
+        val nativeGlassMode = currentOwnedGlassMode()
+        val glassMode = frame?.getOrNull(12) as? Boolean ?: nativeGlassMode ?: true
         val recipe = NativeOwnedMaterialRecipe.current(object : NativeOwnedMaterialRecipe.Resources {
-            override fun color(name: String): Int = paletteContext.getColor(id("color", name))
-            override fun integer(name: String): Int = res.getInteger(id("integer", name))
-            override fun parameters(name: String): FloatArray = res.getStringArray(id("array", name))
-                .map(String::toFloat).toFloatArray()
-        }, aod, glassMode, frame?.let { IntArray(6) { j -> it[4 + j] as Int } }, frame?.getOrNull(10) as? FloatArray)
-        val glass = Class.forName("com.miui.systemui.util.MiGlassCompat", false, classLoader)
-        val type = glass.getMethod("setMiViewMaterialTypeCompat", Int::class.javaPrimitiveType, View::class.java)
-        view.setImageDrawable(null)
-        view.background = ctx.getDrawable(id("drawable", "notification_heads_up_transparent_bg"))?.mutate()
-        type.invoke(null, 0, view)
-        val util = Class.forName("com.android.systemui.statusbar.notification.utils.NotificationUtil", false, classLoader)
+            override fun color(name: String): Int = paletteContext.getColor(paletteValues.id(paletteResources, "color", name))
+            override fun integer(name: String): Int = res.getInteger(values.id(res, "integer", name))
+            override fun parameters(name: String): FloatArray = values.parameters(res, name)
+        }, aod, glassMode, nativeGlassMode, frame?.let { IntArray(6) { j -> it[4 + j] as Int } }, frame?.getOrNull(10) as? FloatArray)
+        val blurOpened = blurOpenedMethod?.let { runCatching { it.invoke(null, ctx) as Boolean }.getOrNull() } ?: true
         NativeGlassRelay.beginOwnedPaletteUpdate(view)
         try {
-            val blurOpened = blurOpenedMethod?.let { runCatching { it.invoke(null, ctx) as Boolean }.getOrNull() } ?: true
-            if (blurOpened) {
-                // Preserve the native element setup, then commit one complete raw palette.
-                // The OEM convenience helper uses legacy clear/add calls, which cannot
-                // express an atomic provider substitution of the whole unified palette.
-                util.getMethod("setRoundRect", View::class.java, Boolean::class.javaPrimitiveType,
-                    Boolean::class.javaPrimitiveType).invoke(null, view, false, false)
-                View::class.java.getMethod("setMiViewBlurMode", Int::class.javaPrimitiveType).invoke(view, 1)
-                val points = ArrayList<android.graphics.Point>(recipe.blend.size / 2)
-                for (i in recipe.blend.indices step 2) points.add(android.graphics.Point(recipe.blend[i], recipe.blend[i + 1]))
-                View::class.java.getMethod("setMiBackgroundBlendColors", ArrayList::class.java).invoke(view, points)
-            }
-            if (recipe.glassMode) {
-                type.invoke(null, 1, view)
-                glass.getMethod("setMiGlassCompat", View::class.java, FloatArray::class.java)
-                    .invoke(null, view, recipe.glass)
-            }
+            recipe.apply(blurOpened, object : NativeOwnedMaterialRecipe.Target {
+                override fun container(blurOpened: Boolean) {
+                    NativeGlassRelay.registerBlurContainer(container)
+                    // Set the complete container channels, even if OEM applyContainerViewBlur
+                    // would return early because its radius or blur mode was unchanged.
+                    access.containerBlurMode.invoke(container, if (blurOpened) 1 else 0)
+                    access.passWindow.invoke(container, blurOpened)
+                    access.blurRadius.invoke(container, if (blurOpened)
+                        res.getDimensionPixelSize(values.id(res, "dimen", "notification_container_blur_radius")) else 0)
+                    access.blurScale.invoke(container, nativeDefaultBlurScale(ctx, access))
+                    access.glassBlurRadius.invoke(container,
+                        if (blurOpened) res.getDimensionPixelSize(values.id(res, "dimen", "notification_glass_small_blur_max_radius")) else 0,
+                        if (blurOpened) res.getDimensionPixelSize(values.id(res, "dimen", "notification_glass_big_blur_max_radius")) else 0)
+                    access.blurWindow?.let { runCatching { it.invoke(null, container) } }
+                }
+                override fun background(drawable: String) {
+                    view.setImageDrawable(null)
+                    view.background = paletteContext.getDrawable(paletteValues.id(paletteResources, "drawable", drawable))?.mutate()?.also {
+                        if (aod && !blurOpened && it is GradientDrawable) it.setColor(
+                            paletteContext.getColor(paletteValues.id(paletteResources, "color", "notification_focus_bg_color")))
+                    }
+                }
+                override fun materialType(type: Int) { access.materialType.invoke(null, type, view) }
+                override fun palette(blend: IntArray) {
+                    if (blurOpened) access.roundRect.invoke(null, view, false, false)
+                    access.viewBlurMode.invoke(view, if (blurOpened) 1 else 0)
+                    access.palette(view, blend)
+                }
+                override fun glass(parameters: FloatArray) { access.glassParameters.invoke(null, view, parameters) }
+            })
         } finally { NativeGlassRelay.endOwnedPaletteUpdate(view) }
     }
 
@@ -2303,42 +2345,17 @@ object MiniPlayerRuntime {
         return runCatching {
             val container = view.parent as? View ?: error("no owned material container")
             check(NativeOwnedMaterialBridge.register(view, container)) { "unsupported owned material pair" }
-            NativeGlassRelay.register(view)
-            val res = ctx.resources
-            fun id(type: String, name: String): Int =
-                res.getIdentifier(name, type, "com.android.systemui").also {
-                    require(it != 0) { "no $type/$name" }
-                }
-            val util = Class.forName("com.android.systemui.statusbar.notification.utils.NotificationUtil",
-                false, classLoader)
-            (view.parent as? View)?.let { container -> run {
-                NativeGlassRelay.registerBlurContainer(container)
-                // Blur mode 1, the notification container radius, and through the window.
-                util.getMethod("applyContainerViewBlur", Context::class.java, View::class.java,
-                    Int::class.javaPrimitiveType, Int::class.javaPrimitiveType,
-                    Boolean::class.javaPrimitiveType).invoke(null, ctx, container, 0, 0, false)
-                // The native util skips unchanged radius and leaves scale at the renderer's
-                // default. Refresh every tunable raw channel, including when disabling.
-                View::class.java.getMethod("setMiBackgroundBlurRadius", Int::class.javaPrimitiveType)
-                    .invoke(container, res.getDimensionPixelSize(id("dimen", "notification_container_blur_radius")))
-                View::class.java.getMethod("setMiBackgroundBlurScaleRatio", Float::class.javaPrimitiveType)
-                    .invoke(container, nativeDefaultBlurScale(ctx))
-                View::class.java.getMethod("setMiGlassBlurRadius", Int::class.javaPrimitiveType,
-                    Int::class.javaPrimitiveType).invoke(container,
-                    res.getDimensionPixelSize(id("dimen", "notification_glass_small_blur_max_radius")),
-                    res.getDimensionPixelSize(id("dimen", "notification_glass_big_blur_max_radius")))
-                runCatching {
-                    Class.forName("miuix.core.util.MiuiBlurUtils", false, classLoader)
-                        .getMethod("setMiBlurWinType", View::class.java).invoke(null, container)
-                }
-            } }
-            freshOwnedRecipe(view, classLoader)
-            NativeOwnedMaterialBridge.applied(view)
-            dressedViews.add(view)
-            // A current raw frame also supplies the native non-blur AOD background.
-            if (blurOpenedMethod?.let { runCatching { it.invoke(null, ctx) as Boolean }.getOrNull() } == false)
-                currentOwnedAodArgs()?.let { dimView(view, it) }
-            true
+            NativeOwnedMaterialBridge.beginRecipe(view)
+            try {
+                NativeGlassRelay.register(view)
+                freshOwnedRecipe(view, container, classLoader)
+                NativeOwnedMaterialBridge.applied(view)
+                dressedViews.add(view)
+                // A current raw frame also supplies the native non-blur AOD background.
+                if (blurOpenedMethod?.let { runCatching { it.invoke(null, ctx) as Boolean }.getOrNull() } == false)
+                    currentOwnedAodArgs()?.let { dimView(view, it) }
+                true
+            } finally { NativeOwnedMaterialBridge.endRecipe(view) }
         }.getOrElse { error ->
             val cause = (error as? java.lang.reflect.InvocationTargetException)?.targetException ?: error
             if (!materialFailed) {
