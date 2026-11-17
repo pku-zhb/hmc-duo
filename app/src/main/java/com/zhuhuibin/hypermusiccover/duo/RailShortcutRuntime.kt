@@ -5,6 +5,7 @@ import android.os.Bundle
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.view.ViewParent
 import android.view.ViewTreeObserver
 import android.widget.FrameLayout
 import android.widget.ImageView
@@ -31,6 +32,65 @@ internal object RailShortcutRuntime {
     private var error = "none"
     private var originUpdates = 0L
     private var active = false
+    private var containerPlacement: Placement? = null
+    private var layoutRequests = 0L
+    private var metadataCorrections = 0L
+    private var layoutRequestReasons = 0
+    private var metadataCorrectionReasons = 0
+
+    // Target bits 1/2/4; parameter bits 8..128; native fallback bits 256/512.
+    private const val CONTAINER = 1
+    private const val WRAPPER = 2
+    private const val ICON = 4
+    private const val WIDTH = 8
+    private const val HEIGHT = 16
+    private const val LEFT = 32
+    private const val TOP = 64
+    private const val GRAVITY = 128
+    private const val NATIVE_CALLBACK = 256
+    private const val DIRECTION = 512
+
+    private class Placement(private val view: View) {
+        private var parent: ViewParent? = null
+        private var defaultCallback = false
+        private val defaultViewMethods = RailShortcutPlacement.inheritsDefaultMethod(
+            view.javaClass, View::class.java, "setLayoutParams", ViewGroup.LayoutParams::class.java) &&
+            RailShortcutPlacement.inheritsDefaultMethod(view.javaClass, View::class.java, "resolveLayoutParams") &&
+            RailShortcutPlacement.inheritsDefaultMethod(view.javaClass, View::class.java, "requestLayout")
+
+        private fun defaultParent(): Boolean {
+            val next = view.parent
+            if (parent !== next) {
+                parent = next
+                defaultCallback = next is FrameLayout && RailShortcutPlacement.inheritsDefaultMethod(
+                    next.javaClass, ViewGroup::class.java, "onSetLayoutParams",
+                    View::class.java, ViewGroup.LayoutParams::class.java) &&
+                    RailShortcutPlacement.inheritsDefaultMethod(next.javaClass, View::class.java, "requestLayout")
+            }
+            return defaultCallback
+        }
+
+        fun apply(params: ViewGroup.LayoutParams, target: Int, changes: Int, boxMatches: Boolean) {
+            if (changes == 0) return
+            val direction = view.layoutDirection
+            val nativeCallback = !defaultViewMethods || !defaultParent() ||
+                params.javaClass != FrameLayout.LayoutParams::class.java
+            val nativeDirection = direction != View.LAYOUT_DIRECTION_LTR
+            val action = RailShortcutPlacement.action(true, boxMatches, !nativeCallback && !nativeDirection)
+            val reasons = target or changes or (if (nativeCallback) NATIVE_CALLBACK else 0) or
+                (if (nativeDirection) DIRECTION else 0)
+            if (action == RailShortcutPlacement.Action.METADATA) {
+                // Match the setter's margin resolution without its redundant parent notification.
+                params.resolveLayoutDirection(direction)
+                metadataCorrections++
+                metadataCorrectionReasons = metadataCorrectionReasons or reasons
+            } else {
+                view.layoutParams = params
+                layoutRequests++
+                layoutRequestReasons = layoutRequestReasons or reasons
+            }
+        }
+    }
 
     private class Lease(val icon: ImageView, val wrapper: View) {
         val wrapperParams = FrameLayout.LayoutParams(wrapper.layoutParams as FrameLayout.LayoutParams)
@@ -43,24 +103,34 @@ internal object RailShortcutRuntime {
         var wrapperTop = 0
         var x = 0f
         var y = 0f
+        private val wrapperPlacement = Placement(wrapper)
+        private val iconPlacement = Placement(icon)
 
         fun place(slot: FoldMusicLayout.Box, parentX: Int, parentY: Int) {
             val nextSize = kotlin.math.round(slot.width()).toInt().coerceAtLeast(1)
             val nextLeft = kotlin.math.round(slot.left - parentX).toInt()
             val nextTop = kotlin.math.round(slot.top - parentY).toInt()
             val lp = wrapper.layoutParams as? FrameLayout.LayoutParams ?: return
-            if (lp.width != nextSize || lp.height != nextSize || lp.leftMargin != nextLeft ||
-                lp.topMargin != nextTop || lp.gravity != (Gravity.TOP or Gravity.LEFT)) {
+            val changes = (if (lp.width != nextSize) WIDTH else 0) or
+                (if (lp.height != nextSize) HEIGHT else 0) or
+                (if (lp.leftMargin != nextLeft) LEFT else 0) or
+                (if (lp.topMargin != nextTop) TOP else 0) or
+                (if (lp.gravity != (Gravity.TOP or Gravity.LEFT)) GRAVITY else 0)
+            if (changes != 0) {
                 lp.width = nextSize; lp.height = nextSize
                 lp.gravity = Gravity.TOP or Gravity.LEFT
                 lp.leftMargin = nextLeft; lp.topMargin = nextTop
                 lp.rightMargin = 0; lp.bottomMargin = 0
                 lp.marginStart = nextLeft; lp.marginEnd = 0
-                wrapper.layoutParams = lp
+                wrapperPlacement.apply(lp, WRAPPER, changes, wrapper.left == nextLeft &&
+                    wrapper.top == nextTop && wrapper.width == nextSize && wrapper.height == nextSize)
             }
             val ip = icon.layoutParams
-            if (ip.width != nextSize || ip.height != nextSize) {
-                ip.width = nextSize; ip.height = nextSize; icon.layoutParams = ip
+            val iconChanges = (if (ip.width != nextSize) WIDTH else 0) or
+                (if (ip.height != nextSize) HEIGHT else 0)
+            if (iconChanges != 0) {
+                ip.width = nextSize; ip.height = nextSize
+                iconPlacement.apply(ip, ICON, iconChanges, icon.width == nextSize && icon.height == nextSize)
             }
             // Fractional placement and the existing AOD inset are separate owners.
             val nextX = slot.left - parentX - nextLeft
@@ -111,6 +181,7 @@ internal object RailShortcutRuntime {
         if (host === container && left === torch && right === camera) return
         detach()
         host = container; root = container.rootView; left = torch; right = camera
+        containerPlacement = Placement(container)
         val draw = ViewTreeObserver.OnPreDrawListener {
             runCatching { update() }.onFailure { fail(it); restore() }
             // This observer belongs to the whole shade window. A hidden shortcut child
@@ -143,7 +214,10 @@ internal object RailShortcutRuntime {
             insets.bottom.toFloat()) ?: run { restore(); return }
         val cp = container.layoutParams ?: return
         if (containerHeight == null) containerHeight = cp.height
-        if (cp.height != window.height) { cp.height = window.height; container.layoutParams = cp }
+        if (cp.height != window.height) {
+            cp.height = window.height
+            containerPlacement?.apply(cp, CONTAINER, HEIGHT, container.height == window.height)
+        }
         writtenHeight = window.height
         for ((icon, slot) in listOf(left to geometry.torch, right to geometry.camera)) {
             icon ?: continue
@@ -194,7 +268,7 @@ internal object RailShortcutRuntime {
         observer = null; listener = null
         attachment?.let { host?.removeOnAttachStateChangeListener(it) }
         attachment = null
-        restore(); host = null; root = null; left = null; right = null
+        restore(); host = null; root = null; left = null; right = null; containerPlacement = null
     }
 
     private fun owns(icon: ImageView) = active && Main.sRightRail && Main.keyguardLocked() &&
@@ -271,5 +345,7 @@ internal object RailShortcutRuntime {
 
     @JvmStatic fun describe() = "active=$active owners=${leases.size} container=${host?.height ?: 0} " +
         "requestedHeight=${host?.layoutParams?.height ?: 0} pendingLayout=${host?.isLayoutRequested == true} " +
-        "animation=${installed.isNotEmpty()} originUpdates=$originUpdates error=$error"
+        "animation=${installed.isNotEmpty()} originUpdates=$originUpdates " +
+        "layoutRequests=$layoutRequests metadataCorrections=$metadataCorrections " +
+        "requestReasons=$layoutRequestReasons metadataReasons=$metadataCorrectionReasons error=$error"
 }
