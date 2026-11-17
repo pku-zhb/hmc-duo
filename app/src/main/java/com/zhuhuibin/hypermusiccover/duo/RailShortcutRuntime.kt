@@ -37,8 +37,10 @@ internal object RailShortcutRuntime {
     private var metadataCorrections = 0L
     private var layoutRequestReasons = 0
     private var metadataCorrectionReasons = 0
+    private var metadataFailures = 0L
+    private var resolveUnavailable = 0L
 
-    // Target bits 1/2/4; parameter bits 8..128; native fallback bits 256/512.
+    // Target bits 1/2/4; parameter bits 8..128; native/RTL/resolve fallback bits 256/512/1024.
     private const val CONTAINER = 1
     private const val WRAPPER = 2
     private const val ICON = 4
@@ -49,13 +51,17 @@ internal object RailShortcutRuntime {
     private const val GRAVITY = 128
     private const val NATIVE_CALLBACK = 256
     private const val DIRECTION = 512
+    private const val RESOLVE = 1024
 
     private class Placement(private val view: View) {
         private var parent: ViewParent? = null
         private var defaultCallback = false
+        private val nativeResolve = RailShortcutPlacement.defaultMethod(view.javaClass,
+            if (view is ViewGroup) ViewGroup::class.java else View::class.java, "resolveLayoutParams")
+        private var resolveUnavailableReported = false
         private val defaultViewMethods = RailShortcutPlacement.inheritsDefaultMethod(
             view.javaClass, View::class.java, "setLayoutParams", ViewGroup.LayoutParams::class.java) &&
-            RailShortcutPlacement.inheritsDefaultMethod(view.javaClass, View::class.java, "resolveLayoutParams") &&
+            nativeResolve != null &&
             RailShortcutPlacement.inheritsDefaultMethod(view.javaClass, View::class.java, "requestLayout")
 
         private fun defaultParent(): Boolean {
@@ -72,23 +78,30 @@ internal object RailShortcutRuntime {
 
         fun apply(params: ViewGroup.LayoutParams, target: Int, changes: Int, boxMatches: Boolean) {
             if (changes == 0) return
+            if (nativeResolve == null && !resolveUnavailableReported) {
+                resolveUnavailableReported = true
+                resolveUnavailable++
+            }
             val direction = view.layoutDirection
             val nativeCallback = !defaultViewMethods || !defaultParent() ||
                 params.javaClass != FrameLayout.LayoutParams::class.java
             val nativeDirection = direction != View.LAYOUT_DIRECTION_LTR
             val action = RailShortcutPlacement.action(true, boxMatches, !nativeCallback && !nativeDirection)
-            val reasons = target or changes or (if (nativeCallback) NATIVE_CALLBACK else 0) or
-                (if (nativeDirection) DIRECTION else 0)
+            var reasons = target or changes or (if (nativeCallback) NATIVE_CALLBACK else 0) or
+                (if (nativeDirection) DIRECTION else 0) or (if (nativeResolve == null) RESOLVE else 0)
             if (action == RailShortcutPlacement.Action.METADATA) {
-                // Match the setter's margin resolution without its redundant parent notification.
-                params.resolveLayoutDirection(direction)
-                metadataCorrections++
-                metadataCorrectionReasons = metadataCorrectionReasons or reasons
-            } else {
-                view.layoutParams = params
-                layoutRequests++
-                layoutRequestReasons = layoutRequestReasons or reasons
+                // ViewGroup's framework implementation also resolves every descendant.
+                if (RailShortcutPlacement.resolve(view, nativeResolve)) {
+                    metadataCorrections++
+                    metadataCorrectionReasons = metadataCorrectionReasons or reasons
+                    return
+                }
+                metadataFailures++
+                reasons = reasons or RESOLVE
             }
+            view.layoutParams = params
+            layoutRequests++
+            layoutRequestReasons = layoutRequestReasons or reasons
         }
     }
 
@@ -347,5 +360,6 @@ internal object RailShortcutRuntime {
         "requestedHeight=${host?.layoutParams?.height ?: 0} pendingLayout=${host?.isLayoutRequested == true} " +
         "animation=${installed.isNotEmpty()} originUpdates=$originUpdates " +
         "layoutRequests=$layoutRequests metadataCorrections=$metadataCorrections " +
-        "requestReasons=$layoutRequestReasons metadataReasons=$metadataCorrectionReasons error=$error"
+        "requestReasons=$layoutRequestReasons metadataReasons=$metadataCorrectionReasons " +
+        "metadataFailures=$metadataFailures resolveUnavailable=$resolveUnavailable error=$error"
 }

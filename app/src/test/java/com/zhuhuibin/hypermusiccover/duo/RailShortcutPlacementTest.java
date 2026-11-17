@@ -31,6 +31,13 @@ public class RailShortcutPlacementTest {
         assertTrue(child(DefaultChild.class, "setLayoutParams", Object.class));
         assertTrue(child(DefaultChild.class, "resolveLayoutParams"));
         assertTrue(child(DefaultChild.class, "requestLayout"));
+        DefaultResolvingFrame group = new DefaultResolvingFrame();
+        ResolveChild child = new ResolveChild();
+        group.child = child;
+        assertTrue(RailShortcutPlacement.resolve(group, RailShortcutPlacement.defaultMethod(
+                DefaultResolvingFrame.class, FrameworkResolvingGroup.class, "resolveLayoutParams")));
+        assertEquals(1, group.resolutions);
+        assertEquals(1, child.customResolutions);
     }
 
     @Test public void customOrUnknownCallbacksRetainTheirNotifications() {
@@ -40,6 +47,11 @@ public class RailShortcutPlacementTest {
         assertFalse(child(SetterChild.class, "setLayoutParams", Object.class));
         assertFalse(child(ResolveChild.class, "resolveLayoutParams"));
         assertFalse(child(RequestChild.class, "requestLayout"));
+        DefaultResolvingFrame group = new DefaultResolvingFrame();
+        group.child = new FailingResolveChild();
+        assertFalse(RailShortcutPlacement.resolve(group, RailShortcutPlacement.defaultMethod(
+                DefaultResolvingFrame.class, FrameworkResolvingGroup.class, "resolveLayoutParams")));
+        assertFalse(RailShortcutPlacement.resolve(group, null));
     }
 
     private static boolean callback(Class<?> type) {
@@ -51,9 +63,10 @@ public class RailShortcutPlacementTest {
         return RailShortcutPlacement.inheritsDefaultMethod(type, FrameworkView.class, method, parameters);
     }
 
-    private static class FrameworkView {
+    public static class FrameworkView {
+        int resolutions;
         public void setLayoutParams(Object params) {}
-        public void resolveLayoutParams() {}
+        public void resolveLayoutParams() { resolutions++; }
         public void requestLayout() {}
     }
     private static class DefaultChild extends FrameworkView {}
@@ -61,10 +74,22 @@ public class RailShortcutPlacementTest {
         @Override public void setLayoutParams(Object params) {}
     }
     private static class ResolveChild extends DefaultChild {
-        @Override public void resolveLayoutParams() {}
+        int customResolutions;
+        @Override public void resolveLayoutParams() { customResolutions++; }
     }
     private static class RequestChild extends DefaultChild {
         @Override public void requestLayout() {}
+    }
+    public static class FrameworkResolvingGroup extends FrameworkView {
+        FrameworkView child;
+        @Override public void resolveLayoutParams() {
+            super.resolveLayoutParams();
+            if (child != null) child.resolveLayoutParams();
+        }
+    }
+    private static class DefaultResolvingFrame extends FrameworkResolvingGroup {}
+    private static class FailingResolveChild extends DefaultChild {
+        @Override public void resolveLayoutParams() { throw new IllegalStateException("native child failure"); }
     }
 
     private static class FrameworkGroup {
