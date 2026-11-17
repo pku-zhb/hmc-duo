@@ -12095,6 +12095,8 @@ public class Main extends XposedModule {
         }
     }
 
+    private static final String[] AOD_CLOCK_GLYPH_IDS = {"hour_view", "minute_view", "colon_view"};
+
     /** The clock's glass as the screen fell asleep: r, g, b and the fill. See captureAodGlass. */
     private static final float[] sAodCoverGlass = new float[4];
     private static volatile boolean sAodCoverGlassSet;
@@ -12202,56 +12204,57 @@ public class Main extends XposedModule {
         // this also says whether the reading below is the lock screen's or a dead one.
         boolean cover = ClockCollapse.aodHeld() && sAodCoverGlassSet;
         boolean wrote = false;
-        for (View root : clockRoots()) {
-            for (String id : new String[]{"hour_view", "minute_view", "colon_view"}) {
-                try {
-                    int rid = root.getContext().getResources()
-                            .getIdentifier(id, "id", "com.android.systemui");
-                    View t = rid == 0 ? null : root.findViewById(rid);
-                    if (t == null || t.getVisibility() != View.VISIBLE) continue;
-                    float[] g = (float[]) Xp.getObjectField(t, "glassData");
-                    if (g == null || g.length < 42) continue;
-                    if (cover) {
-                        if (g[11] != sAodCoverGlass[0] || g[12] != sAodCoverGlass[1]
-                                || g[13] != sAodCoverGlass[2]) {
-                            g[11] = sAodCoverGlass[0];
-                            g[12] = sAodCoverGlass[1];
-                            g[13] = sAodCoverGlass[2];
+        try (LayoutResourceIds.Scope resourceScope = LayoutResourceIds.scope()) {
+            for (View root : clockRoots()) {
+                for (String id : AOD_CLOCK_GLYPH_IDS) {
+                    try {
+                        int rid = LayoutResourceIds.get(root.getContext().getResources(), "id", id);
+                        View t = rid == 0 ? null : root.findViewById(rid);
+                        if (t == null || t.getVisibility() != View.VISIBLE) continue;
+                        float[] g = (float[]) Xp.getObjectField(t, "glassData");
+                        if (g == null || g.length < 42) continue;
+                        if (cover) {
+                            if (g[11] != sAodCoverGlass[0] || g[12] != sAodCoverGlass[1]
+                                    || g[13] != sAodCoverGlass[2]) {
+                                g[11] = sAodCoverGlass[0];
+                                g[12] = sAodCoverGlass[1];
+                                g[13] = sAodCoverGlass[2];
+                                wrote = true;
+                            }
+                            if (g[36] != sAodCoverGlass[3]) {
+                                g[36] = sAodCoverGlass[3];
+                                wrote = true;
+                            }
+                            if (wrote) t.invalidate();
+                            continue;
+                        }
+                        // The plain always-on display, and a held doze whose glass could not be read at
+                        // sleep. Neither has a colour of ours to be held at, and what the OEM would
+                        // paint is the wallpaper's palette - the album art, in cover mode - so the
+                        // neutral the doze first inks with is held instead. Only its lightness is kept,
+                        // so a doze caught late still ends up neutral rather than gold.
+                        if (Float.isNaN(sAodGrey)) {
+                            sAodGrey = luminance(g[11], g[12], g[13]);
+                        }
+                        if (g[11] != sAodGrey || g[12] != sAodGrey || g[13] != sAodGrey) {
+                            g[11] = sAodGrey;
+                            g[12] = sAodGrey;
+                            g[13] = sAodGrey;
                             wrote = true;
                         }
-                        if (g[36] != sAodCoverGlass[3]) {
-                            g[36] = sAodCoverGlass[3];
+                        // And solid. This is the half that was missing: the gold is not a colour at
+                        // all, it is the album-art wallpaper showing through a transparent glass
+                        // glyph - proved on one doze by the date reading (182,182,182) neutral while
+                        // the clock read (203,161,118) gold, the date being the one of the two with no
+                        // glass. The doze's own fill is 0, so the backdrop shows; the two seconds of
+                        // neutral the user saw at the start were the frames where it was still 1.
+                        if (g[36] < 0.999f) {
+                            g[36] = 1f;
                             wrote = true;
                         }
                         if (wrote) t.invalidate();
-                        continue;
+                    } catch (Throwable ignored) {
                     }
-                    // The plain always-on display, and a held doze whose glass could not be read at
-                    // sleep. Neither has a colour of ours to be held at, and what the OEM would
-                    // paint is the wallpaper's palette - the album art, in cover mode - so the
-                    // neutral the doze first inks with is held instead. Only its lightness is kept,
-                    // so a doze caught late still ends up neutral rather than gold.
-                    if (Float.isNaN(sAodGrey)) {
-                        sAodGrey = luminance(g[11], g[12], g[13]);
-                    }
-                    if (g[11] != sAodGrey || g[12] != sAodGrey || g[13] != sAodGrey) {
-                        g[11] = sAodGrey;
-                        g[12] = sAodGrey;
-                        g[13] = sAodGrey;
-                        wrote = true;
-                    }
-                    // And solid. This is the half that was missing: the gold is not a colour at
-                    // all, it is the album-art wallpaper showing through a transparent glass
-                    // glyph - proved on one doze by the date reading (182,182,182) neutral while
-                    // the clock read (203,161,118) gold, the date being the one of the two with no
-                    // glass. The doze's own fill is 0, so the backdrop shows; the two seconds of
-                    // neutral the user saw at the start were the frames where it was still 1.
-                    if (g[36] < 0.999f) {
-                        g[36] = 1f;
-                        wrote = true;
-                    }
-                    if (wrote) t.invalidate();
-                } catch (Throwable ignored) {
                 }
             }
         }
