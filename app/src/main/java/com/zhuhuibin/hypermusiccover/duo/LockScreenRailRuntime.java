@@ -25,17 +25,7 @@ final class LockScreenRailRuntime {
     private static long planRevision = -1;
     private static int planWidth, planHeight;
     private static final LyricFrameReadiness lyricFrame = new LyricFrameReadiness();
-    private static final IdentityHashMap<View, ControlOffset> clockOffsets = new IdentityHashMap<>();
-    private static final class ControlOffset {
-        float baseline, written, delta;
-        ControlOffset(View v, float delta) { baseline = written = v.getTranslationY(); this.delta = delta; }
-        void apply(View v) {
-            if (v.getTranslationY() != written) baseline = v.getTranslationY();
-            written = baseline + delta;
-            if (v.getTranslationY() != written) v.setTranslationY(written);
-        }
-        void restore(View v) { if (v.getTranslationY() == written) v.setTranslationY(baseline); }
-    }
+    private static final IdentityHashMap<View, ClockPropertyLease> clockOffsets = new IdentityHashMap<>();
     private static String reason = "not attached";
     private static long revision = -1;
     private static final Matrix matrix = new Matrix(), inverse = new Matrix();
@@ -320,12 +310,20 @@ final class LockScreenRailRuntime {
     }
 
     private static void restoreClockOffsets() {
-        for (java.util.Map.Entry<View, ControlOffset> e : clockOffsets.entrySet()) e.getValue().restore(e.getKey());
+        for (java.util.Map.Entry<View, ClockPropertyLease> e : clockOffsets.entrySet()) {
+            View view = e.getKey();
+            float current = view.getTranslationY();
+            float restored = e.getValue().restore(current);
+            if (current != restored) view.setTranslationY(restored);
+        }
         clockOffsets.clear();
     }
 
+    /** Transfer native Y baselines before the content pose acquires its first leases. */
+    static void releaseClockOffsets() { restoreClockOffsets(); }
+
     private static void liftNativeClock() {
-        if (!active() || ClockCollapse.active()) { restoreClockOffsets(); return; }
+        if (!active() || ClockCollapse.ownsTransforms()) { restoreClockOffsets(); return; }
         java.util.ArrayList<View> targets = new java.util.ArrayList<>();
         for (View clockRoot : Main.clockRoots()) {
             View target = Main.clockTarget(clockRoot);
@@ -337,9 +335,11 @@ final class LockScreenRailRuntime {
         if (date != null && date.isShown() && !dateInClock && !targets.contains(date)) targets.add(date);
         float delta = nativeClockLift();
         for (View target : targets) {
-            ControlOffset lease = clockOffsets.get(target);
-            if (lease == null) { lease = new ControlOffset(target, delta); clockOffsets.put(target, lease); }
-            lease.apply(target);
+            ClockPropertyLease lease = clockOffsets.get(target);
+            if (lease == null) { lease = new ClockPropertyLease(); clockOffsets.put(target, lease); }
+            float current = target.getTranslationY();
+            float shifted = lease.offset(current, delta);
+            if (current != shifted) target.setTranslationY(shifted);
         }
     }
 
@@ -476,6 +476,7 @@ final class LockScreenRailRuntime {
                 + (p == null ? "" : " content=" + p.content.left + ".." + p.content.right
                     + " pill=" + p.pill.left + "," + p.pill.top + "," + p.pill.width() + "x" + p.pill.height()
                     + " controlsSpan=" + p.controlsSpan + " offsets=" + p.firstOffsetY + "," + p.secondOffsetY)
+                + " clockOffsetOwners=" + clockOffsets.size()
                 + " stackBounds=[" + RailStackBounds.describe() + "]";
     }
 
