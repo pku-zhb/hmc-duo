@@ -1974,13 +1974,9 @@ public class Main extends XposedModule {
 
             // Own the colour the way we own the y, but at the far end of the pipeline.
             //
-            // Writing glassData and stopping there does nothing: the shader's parameters are
-            // pushed by MiuiBlurUtils.setMiGlass/setGlassEffectMethod when a colour is SET, not
-            // read out of the array when the view draws. The per-draw write that used to be here
-            // was dead for exactly that reason - the OEM's own write of the same array is what
-            // ever made a tint show up.
-            //
-            // So the substitution goes where the OEM's value enters: whichever way SystemUI
+            // The setters upload glassData immediately; TimeView.onDraw also uploads the field
+            // while its glass effect is enabled. Substitute where the OEM's value enters so
+            // both paths use the intended colour: whichever way SystemUI
             // arrived at a colour - the wallpaper palette, a colour animation, or our own
             // updateGlassValue frame - it reaches a glyph through one of these setters, and
             // none of them has to know anything about the palette.
@@ -12186,13 +12182,9 @@ public class Main extends XposedModule {
     /**
      * Holds the always-on clock's glyphs at the colour they are ours to hold.
      *
-     * The colour lives in `glassData[11..13]` and is uploaded from the view's own field when the
-     * material is drawn - proved on a dozing keyguard by poking those three indices and watching
-     * the whole clock turn red on the next frame. So the FIELD is what has to be held, not the
-     * array handed to any one setter: on this build the OEM's palette pass reaches the glyphs by a
-     * route that goes through neither `TimeView.setGlassColor` (the tint op proved that one is
-     * dead here) nor `View.setMiGlass` (guarding that one still let the clock turn gold). Assert
-     * the field every doze frame instead, the way notifY and the depth cut-out are asserted.
+     * TimeView.onDraw uploads `glassData`, including the colour at [11..13] and fill at [36].
+     * Keep those fields ready even when an ancestor hides the clock. A native fill update also
+     * recalculates its palette, so colour-only repairs must not request another fill update.
      *
      * @return true when a glyph was rewritten and so needs the redraw
      */
@@ -12203,63 +12195,46 @@ public class Main extends XposedModule {
         // inked anything with its own palette. The capture is only ever taken for a held doze, so
         // this also says whether the reading below is the lock screen's or a dead one.
         boolean cover = ClockCollapse.aodHeld() && sAodCoverGlassSet;
-        boolean wrote = false;
         try (LayoutResourceIds.Scope resourceScope = LayoutResourceIds.scope()) {
-            for (View root : clockRoots()) {
-                for (String id : AOD_CLOCK_GLYPH_IDS) {
-                    try {
-                        int rid = LayoutResourceIds.get(root.getContext().getResources(), "id", id);
-                        View t = rid == 0 ? null : root.findViewById(rid);
-                        if (t == null || t.getVisibility() != View.VISIBLE) continue;
-                        float[] g = (float[]) Xp.getObjectField(t, "glassData");
-                        if (g == null || g.length < 42) continue;
-                        if (cover) {
-                            if (g[11] != sAodCoverGlass[0] || g[12] != sAodCoverGlass[1]
-                                    || g[13] != sAodCoverGlass[2]) {
-                                g[11] = sAodCoverGlass[0];
-                                g[12] = sAodCoverGlass[1];
-                                g[13] = sAodCoverGlass[2];
-                                wrote = true;
-                            }
-                            if (g[36] != sAodCoverGlass[3]) {
-                                g[36] = sAodCoverGlass[3];
-                                wrote = true;
-                            }
-                            if (wrote) t.invalidate();
-                            continue;
-                        }
-                        // The plain always-on display, and a held doze whose glass could not be read at
-                        // sleep. Neither has a colour of ours to be held at, and what the OEM would
-                        // paint is the wallpaper's palette - the album art, in cover mode - so the
-                        // neutral the doze first inks with is held instead. Only its lightness is kept,
-                        // so a doze caught late still ends up neutral rather than gold.
-                        if (Float.isNaN(sAodGrey)) {
-                            sAodGrey = luminance(g[11], g[12], g[13]);
-                        }
-                        if (g[11] != sAodGrey || g[12] != sAodGrey || g[13] != sAodGrey) {
-                            g[11] = sAodGrey;
-                            g[12] = sAodGrey;
-                            g[13] = sAodGrey;
-                            wrote = true;
-                        }
-                        // And solid. This is the half that was missing: the gold is not a colour at
-                        // all, it is the album-art wallpaper showing through a transparent glass
-                        // glyph - proved on one doze by the date reading (182,182,182) neutral while
-                        // the clock read (203,161,118) gold, the date being the one of the two with no
-                        // glass. The doze's own fill is 0, so the backdrop shows; the two seconds of
-                        // neutral the user saw at the start were the frames where it was still 1.
-                        if (g[36] < 0.999f) {
-                            g[36] = 1f;
-                            wrote = true;
-                        }
-                        if (wrote) t.invalidate();
-                    } catch (Throwable ignored) {
+            int changed = holdAodClockGlyphs(cover);
+            if ((changed & AodClockGlass.FILL) != 0) {
+                // updateGlassValue also reapplies the native palette. Repair that RGB in this
+                // frame without asking for another fill update and restarting the same cycle.
+                pushGlassFill(cover ? sAodCoverGlass[3] : 1f);
+                changed |= holdAodClockGlyphs(cover);
+            }
+            return changed != 0;
+        }
+    }
+
+    private static int holdAodClockGlyphs(boolean cover) {
+        int changed = 0;
+        for (View root : clockRoots()) {
+            for (String id : AOD_CLOCK_GLYPH_IDS) {
+                try {
+                    int rid = LayoutResourceIds.get(root.getContext().getResources(), "id", id);
+                    View t = rid == 0 ? null : root.findViewById(rid);
+                    if (t == null || t.getVisibility() != View.VISIBLE) continue;
+                    float[] g = (float[]) Xp.getObjectField(t, "glassData");
+                    if (g == null || g.length < 42) continue;
+                    if (!cover && Float.isNaN(sAodGrey)) {
+                        // Without captured cover ink, retain the first doze lightness as grey.
+                        sAodGrey = luminance(g[11], g[12], g[13]);
                     }
+                    int glyphChanged = AodClockGlass.hold(g,
+                            cover ? sAodCoverGlass[0] : sAodGrey,
+                            cover ? sAodCoverGlass[1] : sAodGrey,
+                            cover ? sAodCoverGlass[2] : sAodGrey,
+                            cover ? sAodCoverGlass[3] : 1f, cover);
+                    // Update fields even under a transparent clock ancestor. Its first visible
+                    // onDraw uploads them, so waking does not expose the outgoing palette.
+                    if (glyphChanged != 0) t.invalidate();
+                    changed |= glyphChanged;
+                } catch (Throwable ignored) {
                 }
             }
         }
-        if (wrote) pushGlassFill(cover ? sAodCoverGlass[3] : 1f);
-        return wrote;
+        return changed;
     }
 
     /** One `updateGlassValue` on both clock trees, screen on or off. */
