@@ -58,8 +58,8 @@ android {
         targetSdk = 37
         // Stable X.Y.Z releases use (major * 10000 + minor * 100 + patch) * 1000.
         // Build properties can override the release version for local test builds.
-        versionCode = (findProperty("mcVersionCode") as String?)?.toInt() ?: 226000
-        versionName = ((findProperty("mcVersionName") as String?) ?: "0.2.26") +
+        versionCode = (findProperty("mcVersionCode") as String?)?.toInt() ?: 227000
+        versionName = ((findProperty("mcVersionName") as String?) ?: "0.2.27") +
                 ((findProperty("mcVersionSuffix") as String?) ?: "")
     }
 
