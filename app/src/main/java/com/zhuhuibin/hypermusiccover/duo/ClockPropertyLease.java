@@ -22,6 +22,12 @@ final class ClockPropertyLease {
         return next;
     }
 
+    /** Add an idle offset to the native baseline without accumulating previous frames. */
+    float offset(float current, float delta) {
+        float nativeValue = owned && current == written ? baseline : current;
+        return write(current, nativeValue + delta);
+    }
+
     /** Return the remaining owner's value, then release this lease exactly once. */
     float restore(float current) {
         float restored = owned && current == written ? baseline : current;

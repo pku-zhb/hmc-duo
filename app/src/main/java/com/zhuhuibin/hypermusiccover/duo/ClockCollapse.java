@@ -586,6 +586,12 @@ final class ClockCollapse {
         return sPhase == Phase.ENTER || sPhase == Phase.ON || sPhase == Phase.EXIT;
     }
 
+    /** A held AOD still writes the pose; pending leases also exclude the idle rail owner. */
+    static boolean ownsTransforms() {
+        return active() || sPhase == Phase.AOD && sAodHeld
+                || !POSE_LEASES.isEmpty() || CompactClockRowRuntime.ownsPose();
+    }
+
     /** On its way out of cover mode proper - not into the AOD, which keeps cover mode on. */
     static boolean exiting() {
         return sPhase == Phase.EXIT && !sExitToAod;
@@ -3362,6 +3368,9 @@ final class ClockCollapse {
     private static boolean writePose(Live m, float top, float unit, float date, boolean holdWidth) {
         ClockPoseSnapshot destination = poseSnapshot(m, top, unit, date);
         if (destination == null) return false;
+        // The transition already captured the displayed pose. Return the idle lift before
+        // acquiring transform leases so that it cannot become their native restore baseline.
+        LockScreenRailRuntime.releaseClockOffsets();
         // A pose is in the lock screen's OWN pixels, and the OEM is free to scale the lock
         // screen underneath it - the doze's 0.95 on keyguard_root_view, a swipe's zoom on the
         // clock's container. The clock rides those like the notifications, the media card and

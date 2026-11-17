@@ -50,6 +50,9 @@ final class LockScreenLayoutDiagnostics {
             View root = clock == null ? null : clock.getRootView();
             out.put("root", view(root));
             out.put("clock", view(clock));
+            out.put("clockPhase", ClockCollapse.phase());
+            out.put("clockPoseHeld", ClockCollapse.aodHeld());
+            out.put("clockTransformOwner", ClockCollapse.ownsTransforms());
             JSONArray clockTargets = new JSONArray();
             for (View clockRoot : Main.clockRoots()) clockTargets.put(view(Main.clockTarget(clockRoot)));
             out.put("clockTargets", clockTargets);
