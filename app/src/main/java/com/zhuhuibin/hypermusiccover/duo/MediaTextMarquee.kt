@@ -29,8 +29,7 @@ internal class MediaTextMarquee(val view: TextView) {
         // Conditional writes avoid restarting it on every existing card pre-draw callback.
         if (view.maxLines != 1) view.maxLines = 1
         if (!view.isHorizontallyScrollable) view.setHorizontallyScrolling(true)
-        // Reveal the overflow once per native marquee run, then let the window idle.
-        if (view.marqueeRepeatLimit != 1) view.marqueeRepeatLimit = 1
+        if (view.marqueeRepeatLimit != -1) view.marqueeRepeatLimit = -1
         val ellipsize = if (running) TextUtils.TruncateAt.MARQUEE else TextUtils.TruncateAt.END
         if (view.ellipsize != ellipsize) view.ellipsize = ellipsize
         if (view.isSelected != running) view.isSelected = running
