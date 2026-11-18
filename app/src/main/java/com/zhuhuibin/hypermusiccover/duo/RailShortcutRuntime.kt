@@ -22,7 +22,7 @@ internal object RailShortcutRuntime {
     private var listener: ViewTreeObserver.OnPreDrawListener? = null
     private var attachment: View.OnAttachStateChangeListener? = null
     private var containerHeight: Int? = null
-    private var writtenHeight = 0
+    private var writtenHeight: Int? = null
     private val leases = WeakHashMap<ImageView, Lease>()
     private val clips = WeakHashMap<ViewGroup, Pair<Boolean, Boolean>>()
     private val installed = WeakHashMap<ClassLoader, Boolean>()
@@ -226,12 +226,18 @@ internal object RailShortcutRuntime {
             window.resources.displayMetrics.density, insets.right.toFloat(),
             insets.bottom.toFloat()) ?: run { restore(); return }
         val cp = container.layoutParams ?: return
-        if (containerHeight == null) containerHeight = cp.height
-        if (cp.height != window.height) {
+        // A full-height MATCH_PARENT container already satisfies the rail geometry.
+        // Keep that contract so another owner cannot bounce it back every traversal.
+        val fillsWindow = container.height == window.height
+        if (cp.height == ViewGroup.LayoutParams.MATCH_PARENT && fillsWindow) {
+            containerHeight = null
+            writtenHeight = null
+        } else if (cp.height != window.height) {
+            if (writtenHeight == null || cp.height != writtenHeight) containerHeight = cp.height
             cp.height = window.height
-            containerPlacement?.apply(cp, CONTAINER, HEIGHT, container.height == window.height)
+            containerPlacement?.apply(cp, CONTAINER, HEIGHT, fillsWindow)
+            writtenHeight = window.height
         }
-        writtenHeight = window.height
         for ((icon, slot) in listOf(left to geometry.torch, right to geometry.camera)) {
             icon ?: continue
             val wrapper = icon.parent as? View ?: continue
@@ -274,6 +280,7 @@ internal object RailShortcutRuntime {
             lp.height = containerHeight!!; container.layoutParams = lp
         }
         containerHeight = null
+        writtenHeight = null
     }
 
     private fun detach() {
