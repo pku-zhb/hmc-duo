@@ -79,6 +79,7 @@ final class LockHandoffClient {
                 @Override
                 public void onCapabilitiesGained(int gainedMask, int effectiveMask) {
                     refreshForGainedCapabilities(gainedMask);
+                    Xp.log(TAG + describe());
                 }
 
                 @Override
@@ -86,6 +87,17 @@ final class LockHandoffClient {
                     Xp.w(TAG + message);
                 }
             });
+
+    private static final View.OnAttachStateChangeListener SHADE_LIFECYCLE =
+            new View.OnAttachStateChangeListener() {
+                @Override public void onViewAttachedToWindow(View view) {
+                    onShadeAttached(view);
+                }
+
+                @Override public void onViewDetachedFromWindow(View view) {
+                    onShadeDetached(view);
+                }
+            };
 
     private LockHandoffClient() {}
 
@@ -97,17 +109,12 @@ final class LockHandoffClient {
             Xp.hookAll(shadeCls, "onAttachedToWindow", chain -> {
                 Object result = chain.proceed();
                 Object self = chain.getThisObject();
-                if (self instanceof View) {
-                    onShadeAttached((View) self);
+                if (self instanceof View shade && shade.isAttachedToWindow()) {
+                    shade.removeOnAttachStateChangeListener(SHADE_LIFECYCLE);
+                    shade.addOnAttachStateChangeListener(SHADE_LIFECYCLE);
+                    if (currentShadeRef.get() != shade) onShadeAttached(shade);
                 }
                 return result;
-            });
-            Xp.hookAll(shadeCls, "onDetachedFromWindow", chain -> {
-                Object self = chain.getThisObject();
-                if (self instanceof View) {
-                    onShadeDetached((View) self);
-                }
-                return chain.proceed();
             });
             installed = true;
             Xp.log(TAG + "installed on NotificationShadeWindowView");
