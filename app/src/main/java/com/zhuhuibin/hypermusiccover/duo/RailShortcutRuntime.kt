@@ -28,8 +28,16 @@ internal object RailShortcutRuntime {
     private val leases = WeakHashMap<ImageView, Lease>()
     private val clips = WeakHashMap<ViewGroup, Pair<Boolean, Boolean>>()
     private val installed = WeakHashMap<ClassLoader, Boolean>()
-    private data class Origin(val icon: WeakReference<ImageView>, val controller: WeakReference<Any>,
-                              var x: Float, var y: Float)
+    private class Origin(icon: ImageView, controller: Any) {
+        val icon = WeakReference(icon)
+        val controller = WeakReference(controller)
+        val initX = MediaPropertyLease<Float>()
+        val initY = MediaPropertyLease<Float>()
+        val centerX = MediaPropertyLease<Float>()
+        val centerY = MediaPropertyLease<Float>()
+        var x = 0f
+        var y = 0f
+    }
     private val origins = WeakHashMap<View, Origin>()
     private var error = "none"
     private var originUpdates = 0L
@@ -138,7 +146,7 @@ internal object RailShortcutRuntime {
     private fun update() {
         val container = host ?: return
         val window = container.rootView.also { root = it }
-        if (!Main.sRightRail || !Main.keyguardLocked()) { restore(); return }
+        if (!Main.sRightRail || !Main.keyguardLocked() || !LockHandoffClient.allowsShortcuts()) { restore(); return }
         if (MiniPlayerScene.keyguardGoingAway || window.width <= 0 || window.height <= 0) return
         val insets = RailWindowInsets.read(window)
         val geometry = RailShortcutLayout.plan(window.width.toFloat(), window.height.toFloat(),
@@ -183,7 +191,8 @@ internal object RailShortcutRuntime {
         if (active) host?.setTag(SHORTCUT_OWNER_TAG, null)
         active = false
         for (lease in leases.values.toList()) lease.restore()
-        leases.clear(); origins.clear()
+        leases.clear()
+        restoreOrigins()
         for ((group, flags) in clips) {
             if (!group.clipChildren) group.clipChildren = flags.first
             if (!group.clipToPadding) group.clipToPadding = flags.second
@@ -205,8 +214,18 @@ internal object RailShortcutRuntime {
         restore(); host = null; root = null; left = null; right = null
     }
 
+    @JvmStatic fun revokeForHandoff() {
+        restore()
+    }
+
+    @JvmStatic fun refreshForHandoff() {
+        runCatching { update() }.onFailure { fail(it); restore() }
+    }
+
+    fun ownsPlacement(): Boolean = active
+
     private fun owns(icon: ImageView) = active && Main.sRightRail && Main.keyguardLocked() &&
-        (icon === left || icon === right)
+        LockHandoffClient.allowsShortcuts() && (icon === left || icon === right)
 
     private fun installAnimation(loader: ClassLoader) {
         if (installed[loader] == true) return
@@ -220,11 +239,11 @@ internal object RailShortcutRuntime {
                         ?: return@runCatching
                     if (!owns(icon)) return@runCatching
                     val view = Xp.callMethod(chain.thisObject, "getShortcutAnimView") as? View ?: return@runCatching
-                    val origin = Origin(WeakReference(icon), WeakReference(chain.thisObject), 0f, 0f)
-                    origins[view] = origin
+                    val owner = chain.thisObject ?: return@runCatching
+                    val origin = origins.getOrPut(view) { Origin(icon, owner) }
                     captureOrigin(view, origin)
-                    Xp.setObjectField(view, "iconCircleCenterX", origin.x)
-                    Xp.setObjectField(view, "iconCircleCenterY", origin.y)
+                    writeCenter(view, "iconCircleCenterX", origin.centerX, origin.x)
+                    writeCenter(view, "iconCircleCenterY", origin.centerY, origin.y)
                     Xp.callMethod(view, "updateIconViewPositionAndScale", 1f)
                     view.viewTreeObserver.addOnPreDrawListener(object : ViewTreeObserver.OnPreDrawListener {
                         override fun onPreDraw(): Boolean {
@@ -233,8 +252,7 @@ internal object RailShortcutRuntime {
                                 if (origins[view] !== origin || !owns(icon)) return@runCatching
                                 captureOrigin(view, origin)
                                 val owner = origin.controller.get() ?: return@runCatching
-                                Xp.callMethod(view, "updateViews", Xp.callMethod(owner, "getMovePer"),
-                                    Xp.callMethod(owner, "getMoveYPer"), Xp.callMethod(owner, "getActiveAnimPer"))
+                                updateNativeAnimation(view, owner)
                             }.onFailure { fail(it) }
                             return true
                         }
@@ -267,8 +285,39 @@ internal object RailShortcutRuntime {
     }
 
     private fun writeOrigin(view: View, origin: Origin) {
-        Xp.setObjectField(view, "iconCircleInitCenterX", origin.x)
-        Xp.setObjectField(view, "iconCircleInitCenterY", origin.y)
+        writeCenter(view, "iconCircleInitCenterX", origin.initX, origin.x)
+        writeCenter(view, "iconCircleInitCenterY", origin.initY, origin.y)
+    }
+
+    private fun writeCenter(view: View, field: String, lease: MediaPropertyLease<Float>, value: Float) {
+        val current = (Xp.getObjectField(view, field) as Number).toFloat()
+        lease.write(current, value) { Xp.setObjectField(view, field, it) }
+    }
+
+    private fun restoreOrigins() {
+        for ((view, origin) in origins) {
+            val fields = listOf("iconCircleInitCenterX" to origin.initX, "iconCircleInitCenterY" to origin.initY,
+                "iconCircleCenterX" to origin.centerX, "iconCircleCenterY" to origin.centerY)
+            var changed = false
+            for ((field, lease) in fields) if (lease.held) {
+                runCatching {
+                    val current = (Xp.getObjectField(view, field) as Number).toFloat()
+                    lease.release(current) {
+                        Xp.setObjectField(view, field, it)
+                        changed = true
+                    }
+                }.onFailure(::fail)
+            }
+            if (changed) origin.controller.get()?.let { owner ->
+                runCatching { updateNativeAnimation(view, owner) }.onFailure(::fail)
+            }
+        }
+        origins.clear()
+    }
+
+    private fun updateNativeAnimation(view: View, owner: Any) {
+        Xp.callMethod(view, "updateViews", Xp.callMethod(owner, "getMovePer"),
+            Xp.callMethod(owner, "getMoveYPer"), Xp.callMethod(owner, "getActiveAnimPer"))
     }
 
     private fun fail(t: Throwable) {

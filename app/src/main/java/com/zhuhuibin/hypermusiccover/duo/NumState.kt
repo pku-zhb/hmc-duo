@@ -93,7 +93,7 @@ internal object NumState {
 
     /** Event-driven, bounded settling: no idle frame loop or delayed work after leaving keyguard. */
     fun checkExposureSoon() {
-        if (!folding || !MiniPlayerRuntime.detachedRail()) return
+        if (!LockHandoffClient.allowsNotifications() || !folding || !MiniPlayerRuntime.detachedRail()) return
         exposureUntil = SystemClock.uptimeMillis() + 2800L
         queueExposure()
     }
@@ -107,7 +107,7 @@ internal object NumState {
     private val exposureCheck = object : Runnable {
         override fun run() {
             exposureQueued = false
-            val active = folding && MiniPlayerRuntime.detachedRail() && Main.screenOnCached() &&
+            val active = LockHandoffClient.allowsNotifications() && folding && MiniPlayerRuntime.detachedRail() && Main.screenOnCached() &&
                 Main.onKeyguardNow() && !Main.bouncerShown() && !MiniPlayerScene.aodActive &&
                 !MiniPlayerScene.keyguardGoingAway && LockIslands.foldsToCount()
             val now = SystemClock.uptimeMillis()
@@ -171,6 +171,7 @@ internal object NumState {
 
     /** Native AOD geometry callbacks must not call this: only explicit presentation actions do. */
     fun choosePresentation(collapsed: Boolean) {
+        if (!LockHandoffClient.allowsNotifications()) return
         if (!collapsed) Main.leaveMusicSceneForCard()
         // A native HANDS_UP can reverse an in-flight island opening without calling goTo.
         // Its latest collapse choice must cancel LIST retargets and stale gesture evidence.
@@ -218,6 +219,7 @@ internal object NumState {
 
     /** Re-publish once after display handoff or late rail activation; native consumers keep a cache. */
     fun refreshRailFooter(bottom: Int, revision: Long) {
+        if (!LockHandoffClient.allowsNotifications()) { restoreRailFooter(); return }
         if (bottom <= 0) return
         if (footerRevision == revision && footerWritten == bottom && footerFlow?.get() != null) return
         // Resolve the current display's container again instead of keeping an attached old model.
@@ -368,17 +370,31 @@ internal object NumState {
     fun addListener(l: (Boolean) -> Unit) { listeners.addIfAbsent(l) }
     fun removeListener(l: (Boolean) -> Unit) { listeners.remove(l) }
 
+    /** Synchronous revocation cleanup; never defers via post(). */
+    @JvmStatic fun revokeForHandoff() {
+        main.removeCallbacks(exposureCheck)
+        exposureQueued = false
+        main.removeCallbacks(foldCheck)
+        exposure.reset()
+        nativeGesture.clear()
+        openingVisualComplete = false
+        restoreRailFooter()
+        setFolding(false)
+        hideCount(false)
+    }
+
     /** The islands take over the ordinary notifications' folding, or give it back. */
     fun setFolding(on: Boolean) {
-        if (!available || folding == on) return
-        folding = on
-        trace("folding=$on")
-        forceDefault(on)
-        if (!on) hideCount(false)
+        val next = on && LockHandoffClient.allowsNotifications()
+        if (!available || folding == next) return
+        folding = next
+        trace("folding=$next")
+        forceDefault(next)
+        if (!next) hideCount(false)
     }
 
     private fun handsUp(model: Any, info: Any?, target: Float): Float? {
-        if (!folding || info == null || !LockIslands.foldsToCount()) return null
+        if (!LockHandoffClient.allowsNotifications() || !folding || info == null || !LockIslands.foldsToCount()) return null
         if (LockIslands.keepsPileOnFold()) return null
         val event = (Xp.getObjectField(info, "stackShowEvent") as? Enum<*>)?.name
         if (event != "HANDS_UP" || Xp.getObjectField(info, "isNumberState") == true) return null
@@ -621,6 +637,7 @@ internal object NumState {
 
     /** The stack scrolled to [state]: animated on the screen-on scroll's spring, or set. */
     fun goTo(state: String, anim: Boolean = true, why: String): String = runCatching {
+        if (!LockHandoffClient.allowsNotifications()) return "handoff blocked"
         val model = model() ?: return "no model"
         val stack = MiniPlayerRuntime.stackForProbe() ?: return "no stack"
         if (state == "NUMBER") { exposure.cancelOpen(); openingVisualComplete = false }
@@ -673,6 +690,7 @@ internal object NumState {
      * way, a running scroll of its own stopped first. False when it could not be.
      */
     fun setScroll(y: Int): Boolean = runCatching {
+        if (!LockHandoffClient.allowsNotifications()) return false
         val model = model() ?: return false
         val stack = MiniPlayerRuntime.stackForProbe() ?: return false
         val refactor = Xp.callMethod(Xp.getObjectField(model, "notifContainerRefactor"), "get")
@@ -761,18 +779,24 @@ internal object NumState {
      * the keyguard's fade (scaleAndAlpha, NotificationNumStateViewBinder), and showing the line
      * by setting that to 1 put "勿扰" over the bouncer, where the keyguard had faded it out (#42).
      */
+    private val countAlpha = java.util.WeakHashMap<View, MediaPropertyLease<Float>>()
+
     fun hideCount(hide: Boolean) {
-        val v = countView() as? ViewGroup ?: return
-        val want = if (hide) 0f else 1f
-        var changed = false
-        for (k in 0 until v.childCount) {
-            val c = v.getChildAt(k)
-            if (c.transitionAlpha != want) {
-                c.transitionAlpha = want
-                changed = true
+        if (!hide || !LockHandoffClient.allowsNotifications()) {
+            for ((child, lease) in countAlpha) {
+                lease.release(child.transitionAlpha) { child.transitionAlpha = it }
+            }
+            countAlpha.clear()
+            return
+        }
+        val view = countView() as? ViewGroup ?: return
+        for (index in 0 until view.childCount) {
+            val child = view.getChildAt(index)
+            if (child.transitionAlpha != 0f) {
+                countAlpha.getOrPut(child) { MediaPropertyLease() }
+                    .write(child.transitionAlpha, 0f) { child.transitionAlpha = it }
             }
         }
-        if (changed) trace(if (hide) "count hidden" else "count shown")
     }
 
     private fun countView(): View? {

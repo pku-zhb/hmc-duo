@@ -17,13 +17,16 @@ internal object ShortcutGestureRuntime {
     private var dx = 0f
     private var dy = 0f
     private var failure = "none"
-    private data class Gesture(val x: Float, val downTime: Long)
+    private class Gesture(val x: Float, val downTime: Long) {
+        val touchX = MediaPropertyLease<Float>()
+    }
     private val mirrored = WeakHashMap<Any, Gesture>()
     private val ownership = WeakHashMap<Any, ShortcutTouchOwnership>()
     private val nativeEvents = WeakHashMap<Any, MotionEvent>()
     private var rejectedStreams = 0
     private var protectedBottomMoves = 0
     private val contentStreams = WeakHashMap<Any, Long>()
+    private val countStreams = WeakHashMap<Any, Long>()
 
     /** Stock HyperOS treats everything below the indication text as the bottom area.
      * Reflowed cards occupy that band, so clear only that legacy intercept flag for their
@@ -31,16 +34,15 @@ internal object ShortcutGestureRuntime {
     @JvmStatic fun installContentBoundary(loader: ClassLoader) {
         runCatching {
             val count = Xp.findClass("com.miui.systemui.notification.view.NotificationNumStateAreaTouchHandler", loader)
-            val streams = WeakHashMap<Any, Long>()
             Xp.hookAll(count, "onInterceptTouchEvent") { chain ->
                 val event = chain.args.firstOrNull() as? MotionEvent
                 val owner = chain.thisObject
                 if (event?.actionMasked == MotionEvent.ACTION_DOWN) {
-                    streams.remove(owner)
-                    if (eligible() && MiniPlayerRuntime.nativeContentAt(event.rawX, event.rawY))
-                        streams[owner] = event.downTime
+                    countStreams.remove(owner)
+                    if (contentEligible() && MiniPlayerRuntime.nativeContentAt(event.rawX, event.rawY))
+                        countStreams[owner] = event.downTime
                 }
-                if (event != null && streams[owner] == event.downTime && eligible()) {
+                if (event != null && countStreams[owner] == event.downTime && contentEligible()) {
                     // The hidden native count footer must not own the card drawn in its band.
                     val cleared = runCatching {
                         Xp.setObjectField(owner, "isDownInNumStateArea", false)
@@ -48,7 +50,7 @@ internal object ShortcutGestureRuntime {
                         Xp.setObjectField(owner, "handledByNumState", null)
                     }.onFailure { failure = it.javaClass.simpleName }.isSuccess
                     if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL)
-                        streams.remove(owner)
+                        countStreams.remove(owner)
                     if (cleared) null else chain.proceed()
                 } else chain.proceed()
             }
@@ -60,11 +62,11 @@ internal object ShortcutGestureRuntime {
                 val handler = chain.thisObject
                 if (event?.actionMasked == MotionEvent.ACTION_DOWN) {
                     contentStreams.remove(handler)
-                    if (eligible() && MiniPlayerRuntime.nativeContentAt(event.rawX, event.rawY))
+                    if (contentEligible() && MiniPlayerRuntime.nativeContentAt(event.rawX, event.rawY))
                         contentStreams[handler] = event.downTime
                 }
                 fun clearLegacyArea() {
-                    if (event == null || contentStreams[handler] != event.downTime || !eligible()) return
+                    if (event == null || contentStreams[handler] != event.downTime || !contentEligible()) return
                     runCatching {
                         val panel = Xp.getObjectField(handler, "this\$0")
                         val touch = Xp.getObjectField(panel, "mTouchHandlerInjector")
@@ -93,8 +95,32 @@ internal object ShortcutGestureRuntime {
     private var lastPeak = 0f
     private var lastActive = false
 
-    private fun eligible() = MiniPlayerRuntime.detachedRail() && Main.screenOn() &&
-        Main.keyguardLocked() && !Main.bouncerShown() && !MiniPlayerScene.aodActive && !MiniPlayerScene.keyguardGoingAway
+    private fun eligible() = LockHandoffClient.allowsShortcuts() &&
+        (MiniPlayerRuntime.detachedRail() || !LockHandoffClient.allowsTrio() && RailShortcutRuntime.ownsPlacement()) &&
+        lockscreenTouch()
+
+    private fun contentEligible() = LockHandoffClient.allowsNotifications() &&
+        MiniPlayerRuntime.detachedRail() && lockscreenTouch()
+
+    private fun lockscreenTouch() = Main.screenOn() && Main.keyguardLocked() &&
+        !Main.bouncerShown() && !MiniPlayerScene.aodActive && !MiniPlayerScene.keyguardGoingAway
+
+    @JvmStatic fun revokeForHandoff() {
+        for ((owner, gesture) in mirrored) if (gesture.touchX.held) {
+            runCatching {
+                val current = (Xp.getObjectField(owner, "touchX") as Number).toFloat()
+                gesture.touchX.release(current) { Xp.setObjectField(owner, "touchX", it) }
+            }.onFailure { Xp.w("DuoShortcut: restore touchX: $it") }
+        }
+        mirrored.clear()
+        ownership.clear()
+        nativeEvents.clear()
+    }
+
+    @JvmStatic fun revokeContentForHandoff() {
+        countStreams.clear()
+        contentStreams.clear()
+    }
 
     fun hitsShortcut(icon: View, other: View?, x: Float, y: Float): Boolean {
         // Native hit testing waits for alpha == 1. Accept the visible wake ramp while
@@ -152,8 +178,10 @@ internal object ShortcutGestureRuntime {
                             val gesture = mirrored[owner]
                             if (gesture != null && gesture.downTime == event.downTime &&
                                 Xp.getObjectField(owner, "isLeftShortcutTouched") == true) {
-                                Xp.setObjectField(owner, "touchX",
-                                    ShortcutGesturePolicy.nativeX(true, true, gesture.x, event.x))
+                                val current = (Xp.getObjectField(owner, "touchX") as Number).toFloat()
+                                gesture.touchX.write(current, ShortcutGesturePolicy.nativeX(true, true, gesture.x, event.x)) {
+                                    Xp.setObjectField(owner, "touchX", it)
+                                }
                                 projected++
                             }
                             if (event.actionMasked == MotionEvent.ACTION_UP) mirrored.remove(owner)
@@ -177,7 +205,7 @@ internal object ShortcutGestureRuntime {
                         }
                     }
                 }.onFailure { failure = it.javaClass.simpleName }
-                if (event != null && ownership[owner]?.allows(event.downTime) == false)
+                if (event != null && eligible() && ownership[owner]?.allows(event.downTime) == false)
                     return@hookAll false
                 runCatching {
                     if (event?.actionMasked == MotionEvent.ACTION_DOWN) peakDistance = 0f

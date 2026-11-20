@@ -1067,6 +1067,7 @@ public class Main extends XposedModule {
         // these have anything to do with the clock, and a build that renamed the container must
         // not cost them too.
         HyperTweaks.systemUi(cl);
+        LockHandoffClient.install(cl);
         LockScreenChargingHint.INSTANCE.install(cl);
         LockscreenStatusBar.install(cl);
         InnerScreenAod.install(cl);
@@ -1119,6 +1120,7 @@ public class Main extends XposedModule {
                 } catch (Throwable t) {
                     Xp.w(TAG + "registerReceiver failed: " + t);
                 }
+                LockHandoffClient.sync();
                 // An immersive page's slot, if a rebuilt keyguard came with a new window.
                 try {
                     ImmersiveHost.onContainerAttached();
@@ -2644,6 +2646,7 @@ public class Main extends XposedModule {
                                 sHideChargingHint = on;
                                 LockScreenChargingHint.INSTANCE.refresh();
                             }
+                            LockHandoffClient.sync();
                             LockScreenRailRuntime.refresh();
                             MiniPlayerRuntime.refreshNativeMaterial();
                             refreshCoverGeometry();
@@ -3673,6 +3676,7 @@ public class Main extends XposedModule {
                 forgetSysReads();
                 if (Intent.ACTION_SCREEN_ON.equals(a)) {
                     sScreenOn = true;
+                    LockHandoffClient.sync();
                     restoreAwakeArtwork();
                     sAodGrey = Float.NaN;
                     applyGlassBrightness();

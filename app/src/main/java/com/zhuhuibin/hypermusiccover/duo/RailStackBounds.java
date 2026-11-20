@@ -172,11 +172,13 @@ final class RailStackBounds {
 
     private static boolean ownsStack(Object candidate) {
         return installed && candidate != null && candidate == stack && Main.sRightRail
-                && Main.sReflowLockContent && Main.keyguardLocked() && !Main.bouncerShown();
+                && Main.sReflowLockContent && LockHandoffClient.allowsNotifications()
+                && Main.keyguardLocked() && !Main.bouncerShown();
     }
 
     static boolean bind(View next, View root, FoldMusicLayout.Box content) {
-        if (!installed || next == null || !next.isAttachedToWindow()) { release(); return false; }
+        if (!installed || !LockHandoffClient.allowsNotifications()
+                || next == null || !next.isAttachedToWindow()) { release(); return false; }
         // Layout coordinates only: AOD scaling belongs to the ancestors, not the width baseline.
         int parentLeft = 0;
         View parent = next.getParent() instanceof View ? (View) next.getParent() : null;

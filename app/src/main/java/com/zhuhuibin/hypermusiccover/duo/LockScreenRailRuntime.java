@@ -84,15 +84,30 @@ final class LockScreenRailRuntime {
         MiniPlayerRuntime.refresh();
     }
 
-    static boolean active() {
+    /** Synchronous revocation cleanup; never defers via post(). */
+    static void revokeForHandoff() {
+        restoreClockOffsets();
+        restoreClockContent();
+        requestHandoffLayout();
+    }
+
+    static void requestHandoffLayout() {
+        if (root != null) root.invalidate();
+    }
+
+    private static boolean hasPlan() {
         return Main.sRightRail && sessionEligible && plan != null;
+    }
+
+    static boolean active() {
+        return LockHandoffClient.allowsTrio() && hasPlan();
     }
     static boolean reflowing() { return active() && Main.sReflowLockContent && contentActive; }
 
     private static void update() {
         boolean wasActive = active(), wasContent = reflowing();
-        sessionEligible = root != null && RailLifecycle.eligible(Main.sRightRail,
-                Main.keyguardLocked(), Main.bouncerShown());
+        sessionEligible = root != null && RailLifecycle.eligible(
+                Main.sRightRail, Main.keyguardLocked(), Main.bouncerShown());
         if (!sessionEligible) {
             railXPinned = false;
             RailStatusRuntime.hide();
@@ -121,22 +136,30 @@ final class LockScreenRailRuntime {
         lyricFrame.measured(revision, planWidth, planHeight);
         if (next != null) planRevision = revision;
         plan = next;
-        if (next != null) RailStatusRuntime.update(root, next);
+        if (next != null && LockHandoffClient.allowsStatusBar()) RailStatusRuntime.update(root, next);
         else RailStatusRuntime.hide();
         if (next != null && Main.sReflowLockContent) {
-            cacheNotificationFloor();
             int id = ResourceIds.id(root.getResources(), "notification_stack_scroller");
             View stack = id == 0 ? null : root.findViewById(id);
-            // Keep the OEM clock's drawing canvas at its native width. Its glass renderer
-            // hard-clips to that canvas even with clipChildren disabled. Move the measured
-            // glyphs instead of narrowing the canvas and then translating ink out of it.
-            boolean stackOwned = RailStackBounds.bind(stack, root, next.content);
-            View date = Main.visibleDate();
-            if (date != null && !under(date, stack) && !ClockCollapse.compactRowMoving())
-                centerContentView(date, presentedContent());
-            centerClocks();
+            boolean allowNotif = LockHandoffClient.allowsNotifications();
+            boolean stackOwned = false;
+            if (allowNotif) {
+                cacheNotificationFloor();
+                stackOwned = RailStackBounds.bind(stack, root, next.content);
+            } else {
+                RailStackBounds.release();
+                notificationFloor = 0;
+            }
+            if (LockHandoffClient.allowsTrio()) {
+                // Keep the OEM clock's drawing canvas at its native width.
+                View date = Main.visibleDate();
+                if (date != null && !under(date, stack) && !ClockCollapse.compactRowMoving())
+                    centerContentView(date, presentedContent());
+                centerClocks();
+            }
             contentActive = stackOwned || !owned.isEmpty();
-            if (contentActive && Main.sForceNotificationFloor) NumState.INSTANCE.refreshRailFooter(notificationFloor, revision);
+            if (allowNotif && contentActive && Main.sForceNotificationFloor)
+                NumState.INSTANCE.refreshRailFooter(notificationFloor, revision);
             else NumState.INSTANCE.restoreRailFooter();
         } else restoreContent();
         liftNativeClock();
@@ -182,7 +205,7 @@ final class LockScreenRailRuntime {
 
     /** Status, capsules and shortcut compensation share one AOD/wake ownership latch. */
     static boolean holdRailX() {
-        railXPinned = RailLifecycle.holdColumnX(railXPinned, active(),
+        railXPinned = RailLifecycle.holdColumnX(railXPinned, hasPlan(),
                 MiniPlayerScene.INSTANCE.getKeyguardGoingAway(), Main.screenOnCached(),
                 MiniPlayerScene.INSTANCE.getAodActive(), holdGeometry());
         return railXPinned;
@@ -227,7 +250,8 @@ final class LockScreenRailRuntime {
     }
 
     static int notificationBottom(int nativeBottom) {
-        return reflowing() && Main.sForceNotificationFloor && Main.keyguardLocked()
+        return LockHandoffClient.allowsNotifications() && hasPlan() && Main.sReflowLockContent
+                && contentActive && Main.sForceNotificationFloor && Main.keyguardLocked()
                 ? RailNotificationFloor.extend(nativeBottom, notificationFloor) : nativeBottom;
     }
 
@@ -367,6 +391,12 @@ final class LockScreenRailRuntime {
 
     private static void restoreContent() {
         RailStackBounds.release();
+        restoreClockContent();
+        contentActive = false;
+        notificationFloor = 0;
+    }
+
+    private static void restoreClockContent() {
         for (java.util.Map.Entry<View, Owned> e : owned.entrySet()) {
             View v = e.getKey(); GeometryLease lease = e.getValue().lease;
             ViewGroup.LayoutParams lp = v.getLayoutParams();
@@ -384,8 +414,6 @@ final class LockScreenRailRuntime {
             if (!v.getClipToPadding() && (e.getValue() & 2) != 0) v.setClipToPadding(true);
         }
         clipLeases.clear();
-        contentActive = false;
-        notificationFloor = 0;
     }
 
     private static boolean map(View from, View to, FoldMusicLayout.Box region, RectF out) {

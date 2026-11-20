@@ -24,7 +24,7 @@ internal object NotificationTransitionTarget {
             { runCatching { a.leaving?.invoke(row) as? Boolean }.getOrNull() })
     }
 
-    fun sceneEligible(): Boolean = NotificationTransitionPolicy.scene(
+    fun sceneEligible(): Boolean = LockHandoffClient.allowsNotifications() && NotificationTransitionPolicy.scene(
         MiniPlayerScene.keyguardGoingAway, MiniPlayerScene.aodActive, Main.screenOnCached(),
         { Main.keyguardLocked() }, { Main.bouncerShown() })
 

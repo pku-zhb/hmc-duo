@@ -29,6 +29,7 @@ internal object RailControlCenter {
     }
 
     fun open(): Boolean {
+        if (!LockHandoffClient.allowsTrio()) return false
         val native = controller.get() ?: return false
         if (!Main.screenOnCached() || !Main.keyguardLocked() || !Main.onKeyguardNow() ||
             Main.bouncerShown() || Main.controlCenterShown() || MiniPlayerScene.aodActive ||

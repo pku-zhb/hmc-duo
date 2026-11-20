@@ -26,7 +26,8 @@ internal object LockscreenStatusBar {
         fun update() {
             val view = reference.get() ?: return
             val scene = MiniPlayerScene
-            val hide = LockscreenStatusBarPolicy.hide(Main.sHideLockStatusBar, Main.keyguardLocked(),
+            val hide = LockHandoffClient.allowsStatusBar() && LockscreenStatusBarPolicy.hide(
+                Main.sHideLockStatusBar, Main.keyguardLocked(),
                 scene.keyguardGoingAway, Main.bouncerShown(), scene.blocksMiniPlayer,
                 scene.controlCenterIsActive || Main.miniPlayerControlCenterUp())
             if (!hide) { restore(); return }
@@ -72,6 +73,13 @@ internal object LockscreenStatusBar {
             }
             installed = true
         }.onFailure { error = it.javaClass.simpleName }
+    }
+
+    /** Synchronous revocation cleanup; never defers via post(). */
+    @JvmStatic fun revokeForHandoff() {
+        tracked.values.toList().forEach { strip ->
+            runCatching { strip.restore() }.onFailure { error = it.javaClass.simpleName }
+        }
     }
 
     @JvmStatic fun refresh() {

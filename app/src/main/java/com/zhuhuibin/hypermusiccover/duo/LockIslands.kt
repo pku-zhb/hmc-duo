@@ -441,27 +441,35 @@ internal object LockIslands {
      * A change runs the pipeline again at once, so the stack follows the row.
      */
     fun setActive(value: Boolean) {
-        if (active == value) return
-        active = value
+        val next = value && LockHandoffClient.allowsNotifications()
+        if (active == next) return
+        active = next
         // The row has the islands again: the cover's hold on the focus ones is over.
-        if (value && cover) {
+        if (next && cover) {
             main.removeCallbacks(coverOff)
             cover = false
         }
         if (nativeStack) {
             // On for good once the islands have shown (off only with the feature: stopFolding).
-            if (value) {
+            if (next) {
                 NumState.setFolding(true)
                 NumState.foldIfPiled("row showing")
             }
-            followStack("row ${if (value) "showing" else "gone"}")
+            followStack("row ${if (next) "showing" else "gone"}")
         }
-        invalidate("row ${if (value) "showing" else "gone"}")
+        invalidate("row ${if (next) "showing" else "gone"}")
     }
 
     /** The islands are off altogether: the stack folds as the user's own setting says again. */
     fun stopFolding() {
         NumState.setFolding(false)
+    }
+
+    /** Synchronous revocation cleanup; never defers via post(). */
+    @JvmStatic fun revokeForHandoff() {
+        if (active) setActive(false)
+        else if (cover) invalidate("handoff")
+        stopFolding()
     }
 
     /**
@@ -663,6 +671,7 @@ internal object LockIslands {
         if (filter?.get() !== filterObject) filter = WeakReference(filterObject)
         watchScreen()
         if (hidden) return true
+        val ownsNotifications = LockHandoffClient.allowsNotifications()
         val entry = args.firstOrNull() ?: return false
         if (!lockedOrLocking(filterObject)) {
             // Unlocked: what a tap put back is an island again on the next lock screen - all but
@@ -674,7 +683,7 @@ internal object LockIslands {
             // of them in the fading stack at once - a flash of rows on each unlock (filmed
             // 2026-09-25). They stay islands until the lock screen is off the screen; the row
             // turning off after that runs the pipeline again (setActive).
-            if (!active || !Main.onKeyguardNow()) return false
+            if (!ownsNotifications || !active || !Main.onKeyguardNow()) return false
             val key = (Xp.getObjectField(entry, "mSbn") as? StatusBarNotification)?.key
             // Folded natively, the stack island's rows were never out of the stack to flash in.
             val held = key != null && notes.any {
@@ -698,7 +707,7 @@ internal object LockIslands {
         val out = if (note.focus) note.key in released else stackOut
         // Spread out, every focus row is the list's, the cover's too: tapped open in the cover,
         // the list came up with the ordinary notifications alone (the user, 2026-09-30).
-        val kept = !spreading && (active && !out || cover && note.focus && !out)
+        val kept = ownsNotifications && !spreading && (active && !out || cover && note.focus && !out)
         // A focus notification whose row is still being inflated has no template yet to say it
         // shows in full: read now, it came up as the redacted "系统界面组件 / 你有一条新消息"
         // with the plugin's icon, and turned into "手电筒 使用中" eight frames later (filmed

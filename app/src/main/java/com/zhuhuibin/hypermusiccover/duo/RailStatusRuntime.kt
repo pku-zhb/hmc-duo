@@ -33,6 +33,7 @@ internal object RailStatusRuntime {
     @JvmStatic fun install(loader: ClassLoader) = RailControlCenter.install(loader)
 
     @JvmStatic fun update(window: View, plan: RightRailLayout.Plan) {
+        if (!LockHandoffClient.allowsStatusBar()) { hide(); return }
         runCatching {
             val id = ResourceIds.id(window.resources, "keyguard_root_view")
             val container = if (id == 0) null else window.findViewById<View>(id) as? ViewGroup
@@ -94,6 +95,7 @@ internal object RailStatusRuntime {
             }
             status.translationX = left-status.left + correctionX
             status.translationY = top-status.top + correctionY
+            status.isClickable = LockHandoffClient.allowsTrio()
             status.visibility = View.VISIBLE
             updateTouchBounds(window, container, plan, status.left + status.translationX,
                 status.top + status.translationY, bounds.width(), bounds.height())
@@ -130,7 +132,8 @@ internal object RailStatusRuntime {
     }
 
     private fun tapEligible(window: View): Boolean = touchWindow === window.rootView &&
-        !touchBounds.isEmpty && LockScreenRailRuntime.active() && view?.visibility == View.VISIBLE &&
+        !touchBounds.isEmpty && LockHandoffClient.allowsStatusBar() && LockHandoffClient.allowsTrio() &&
+        LockScreenRailRuntime.active() && view?.visibility == View.VISIBLE &&
         Main.screenOnCached() && Main.keyguardLocked() && Main.onKeyguardNow() &&
         !Main.bouncerShown() && !Main.controlCenterShown() && !MiniPlayerScene.aodActive &&
         !MiniPlayerScene.blocksMiniPlayer && !MiniPlayerScene.keyguardGoingAway
@@ -161,6 +164,11 @@ internal object RailStatusRuntime {
         return false
     }
 
+    @JvmStatic fun revokeTrioTouchForHandoff() {
+        tap.cancel()
+        view?.isClickable = false
+    }
+
     @JvmStatic fun hide() {
         touchBounds.setEmpty(); touchWindow = null; tap.cancel()
         holdingX = false; nativeInkX = Float.NaN; correctedInkX = Float.NaN
@@ -183,7 +191,7 @@ internal object RailStatusRuntime {
         view?.setTimeAlpha(if (timeAvailable()) ClockCollapse.statusTimeAlpha() else 0f)
     }
     /** Do not hide the native clock until its destination exists, independent of fade progress. */
-    @JvmStatic fun timeAvailable(): Boolean = LockScreenRailRuntime.active() &&
+    @JvmStatic fun timeAvailable(): Boolean = LockHandoffClient.allowsStatusBar() &&
         // OverlayViewGroup is not parented to its host; use the retained real host for sight.
         view?.let { it.isAttachedToWindow && it.visibility == View.VISIBLE } == true &&
         parent?.let { it.isAttachedToWindow && it.isShown } == true &&

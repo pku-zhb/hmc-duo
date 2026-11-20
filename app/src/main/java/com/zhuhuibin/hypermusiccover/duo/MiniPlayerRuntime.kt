@@ -87,9 +87,38 @@ object MiniPlayerRuntime {
     @JvmStatic fun applyConfig(context: Context, raw: String?) {
         MiniPlayerConfig.apply(prefs(context), raw)
         materialGeneration++
+        LockHandoffClient.sync()
         LockScreenRailRuntime.refresh()
         lastRoot?.get()?.let { root -> root.post { attach(root, lastShortcutController?.get()) } }
         refresh()
+    }
+
+    @JvmStatic fun isEnabled(): Boolean {
+        val ctx = lastRoot?.get()?.context ?: Main.sAppCtx ?: return false
+        return runCatching {
+            JSONObject(MiniPlayerConfig.fromPreferences(prefs(ctx))).optBoolean(MiniPlayerConfig.ENABLED)
+        }.getOrDefault(false)
+    }
+
+    @JvmStatic fun revokeShortcutsForHandoff() {
+        live().forEach {
+            runCatching { it.revokeShortcutsForHandoff() }
+                .onFailure { error -> Xp.w("MCMini: shortcut handoff restore: $error") }
+        }
+    }
+
+    @JvmStatic fun revokeTrioForHandoff() {
+        live().forEach {
+            runCatching { it.revokeTrioForHandoff() }
+                .onFailure { error -> Xp.w("MCMini: trio handoff restore: $error") }
+        }
+    }
+
+    @JvmStatic fun revokeNotificationsForHandoff() {
+        live().forEach {
+            runCatching { it.releaseInvalidNotificationTransitions(force = true) }
+                .onFailure { error -> Xp.w("MCMini: notification handoff restore: $error") }
+        }
     }
 
     @JvmStatic fun refresh() {
@@ -2033,7 +2062,7 @@ object MiniPlayerRuntime {
         live().any { it.beginTransition(toNative = true, scene = true) }
 
     /** Rail cards use the native stack's entrance/exit, never the capsule as a morph endpoint. */
-    @JvmStatic fun detachedRail(): Boolean = Main.sRightRail &&
+    @JvmStatic fun detachedRail(): Boolean = Main.sRightRail && LockHandoffClient.allowsTrio() &&
         (LockScreenRailRuntime.active() || live().any { it.pill()?.vertical == true })
 
     /** Out of the cover or lyrics: the card shrinks back into the pill. */
@@ -2773,7 +2802,18 @@ private class MiniPlayerController(
     private val railButtonOffsets = arrayOfNulls<GeometryLease>(2)
     private var railButtonsDozing = false
 
-    private fun restoreRailAodInset() {
+    internal fun revokeShortcutsForHandoff() {
+        restoreRailAodInset()
+        shortcutAodEntry.cancel()
+        holdButtons = false
+        rowHeldOff = false
+        backSince = 0L
+        releaseButtonAlpha()
+        discs.forEach { it?.visibility = View.GONE }
+        for (side in 0..1) clearButtonSqueeze(side)
+    }
+
+    internal fun restoreRailAodInset() {
         for (side in 0..1) {
             val lease = railButtonOffsets[side] ?: continue
             val button = button(side)
@@ -2784,8 +2824,34 @@ private class MiniPlayerController(
         railButtonsDozing = false
     }
 
+    /** Synchronously hide/exit vertical rail capsule when lockscreen.trio is revoked. */
+    internal fun revokeTrioForHandoff() {
+        if (destroyed || (!Main.sRightRail && player?.vertical != true)) return
+        clearRailExpansionPops()
+        MiniPlayerRuntime.cancelMusicExpansion()
+        railDragHeld = false
+        finishRailFusion(commit = false, refreshNow = false)
+        railReturn?.let { finishRailReturn(it.plan.key, false, refreshNow = false) }
+        setRailBubblesShown(false)
+        railOpening.clear()
+        railPosition?.cancel()
+        railPosition = null
+        railPositionX = Float.NaN
+        railPositionY = Float.NaN
+        railClosing.clear()
+        finishRailMediaExit(commit = false)
+        restoreRailAodInset()
+        player?.let {
+            it.setVertical(false)
+            it.setInteractionsEnabled(false)
+            it.visibility = View.GONE
+        }
+        hideSmallIsland()
+        restoreHeader()
+    }
+
     private fun updateRailAodInset() {
-        if (!LockScreenRailRuntime.active() || MiniPlayerScene.keyguardGoingAway) {
+        if (!LockHandoffClient.allowsShortcuts() || !LockScreenRailRuntime.active() || MiniPlayerScene.keyguardGoingAway) {
             restoreRailAodInset(); return
         }
         railButtonsDozing = LockScreenRailRuntime.holdRailX()
@@ -8538,7 +8604,7 @@ private class MiniPlayerController(
     private var nativeRailNote: Pair<String, View>? = null
 
     /** Retire visual work at a scene/role boundary without changing saved collapsed choices. */
-    private fun releaseInvalidNotificationTransitions(force: Boolean = false) {
+    internal fun releaseInvalidNotificationTransitions(force: Boolean = false) {
         // Native AOD/island frames need no notification-role or scene queries when no
         // notification transition has borrowed a property from the native stack.
         if (nativeRailNote == null && railNoteExit == null && spread == null &&
@@ -11209,7 +11275,8 @@ private class MiniPlayerController(
         // The OEM fades the shortcut branch before setIsDozing reports AOD. Prepare only
         // this short entry interval, using its supported full-screen mode once per event.
         // Actual ownership still requires a locked screen and wanted discs on every frame.
-        shortcutAodEntry.prepare(Main.sRightRail && config.getBoolean(MiniPlayerConfig.ENABLED) &&
+        shortcutAodEntry.prepare(LockHandoffClient.allowsShortcuts() && Main.sRightRail &&
+            config.getBoolean(MiniPlayerConfig.ENABLED) &&
             Main.fullAodOn(), android.os.SystemClock.uptimeMillis())
         railDragHeld = false
         finishRailFusion()
@@ -12576,6 +12643,7 @@ private class MiniPlayerController(
      * animation matrix, which the OEM does not write and drawnCentre does not read.
      */
     private fun updateDiscs() {
+        if (!LockHandoffClient.allowsShortcuts()) return
         // Shortcuts exist even with every card expanded or no media session. Resolve their
         // native layer without waiting for a visible capsule to call followShortcuts().
         resolveShortcutHierarchy()
@@ -12668,6 +12736,17 @@ private class MiniPlayerController(
     private var holdSince = 0L
     private var backSince = 0L
     private val shortcutAodEntry = LockscreenSurfacePolicy.AodEntry()
+    private val buttonAlpha = java.util.IdentityHashMap<View, MediaPropertyLease<Float>>()
+    private val buttonTransitionAlpha = java.util.IdentityHashMap<View, MediaPropertyLease<Float>>()
+
+    private fun releaseButtonAlpha() {
+        for ((view, lease) in buttonAlpha) lease.release(view.alpha) { view.alpha = it }
+        for ((view, lease) in buttonTransitionAlpha) {
+            lease.release(view.transitionAlpha) { view.transitionAlpha = it }
+        }
+        buttonAlpha.clear()
+        buttonTransitionAlpha.clear()
+    }
 
     private fun holdButtonsThroughDoze() {
         val root = followRoot?.get()
@@ -12679,6 +12758,8 @@ private class MiniPlayerController(
                 MiniPlayerScene.keyguardGoingAway, Main.bouncerShown(), MiniPlayerScene.customAodActive) ||
             Main.sRightRail && !discsWanted) {
             holdButtons = false
+            buttonAlpha.clear()
+            buttonTransitionAlpha.clear()
             rowHeldOff = false
             backSince = 0L
             return
@@ -12693,6 +12774,8 @@ private class MiniPlayerController(
         // Any other AOD is the OEM's: its fade is let through (unheldInDoze).
         if (MiniPlayerScene.customAodActive) {
             holdButtons = false
+            buttonAlpha.clear()
+            buttonTransitionAlpha.clear()
             backSince = 0L
             return
         }
@@ -12707,8 +12790,13 @@ private class MiniPlayerController(
             var v: View? = findImage(button(side)) ?: button(side)
             while (v != null && v !== root && v !== host) {
                 natural = min(natural, v.alpha * v.transitionAlpha)
-                if (v.alpha < 1f) v.alpha = 1f
-                if (v.transitionAlpha < 1f) v.transitionAlpha = 1f
+                val target = v
+                if (target.alpha < 1f)
+                    buttonAlpha.getOrPut(target) { MediaPropertyLease() }
+                        .write(target.alpha, 1f) { target.alpha = it }
+                if (target.transitionAlpha < 1f)
+                    buttonTransitionAlpha.getOrPut(target) { MediaPropertyLease() }
+                        .write(target.transitionAlpha, 1f) { target.transitionAlpha = it }
                 v = v.parent as? View
             }
         }
@@ -12721,6 +12809,8 @@ private class MiniPlayerController(
         if (backSince != 0L && now - backSince > HOLD_SETTLE_MS || now - holdSince > HOLD_MAX_MS ||
             !discsWanted) {
             holdButtons = false
+            buttonAlpha.clear()
+            buttonTransitionAlpha.clear()
             backSince = 0L
         }
     }
@@ -12749,6 +12839,8 @@ private class MiniPlayerController(
         if (!MiniPlayerScene.aodActive) shortcutAodEntry.cancel()
         if (MiniPlayerScene.aodActive || !holdButtons && !rowHeldOff) return
         holdButtons = false
+        buttonAlpha.clear()
+        buttonTransitionAlpha.clear()
         backSince = 0L
         rowHeldOff = false
         MiniPlayerRuntime.noteTouch("buttons let go: $why")
@@ -13840,7 +13932,9 @@ private class MiniPlayerController(
         val music = traced("MC r.music") {
             controller?.takeIf(::isUsable)?.takeIf { Main.miniPlayerMediaCardPresent() || musicMoving }
         }
-        val notes = traced("MC r.notes") { LockIslands.notes }
+        val notes = traced("MC r.notes") {
+            if (LockHandoffClient.allowsNotifications()) LockIslands.notes else emptyList()
+        }
         if (applyLockscreenDefaults(music, notes.isNotEmpty())) return
         // One island out as its card, the rest in the row (the super island's expanded state):
         // the music out as the media card leaves the row to the notifications. Alone, it keeps
@@ -14886,7 +14980,8 @@ private class MiniPlayerController(
             player?.setInteractionsEnabled(false)
             return
         }
-        val keyguardOwned = enabled && sessionUsable &&
+        val railBlocked = Main.sRightRail && !LockHandoffClient.allowsTrio()
+        val keyguardOwned = enabled && !railBlocked && sessionUsable &&
             !MiniPlayerScene.keyguardGoingAway && Main.keyguardLocked()
         // The lock screen's own choice of pill or card holds through everything that passes over
         // the lock screen - the doze, the PIN pad, the control centre. It used to be dropped
@@ -14958,7 +15053,7 @@ private class MiniPlayerController(
         // it had come, the row let it into the stack first, and its row was drawn there, text and
         // icon, for the frames before the island took it (the torch's own notification after a
         // double tap on it, 2026-09-29).
-        val noteWouldShow = enabled && !MiniPlayerScene.keyguardGoingAway && Main.keyguardLocked() &&
+        val noteWouldShow = enabled && !railBlocked && !MiniPlayerScene.keyguardGoingAway && Main.keyguardLocked() &&
             sceneLandedAt == 0L && MiniPlayerPresentationPolicy.evaluate(
                 MiniPlayerPresentationInput(
                     enabled = true,
